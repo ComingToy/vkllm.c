@@ -1,0 +1,28 @@
+module(
+    name = "vkllm.c",
+    version = "1.0.0",
+    repo_name = "vkllm.c"
+)
+
+bazel_dep(name = "platforms", version = "0.0.11")
+bazel_dep(name = "rules_cc", version = "0.1.1")
+
+# Hedron's Compile Commands Extractor for Bazel
+# https://github.com/hedronvision/bazel-compile-commands-extractor
+bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
+git_override(
+    module_name = "hedron_compile_commands",
+    remote = "https://github.com/hedronvision/bazel-compile-commands-extractor.git",
+    commit = "abb61a688167623088f8768cc9264798df6a9d10",
+    # Replace the commit hash (above) with the latest (https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main).
+    # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
+)
+
+vkllm_vulkan_deps = use_extension("//:extensions.bzl", "vkllm_vulkan_deps")
+use_repo(vkllm_vulkan_deps,
+         "vulkan_linux",
+         "vulkan_macos"
+)
+
+register_toolchains('//vulkan_rules:glsl_linux_toolchain')
+register_toolchains('//vulkan_rules:glsl_macos_toolchain')
