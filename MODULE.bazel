@@ -6,6 +6,7 @@ module(
 
 bazel_dep(name = "platforms", version = "0.0.11")
 bazel_dep(name = "rules_cc", version = "0.1.1")
+bazel_dep(name = "rules_python", version = "1.2.0")
 
 # Hedron's Compile Commands Extractor for Bazel
 # https://github.com/hedronvision/bazel-compile-commands-extractor
@@ -17,6 +18,25 @@ git_override(
     # Replace the commit hash (above) with the latest (https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main).
     # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
 )
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(python_version = "3.13")
+use_repo(python, "python_3_13")
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.parse(
+    hub_name = "pypi",
+    python_version = "3.13",
+    requirements_lock = "//tools:requirements.txt",
+)
+pip.parse(
+    hub_name = "pypi_macos",
+    python_version = "3.13",
+    requirements_lock = "//tools:requirements.macos.txt",
+)
+use_repo(pip,
+        "pypi",
+        "pypi_macos"
+) 
 
 vkllm_vulkan_deps = use_extension("//:extensions.bzl", "vkllm_vulkan_deps")
 use_repo(vkllm_vulkan_deps,
