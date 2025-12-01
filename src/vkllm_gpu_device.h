@@ -19,14 +19,18 @@ struct vkllm_vk_physical_dev {
     VkQueueFamilyProperties* queue_family_properties;
     uint32_t n_queue_family_properties;
     VkPhysicalDeviceSubgroupProperties subgroup_properties;
+    VkPhysicalDeviceShaderFloat16Int8Features feat_shader_fp16_int8;
+    VkPhysicalDevice16BitStorageFeatures feat_16bit_storage;
+    VkPhysicalDevice8BitStorageFeatures feat_8bit_storage;
     VkPhysicalDeviceProperties2 properties2;
 };
 
 struct vkllm_gpu_device {
     uint32_t api_version;
     VkInstance instance;
+    VkDevice vk_dev;
     struct vkllm_vk_physical_dev vk_physical_dev;
-	bool support_descriptor_templ_update;
+    bool support_descriptor_templ_update;
     bool support_16bit_storage;
     bool support_8bit_storage;
     bool support_fp16_arithmetic;
@@ -35,6 +39,7 @@ struct vkllm_gpu_device {
     int subgroup_size;
 };
 
-extern vkllm_err_t new_gpu_device(struct vkllm_context* context, uint32_t id,
-				  struct vkllm_gpu_device** ppdev);
+extern vkllm_err_t vkllm_new_gpu_device(struct vkllm_context* context,
+					uint32_t id,
+					struct vkllm_gpu_device** ppdev);
 #endif
