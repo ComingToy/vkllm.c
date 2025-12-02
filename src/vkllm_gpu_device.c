@@ -299,6 +299,8 @@ vkllm_err_t vkllm_new_gpu_device(struct vkllm_context* context, uint32_t id,
         goto err_init_gpu_dev;
     }
 
+    return VKLLM_ERR_OK;
+
 err_init_gpu_dev:
     vkDestroyInstance(pdev->vk_instance, NULL);
 err_create_instance:
