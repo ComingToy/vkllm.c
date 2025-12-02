@@ -30,5 +30,6 @@ main(int argc, const char* argv[])
     }
 
     vkllm_destroy_gpu_device(context, gpu);
+    vkllm_destroy_context(context);
     return 0;
 }
