@@ -48,9 +48,10 @@ static int create_instance(struct vkllm_context* context,
         .enabledLayerCount = sizeof(enable_layers) / sizeof(const char*),
         .ppEnabledLayerNames = enable_layers,
         .enabledExtensionCount = sizeof(exts) / sizeof(const char*),
-        .ppEnabledExtensionNames = exts};
+        .ppEnabledExtensionNames = exts
+    };
 
-    ret = vkCreateInstance(&instance_create_info, NULL, &pdev->instance);
+    ret = vkCreateInstance(&instance_create_info, NULL, &pdev->vk_instance);
     if (ret != VK_SUCCESS) {
         log_error("create vulkan instance failed: %d", (int)ret);
         return VKLLM_ERR_VULKAN;
@@ -64,14 +65,15 @@ static vkllm_err_t init_physical_device(struct vkllm_context* context,
     uint32_t ndev = 0;
     // FIXME: alloc dynamic
     VkPhysicalDevice physical_devices[VKLLM_MAX_PHY_DEVS] = {};
-    VkResult ret = vkEnumeratePhysicalDevices(pdev->instance, &ndev, NULL);
+    VkResult ret = vkEnumeratePhysicalDevices(pdev->vk_instance, &ndev, NULL);
 
     if (ret != VK_SUCCESS) {
         log_error("vkEnumeratePhysicalDevices failed: %d", (int)ret);
         return VKLLM_ERR_VULKAN;
     }
 
-    ret = vkEnumeratePhysicalDevices(pdev->instance, &ndev, physical_devices);
+    ret =
+        vkEnumeratePhysicalDevices(pdev->vk_instance, &ndev, physical_devices);
 
     if (ndev <= pdev->vk_physical_dev.id) {
         log_error("target device id %u not found.",
@@ -298,8 +300,17 @@ vkllm_err_t vkllm_new_gpu_device(struct vkllm_context* context, uint32_t id,
     }
 
 err_init_gpu_dev:
-    vkDestroyInstance(pdev->instance, NULL);
+    vkDestroyInstance(pdev->vk_instance, NULL);
 err_create_instance:
     free(pdev);
     return ret;
+}
+
+void vkllm_destroy_gpu_device(struct vkllm_context* context,
+                              struct vkllm_gpu_device* pdev) {
+    vkDestroyDevice(pdev->vk_dev, NULL);
+    vkDestroyInstance(pdev->vk_instance, NULL);
+    free(pdev->vk_physical_dev.ext_properties);
+    free(pdev->vk_physical_dev.queue_family_properties);
+    free(pdev);
 }

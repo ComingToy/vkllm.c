@@ -27,7 +27,7 @@ struct vkllm_vk_physical_dev {
 
 struct vkllm_gpu_device {
     uint32_t api_version;
-    VkInstance instance;
+    VkInstance vk_instance;
     VkDevice vk_dev;
     struct vkllm_vk_physical_dev vk_physical_dev;
     bool support_descriptor_templ_update;
@@ -42,4 +42,7 @@ struct vkllm_gpu_device {
 extern vkllm_err_t vkllm_new_gpu_device(struct vkllm_context* context,
 					uint32_t id,
 					struct vkllm_gpu_device** ppdev);
+
+extern void vkllm_destroy_gpu_device(struct vkllm_context* context,
+				     struct vkllm_gpu_device* pdev);
 #endif
