@@ -267,13 +267,6 @@ static vkllm_err_t init_logical_device(struct vkllm_context *context,
   return VKLLM_ERR_VULKAN;
 }
 
-static vkllm_err_t init_gpu_device(struct vkllm_context *context,
-                                   struct vkllm_gpu_device *pdev) {
-  _CHECK(init_physical_device(context, pdev));
-  _CHECK(init_logical_device(context, pdev));
-  return VKLLM_ERR_OK;
-}
-
 static vkllm_err_t init_vma_allocator(struct vkllm_context *context,
                                       struct vkllm_gpu_device *pdev) {
   VmaAllocatorCreateInfo vma_create_info = {
@@ -296,6 +289,14 @@ static vkllm_err_t init_vma_allocator(struct vkllm_context *context,
 
   log_error("vmaCreateAllocator failed: %d", (int)ret);
   return VKLLM_ERR_VULKAN;
+}
+
+static vkllm_err_t init_gpu_device(struct vkllm_context *context,
+                                   struct vkllm_gpu_device *pdev) {
+  _CHECK(init_physical_device(context, pdev));
+  _CHECK(init_logical_device(context, pdev));
+  _CHECK(init_vma_allocator(context, pdev));
+  return VKLLM_ERR_OK;
 }
 
 vkllm_err_t vkllm_new_gpu_device(struct vkllm_context *context, uint32_t id,

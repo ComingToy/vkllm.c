@@ -4,6 +4,7 @@ cc_library(
         "vkllm_gpu_device.c",
         "vkllm_context.c",
         "vkllm_errors.c",
+        "vkllm_dtypes.c",
     ],
     hdrs = [
         "vkllm_gpu_device.h",
@@ -12,6 +13,7 @@ cc_library(
 		"vkllm_errors.c",
         "vkllm_errors.inc",
         "vkllm_dtypes.inc",
+        "vkllm_dtypes.h",
         "vkllm_common.h",
     ],
     deps = [
