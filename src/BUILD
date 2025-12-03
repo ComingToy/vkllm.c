@@ -16,6 +16,7 @@ cc_library(
     deps = [
 		"//vulkan_rules:vulkan_cc_library",
         "@log.c//:log.c",
+        "@vma//:vma",
     ],
     copts = [
         "-std=c11"
