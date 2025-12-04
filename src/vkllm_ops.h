@@ -3,7 +3,7 @@
 
 typedef enum
 {
-	VKLLM_OP_ADD = 0,
+    VKLLM_OP_ADD = 0,
 } vkllm_op_t;
 
 #endif
