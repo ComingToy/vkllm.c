@@ -34,6 +34,7 @@ struct vkllm_tensor
 };
 
 extern vkllm_err_t vkllm_new_tensor(struct vkllm_context *context, const char *name, const uint32_t *shapes,
-                                    vkllm_dtype_t dtype, struct vkllm_tensor **srcs, const uint32_t n_srcs,
-                                    void *params, bool mapped, struct vkllm_tensor **p);
+                                    vkllm_dtype_t dtype, struct vkllm_gpu_device *device, vkllm_op_t op,
+                                    struct vkllm_tensor **srcs, const uint32_t n_srcs, void *params, bool mapped,
+                                    struct vkllm_tensor **p);
 #endif
