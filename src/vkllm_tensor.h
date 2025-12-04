@@ -3,8 +3,10 @@
 #include <stdint.h>
 
 #include "vk_mem_alloc.h"
-#include "vkllm_dtypes.h"
 #include "vkllm_common.h"
+#include "vkllm_context.h"
+#include "vkllm_dtypes.h"
+#include "vkllm_ops.h"
 #include <stdbool.h>
 
 struct vkllm_tensor {
@@ -14,15 +16,21 @@ struct vkllm_tensor {
   uint32_t shapes[4];
   uint32_t strides[4];
   uint32_t bytes;
+
   struct {
     VmaAllocation allocation;
     VmaAllocationInfo alloc_info;
     VkBuffer buf;
   } device_buf;
 
-  struct vkllm_tensor* srcs[VKLLM_MAX_SRCS];
-  void* params;
-  bool visable; // host_buf is mapped
+  vkllm_op_t op;
+  struct vkllm_tensor *srcs[VKLLM_MAX_SRCS];
+  void *params;
+  bool mapped; // host_buf is mapped
 };
 
+extern struct vkllm_tensor *
+vkllm_new_tensor(struct vkllm_context *context, const uint32_t *shapes,
+                 const uint32_t n_shape, struct vkllm_tensor *srcs,
+                 const uint32_t n_srcs, void *params, bool mapped);
 #endif
