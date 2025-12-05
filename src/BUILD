@@ -17,6 +17,7 @@ cc_library(
         "vkllm_common.h",
         "vkllm_tensor.h",
         "vkllm_ops.h",
+        "vkllm_array.h",
     ],
     deps = [
 		"//vulkan_rules:vulkan_cc_library",
@@ -39,6 +40,7 @@ cc_library(
 	],
 	deps = [
 		"@vma//:vma",
+		"//vulkan_rules:vulkan_cc_library",
 	],
 	visibility = [
 		"//visibility:public",

@@ -33,8 +33,8 @@ struct vkllm_tensor
     bool mapped; // host_buf is mapped
 };
 
-extern vkllm_err_t vkllm_new_tensor(struct vkllm_context *context, const char *name, const uint32_t *shapes,
-                                    vkllm_dtype_t dtype, struct vkllm_gpu_device *device, vkllm_op_t op,
+extern vkllm_err_t vkllm_new_tensor(struct vkllm_context *context, struct vkllm_gpu_device *device, const char *name,
+                                    const uint32_t *shapes, vkllm_dtype_t dtype, vkllm_op_t op,
                                     struct vkllm_tensor **srcs, const uint32_t n_srcs, void *params, bool mapped,
                                     struct vkllm_tensor **p);
 #endif
