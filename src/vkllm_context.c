@@ -2,7 +2,7 @@
 
 #include "vkllm_common.h"
 
-vkllm_err_t vkllm_new_context(struct vkllm_context **context)
+vkllm_err_t vkllm_context_new(struct vkllm_context **context)
 {
     _NEW_AND_CHECK(*context, struct vkllm_context);
 
@@ -12,7 +12,7 @@ vkllm_err_t vkllm_new_context(struct vkllm_context **context)
     return VKLLM_ERR_OK;
 }
 
-void vkllm_destroy_context(struct vkllm_context *pcontext)
+void vkllm_context_free(struct vkllm_context *pcontext)
 {
     free(pcontext);
 }

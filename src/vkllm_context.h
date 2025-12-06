@@ -9,7 +9,7 @@ struct vkllm_context {
   const char *appname;
 };
 
-extern vkllm_err_t vkllm_new_context(struct vkllm_context **context);
-extern void vkllm_destroy_context(struct vkllm_context *pcontext);
+extern vkllm_err_t vkllm_context_new(struct vkllm_context **context);
+extern void vkllm_context_free(struct vkllm_context *pcontext);
 
 #endif

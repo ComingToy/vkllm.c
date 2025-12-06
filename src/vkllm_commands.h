@@ -8,8 +8,9 @@
 
 struct vkllm_commands_task
 {
-    void (*func)(void *);
-    void *args;
+    vkllm_err_t (*func)(void *);
+    struct vkllm_context *context;
+    void *priv;
 };
 
 VKLLM_DEF_ARRAY(commands_task, struct vkllm_commands_task);
@@ -34,6 +35,8 @@ extern vkllm_err_t vkllm_commands_upload(struct vkllm_context *context, struct v
                                          struct vkllm_tensor *tensor, const uint8_t *data, size_t bytes);
 extern vkllm_err_t vkllm_commands_download(struct vkllm_context *context, struct vkllm_commands *commands,
                                            struct vkllm_tensor *tensor, uint8_t *data, size_t bytes);
+extern vkllm_err_t vkllm_commands_submit(struct vkllm_context *context, struct vkllm_commands *commands);
+extern vkllm_err_t vkllm_commands_wait_exec(struct vkllm_context *context, struct vkllm_commands *commands);
 
 extern void __vkllm_commands_sync_tensor(struct vkllm_context *context, struct vkllm_commands *commands,
                                          struct vkllm_tensor *tensor, VkAccessFlagBits dst_access,

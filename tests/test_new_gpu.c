@@ -15,7 +15,7 @@ int main(int argc, const char *argv[])
     }
 
     struct vkllm_context *context = NULL;
-    vkllm_err_t e = vkllm_new_context(&context);
+    vkllm_err_t e = vkllm_context_new(&context);
     if (e != VKLLM_ERR_OK)
     {
         log_error("vkllm_new_context failed: %s", vkllm_err_s(e));
@@ -32,6 +32,6 @@ int main(int argc, const char *argv[])
     }
 
     vkllm_gpu_device_free(context, gpu);
-    vkllm_destroy_context(context);
+    vkllm_context_free(context);
     return 0;
 }

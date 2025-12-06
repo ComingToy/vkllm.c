@@ -13,10 +13,10 @@ static vkllm_err_t vkllm_calc_strides(const uint32_t *shapes, vkllm_dtype_t dtyp
     uint32_t blocks = (w + dtype_info.items_per_block - 1) / dtype_info.items_per_block;
     uint32_t bytes = blocks * dtype_info.bytes_per_block;
 
-    strides[3] = bytes;
-    strides[2] = shapes[3] * strides[3];
-    strides[1] = shapes[2] * strides[2];
-    strides[0] = shapes[1] * strides[1];
+    strides[3] = dtype_info.bytes;
+    strides[2] = bytes;
+    strides[1] = shapes[1] * strides[2];
+    strides[0] = shapes[0] * strides[1];
 
     return VKLLM_ERR_OK;
 }
