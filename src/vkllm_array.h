@@ -15,7 +15,7 @@
         _type *data;                                                                                                   \
     };                                                                                                                 \
                                                                                                                        \
-    inline vkllm_err_t vkllm_array_##_name##_new(struct vkllm_array_##_name **arr, size_t init)                          \
+    static inline vkllm_err_t vkllm_array_##_name##_new(struct vkllm_array_##_name **arr, size_t init)                 \
     {                                                                                                                  \
         size_t alloc_bytes = sizeof(**arr);                                                                            \
         *arr = (struct vkllm_array_##_name *)malloc(alloc_bytes);                                                      \
@@ -33,7 +33,7 @@
         return VKLLM_ERR_OK;                                                                                           \
     }                                                                                                                  \
                                                                                                                        \
-    inline vkllm_err_t vkllm_array_##_name##_append(struct vkllm_array_##_name *arr, _type element)                      \
+    static inline vkllm_err_t vkllm_array_##_name##_append(struct vkllm_array_##_name *arr, _type element)             \
     {                                                                                                                  \
         if (arr->used_n >= arr->alloc_n)                                                                               \
         {                                                                                                              \
@@ -47,7 +47,7 @@
         arr->data[arr->used_n++] = element;                                                                            \
         return VKLLM_ERR_OK;                                                                                           \
     }                                                                                                                  \
-    inline void vkllm_array_##_name##_free(struct vkllm_array_##_name *arr)                                               \
+    static inline void vkllm_array_##_name##_free(struct vkllm_array_##_name *arr)                                     \
     {                                                                                                                  \
         if (!arr)                                                                                                      \
             return;                                                                                                    \
