@@ -30,7 +30,27 @@
             return __r;                                                                                                \
     } while (0)
 
+#define _CHECK_VK(fn)                                                                                                  \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        VkResult err = (fn);                                                                                           \
+        if (err != VK_SUCCESS)                                                                                         \
+        {                                                                                                              \
+            log_error(#fn " failed: %d", (int)err);                                                                    \
+            return VKLLM_ERR_VULKAN;                                                                                   \
+        }                                                                                                              \
+    } while (0)
+
 #define BOOL_S(_cond) (!!(_cond) ? "false" : "true")
+#define _CHECK_ARGS(_cond)                                                                                         \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        if (!(_cond))                                                                                                  \
+        {                                                                                                              \
+            log_error(#_cond " is false");                                                                             \
+            return VKLLM_ERR_ARGS;                                                                                     \
+        }                                                                                                              \
+    } while (0)
 // configs
 
 #define VKLLM_MAX_PHY_DEVS 16
