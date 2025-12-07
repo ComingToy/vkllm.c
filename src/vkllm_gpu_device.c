@@ -343,9 +343,9 @@ err_create_instance:
 
 void vkllm_gpu_device_free(struct vkllm_context *context, struct vkllm_gpu_device *pdev)
 {
+    vmaDestroyAllocator(pdev->vma_allocator);
     vkDestroyDevice(pdev->vk_dev, NULL);
     vkDestroyInstance(pdev->vk_instance, NULL);
-    vmaDestroyAllocator(pdev->vma_allocator);
     free(pdev->vk_physical_dev.ext_properties);
     free(pdev->vk_physical_dev.queue_family_properties);
     free(pdev);
