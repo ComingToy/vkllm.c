@@ -213,8 +213,8 @@ vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, struct vkllm_gpu_d
     return VKLLM_ERR_OK;
 }
 
-vkllm_err_t vkllm_update_bindings(struct vkllm_context *context, struct vkllm_pipeline *pipeline,
-                                  struct vkllm_array_ptr *bindings, struct vkllm_array_u32 *indices)
+vkllm_err_t vkllm_pipeline_update_bindings(struct vkllm_context *context, struct vkllm_pipeline *pipeline,
+                                           struct vkllm_array_ptr *bindings, struct vkllm_array_u32 *indices)
 {
     VkDescriptorBufferInfo *buffer_infos = NULL;
     _NEW_N_AND_CHECK(buffer_infos, VkDescriptorBufferInfo, bindings->used_n);
