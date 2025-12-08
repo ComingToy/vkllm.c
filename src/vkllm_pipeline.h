@@ -36,15 +36,16 @@ struct vkllm_pipeline
 };
 
 extern vkllm_err_t vkllm_shader_constants_new(struct vkllm_shader_constants **constants, uint32_t init_bytes);
-extern vkllm_err_t _vkllm_shader_constants_append(struct vkllm_shader_constants *constants, uint8_t *data,
+extern vkllm_err_t _vkllm_shader_constants_append(struct vkllm_shader_constants *constants, const uint8_t *data,
                                                   uint32_t bytes);
 #define vkllm_shader_constants_append(constants, element)                                                              \
-    _vkllm_shader_constants_append(constants, &element, sizeof(element))
+    _vkllm_shader_constants_append(constants, (const uint8_t *)&element, sizeof(element))
 extern void vkllm_shader_constants_free(struct vkllm_shader_constants *constants);
 
 extern vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, struct vkllm_gpu_device *device,
-                                      const uint8_t *spv, const size_t spv_size,
-                                      const struct vkllm_shader_constants *specializations,
-                                      struct vkllm_pipeline **pipeline);
+                                      struct vkllm_shader_info shader_info, const uint8_t *spv, const size_t spv_size,
+                                      struct vkllm_shader_constants *specializations, struct vkllm_pipeline **pipeline);
+extern vkllm_err_t vkllm_update_bindings(struct vkllm_context *context, struct vkllm_pipeline *pipeline,
+                                         struct vkllm_array_ptr *bindings, struct vkllm_array_u32 *indices);
 
 #endif

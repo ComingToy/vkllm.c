@@ -3,6 +3,7 @@
 
 #include "vkllm_array.h"
 #include "vkllm_gpu_device.h"
+#include "vkllm_pipeline.h"
 #include "vkllm_tensor.h"
 #include <vulkan/vulkan.h>
 
@@ -35,6 +36,12 @@ extern vkllm_err_t vkllm_commands_upload(struct vkllm_context *context, struct v
                                          struct vkllm_tensor *tensor, const uint8_t *data, size_t bytes);
 extern vkllm_err_t vkllm_commands_download(struct vkllm_context *context, struct vkllm_commands *commands,
                                            struct vkllm_tensor *tensor, uint8_t *data, size_t bytes);
+extern void vkllm_commands_sync_tensor(struct vkllm_context *context, struct vkllm_commands *commands,
+                                       struct vkllm_tensor *tensor, VkAccessFlagBits dst_access,
+                                       VkPipelineStageFlagBits dst_stage);
+extern vkllm_err_t vkllm_commands_pipeline(struct vkllm_context *context, struct vkllm_commands *commands,
+                                           struct vkllm_pipeline *pipeline, struct vkllm_shader_constants *constants,
+                                           uint32_t group_x, uint32_t group_y, uint32_t group_z);
 extern vkllm_err_t vkllm_commands_submit(struct vkllm_context *context, struct vkllm_commands *commands);
 extern vkllm_err_t vkllm_commands_wait_exec(struct vkllm_context *context, struct vkllm_commands *commands);
 
