@@ -8,7 +8,6 @@
 
 struct vkllm_shader_info
 {
-    uint32_t specialization_count;
     uint32_t binding_count;
     uint32_t push_constant_bytes;
     uint32_t local_x, local_y, local_z;
@@ -19,6 +18,7 @@ struct vkllm_shader_constants
     struct vkllm_array_u8 *data;
     struct vkllm_array_u32 *offsets;
     struct vkllm_array_u32 *sizes;
+    size_t bytes;
 };
 
 struct vkllm_pipeline
@@ -27,8 +27,8 @@ struct vkllm_pipeline
     struct vkllm_shader_info shader_info;
     struct vkllm_gpu_device *device;
 
-    VkShaderModule vk_shader_module;
     VkPipeline vk_pipeline;
+    VkShaderModule vk_shader_module;
     VkPipelineLayout vk_pipeline_layout;
     VkDescriptorSetLayout vk_desc_set_layout;
     VkDescriptorPool vk_desc_pool;
@@ -46,6 +46,7 @@ extern vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, struct vkll
                                       struct vkllm_shader_info shader_info, const uint8_t *spv, const size_t spv_size,
                                       struct vkllm_shader_constants *specializations, struct vkllm_pipeline **pipeline);
 extern vkllm_err_t vkllm_pipeline_update_bindings(struct vkllm_context *context, struct vkllm_pipeline *pipeline,
-                                         struct vkllm_array_ptr *bindings, struct vkllm_array_u32 *indices);
+                                                  struct vkllm_array_ptr *bindings, struct vkllm_array_u32 *indices);
+extern void vkllm_pipeline_free(struct vkllm_context *context, struct vkllm_pipeline *pipeline);
 
 #endif

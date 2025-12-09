@@ -1,5 +1,5 @@
-#ifndef __VKLLM_COMMAND_H__
-#define __VKLLM_COMMAND_H__
+#ifndef __VKLLM_COMMANDS_H__
+#define __VKLLM_COMMANDS_H__
 
 #include "vkllm_array.h"
 #include "vkllm_gpu_device.h"

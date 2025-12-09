@@ -1,9 +1,9 @@
 #include "vkllm_commands.h"
 #include "log.h"
-#include "src/vkllm_common.h"
-#include "src/vkllm_gpu_device.h"
-#include "src/vkllm_pipeline.h"
-#include "src/vkllm_tensor.h"
+#include "vkllm_common.h"
+#include "vkllm_gpu_device.h"
+#include "vkllm_pipeline.h"
+#include "vkllm_tensor.h"
 #include <string.h>
 #include <vulkan/vulkan.h>
 
@@ -241,8 +241,15 @@ vkllm_err_t vkllm_commands_pipeline(struct vkllm_context *context, struct vkllm_
 
     _CHECK(vkllm_pipeline_update_bindings(context, pipeline, bindings, indices));
 
-	// push constants
     vkCmdBindPipeline(commands->vk_command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->vk_pipeline);
+
+    if (constants->bytes > 0)
+    {
+        vkCmdPushConstants(commands->vk_command_buffer, pipeline->vk_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           constants->bytes, constants->data);
+    }
+
+    vkCmdDispatch(commands->vk_command_buffer, group_x, group_y, group_z);
     return VKLLM_ERR_OK;
 }
 
