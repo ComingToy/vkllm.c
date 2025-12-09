@@ -19,3 +19,15 @@ cc_test(
         "-std=c11",
     ],
 )
+
+cc_test(
+    name = "test_vector_add",
+    srcs = ["test_vector_add.c"],
+    deps = [
+        "//src:core",
+        "//src:ops",
+    ],
+    copts = [
+        "-std=c11",
+    ],
+)
