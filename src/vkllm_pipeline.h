@@ -42,8 +42,8 @@ extern vkllm_err_t _vkllm_shader_constants_append(struct vkllm_shader_constants 
     _vkllm_shader_constants_append(constants, (const uint8_t *)&element, sizeof(element))
 extern void vkllm_shader_constants_free(struct vkllm_shader_constants *constants);
 
-extern vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, struct vkllm_gpu_device *device,
-                                      struct vkllm_shader_info shader_info, const uint8_t *spv, const size_t spv_size,
+extern vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, struct vkllm_shader_info shader_info,
+                                      const uint8_t *spv, const size_t spv_size,
                                       struct vkllm_shader_constants *specializations, struct vkllm_pipeline **pipeline);
 extern vkllm_err_t vkllm_pipeline_update_bindings(struct vkllm_context *context, struct vkllm_pipeline *pipeline,
                                                   struct vkllm_array_ptr *bindings, struct vkllm_array_u32 *indices);

@@ -6,9 +6,9 @@
 #include <vulkan/vulkan.h>
 
 #include "vk_mem_alloc.h"
-#include "vkllm_context.h"
 #include "vkllm_errors.h"
 
+struct vkllm_context;
 struct vkllm_vk_physical_dev
 {
     uint32_t id;
@@ -25,7 +25,7 @@ struct vkllm_vk_physical_dev
     VkPhysicalDevice16BitStorageFeatures feat_16bit_storage;
     VkPhysicalDevice8BitStorageFeatures feat_8bit_storage;
     VkPhysicalDeviceProperties2 properties2;
-	VkPhysicalDeviceFeatures2 features2;
+    VkPhysicalDeviceFeatures2 features2;
 };
 
 struct vkllm_gpu_device
@@ -44,8 +44,7 @@ struct vkllm_gpu_device
     VmaAllocator vma_allocator;
 };
 
-extern vkllm_err_t vkllm_gpu_device_new(struct vkllm_context *context, uint32_t id, struct vkllm_gpu_device **ppdev);
-extern vkllm_err_t vkllm_gpu_device_require_queue(struct vkllm_context *context, struct vkllm_gpu_device *device,
-                                                  VkQueueFlagBits flags, uint32_t *type);
-extern void vkllm_gpu_device_free(struct vkllm_context *context, struct vkllm_gpu_device *pdev);
+extern vkllm_err_t vkllm_gpu_device_new(struct vkllm_context *context, uint32_t id);
+extern vkllm_err_t vkllm_gpu_device_require_queue(struct vkllm_context *context, VkQueueFlagBits flags, uint32_t *type);
+extern void vkllm_gpu_device_free(struct vkllm_context *context);
 #endif

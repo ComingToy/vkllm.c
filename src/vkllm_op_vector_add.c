@@ -35,7 +35,7 @@ vkllm_err_t vkllm_op_vector_add(struct vkllm_context *context, struct vkllm_comm
         .binding_count = 3, .push_constant_bytes = constants->bytes, .local_x = 32, .local_y = 1, .local_z = 1};
 
     _CHECK_JUMP(
-        vkllm_pipeline_new(context, commands->device, shader_info, spv_code, spv_bytes, specializations, &pipeline),
+        vkllm_pipeline_new(context, shader_info, spv_code, spv_bytes, specializations, &pipeline),
         err, create_pipeline_fail);
 
     struct vkllm_array_ptr *bindings = NULL;
