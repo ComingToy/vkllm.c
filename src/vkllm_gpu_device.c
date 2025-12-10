@@ -7,6 +7,8 @@
 #include "vkllm_common.h"
 #include "vulkan/vulkan_core.h"
 
+#define __VKLLM_DEBUG__ 1
+
 static int create_instance(struct vkllm_context *context, struct vkllm_gpu_device *pdev)
 {
     VkResult ret = vkEnumerateInstanceVersion(&pdev->api_version);

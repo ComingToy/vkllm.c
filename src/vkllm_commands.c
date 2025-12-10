@@ -218,8 +218,8 @@ vkllm_err_t vkllm_commands_pipeline(struct vkllm_context *context, struct vkllm_
                                     struct vkllm_array_u32 *indices, struct vkllm_shader_constants *constants,
                                     uint32_t group_x, uint32_t group_y, uint32_t group_z)
 {
-    _CHECK_ARGS(context && pipeline && bindings && indices && constants);
-    _CHECK_ARGS(bindings->used_n == indices->used_n);
+    _CHECK_ARGS(context && pipeline && bindings && constants);
+    _CHECK_ARGS(!indices || (bindings->used_n == indices->used_n));
 
     const VkPhysicalDeviceLimits *limits = &pipeline->device->vk_physical_dev.properties.limits;
     if (group_x > limits->maxComputeWorkGroupCount[0] || group_y > limits->maxComputeWorkGroupCount[1] ||

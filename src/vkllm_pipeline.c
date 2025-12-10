@@ -143,10 +143,12 @@ vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, struct vkllm_gpu_d
         return VKLLM_ERR_ARGS;
     }
 
+    _NEW_AND_CHECK(*pipeline, struct vkllm_pipeline);
     struct vkllm_pipeline *p = *pipeline;
     p->shader_info = shader_info;
     p->device = device;
 
+    // FIXME: leak pipeline
     _CHECK(vkllm_pipeline_create_layout(p));
     _CHECK(vkllm_pipeline_init_desc_set_pool(p));
     _CHECK(vkllm_pipeline_create_shader_module(p, spv, spv_size));
