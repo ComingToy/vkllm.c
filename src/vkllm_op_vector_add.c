@@ -44,7 +44,7 @@ vkllm_err_t vkllm_op_vector_add(struct vkllm_context *context, struct vkllm_comm
     vkllm_array_ptr_append(bindings, in1);
     vkllm_array_ptr_append(bindings, tensor);
 
-    uint32_t group_x = (N + 31) / 32;
+    uint32_t group_x = (N + shader_info.local_x - 1) / shader_info.local_x;
 
     _CHECK_JUMP(vkllm_commands_pipeline(context, commands, pipeline, bindings, NULL, constants, group_x, 1, 1), err,
                 commands_pipeline_fail);

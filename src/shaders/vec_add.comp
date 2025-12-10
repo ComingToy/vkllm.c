@@ -24,7 +24,7 @@ layout(binding = 2) writeonly buffer Output0
 
 void main(void)
 {
-    uint tid = gl_GlobalInvocationID.z;
+    uint tid = gl_GlobalInvocationID.x;
     if (tid >= N)
     {
         return;

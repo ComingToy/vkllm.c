@@ -12,6 +12,16 @@ static void random_buf(float *a, const size_t n)
     }
 }
 
+static void print_vec(const char* name, const float *a, const size_t n)
+{
+    fprintf(stderr, "%s: ", name);
+    for (size_t i = 0; i < n; ++i)
+    {
+        fprintf(stderr, "%f ", a[i]);
+    }
+    fprintf(stderr, "\n");
+}
+
 int main(void)
 {
     struct vkllm_gpu_device *device;
@@ -48,6 +58,8 @@ int main(void)
     struct vkllm_tensor *srcs[] = {in0, in1};
     vkllm_tensor_new(context, device, "out0", shapes, vkllm_float32, VKLLM_OP_ADD, srcs, 2, NULL, 0, true, &out0);
 
+    print_vec("in0: ", buf, 128);
+    print_vec("in1: ", buf1, 128);
     _CHECK(vkllm_commands_begin(context, commands));
     _CHECK(vkllm_commands_upload(context, commands, in0, (const uint8_t *)buf, sizeof(buf)));
     _CHECK(vkllm_commands_upload(context, commands, in1, (const uint8_t *)buf1, sizeof(buf1)));
@@ -56,13 +68,9 @@ int main(void)
     _CHECK(vkllm_commands_submit(context, commands));
     _CHECK(vkllm_commands_wait_exec(context, commands));
     _CHECK(vkllm_tensor_flush_cache(context, out0));
+    _CHECK(vkllm_tensor_invalid_cache(context, out0));
 
     const float *p = out0->data.host;
-    fprintf(stderr, "vector add out: ");
-    for (uint32_t i = 0; i < 128; ++i)
-    {
-        fprintf(stderr, "%f ", p[i]);
-    }
-
+    print_vec("vec add out: ", p, 128);
     return 0;
 }
