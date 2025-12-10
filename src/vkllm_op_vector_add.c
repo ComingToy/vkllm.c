@@ -31,7 +31,8 @@ vkllm_err_t vkllm_op_vector_add(struct vkllm_context *context, struct vkllm_comm
     vkllm_shader_constants_append(constants, N);
 
     struct vkllm_pipeline *pipeline = NULL;
-    struct vkllm_shader_info shader_info = {.binding_count = 3, .local_x = 32, .local_y = 1, .local_z = 1};
+    struct vkllm_shader_info shader_info = {
+        .binding_count = 3, .push_constant_bytes = constants->bytes, .local_x = 32, .local_y = 1, .local_z = 1};
 
     _CHECK_JUMP(
         vkllm_pipeline_new(context, commands->device, shader_info, spv_code, spv_bytes, specializations, &pipeline),

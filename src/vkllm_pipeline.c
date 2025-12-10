@@ -59,6 +59,14 @@ static vkllm_err_t vkllm_pipeline_init_desc_set_pool(struct vkllm_pipeline *p)
                                                         .pPoolSizes = &size};
 
     _CHECK_VK(vkCreateDescriptorPool(p->device->vk_dev, &desc_pool_create_info, NULL, &p->vk_desc_pool));
+
+    VkDescriptorSetAllocateInfo desc_set_alloc_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                                                      .pNext = NULL,
+                                                      .descriptorPool = p->vk_desc_pool,
+                                                      .descriptorSetCount = 1,
+                                                      .pSetLayouts = &p->vk_desc_set_layout};
+
+    _CHECK_VK(vkAllocateDescriptorSets(p->device->vk_dev, &desc_set_alloc_info, &p->vk_desc_set));
     return VKLLM_ERR_OK;
 }
 
