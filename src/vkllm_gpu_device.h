@@ -25,6 +25,7 @@ struct vkllm_vk_physical_dev
     VkPhysicalDevice16BitStorageFeatures feat_16bit_storage;
     VkPhysicalDevice8BitStorageFeatures feat_8bit_storage;
     VkPhysicalDeviceProperties2 properties2;
+	VkPhysicalDeviceFeatures2 features2;
 };
 
 struct vkllm_gpu_device
