@@ -27,9 +27,10 @@ static vkllm_err_t vkllm_create_vk_buffer(struct vkllm_tensor *tensor)
                                              .pNext = NULL,
                                              .flags = 0,
                                              .size = tensor->bytes,
-                                             .usage =
-                                                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                                             VK_SHARING_MODE_EXCLUSIVE | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                             .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                                      VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                                                      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                             .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
                                              .queueFamilyIndexCount = 0,
                                              .pQueueFamilyIndices = NULL};
 
