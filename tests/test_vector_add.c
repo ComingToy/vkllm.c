@@ -46,11 +46,11 @@ int main(void)
 
     uint32_t shapes[] = {1, 1, 1, 128};
     struct vkllm_tensor *in0, *in1, *out0;
-    vkllm_tensor_new(context, "in0", shapes, vkllm_float32, VKLLM_OP_NONE, NULL, 0, NULL, 0, false, &in0);
-    vkllm_tensor_new(context, "in1", shapes, vkllm_float32, VKLLM_OP_NONE, NULL, 0, NULL, 0, false, &in1);
+    vkllm_tensor_new(context, "in0", shapes, vkllm_dtype_float32, VKLLM_OP_NONE, NULL, 0, NULL, 0, false, &in0);
+    vkllm_tensor_new(context, "in1", shapes, vkllm_dtype_float32, VKLLM_OP_NONE, NULL, 0, NULL, 0, false, &in1);
 
     struct vkllm_tensor *srcs[] = {in0, in1};
-    vkllm_tensor_new(context, "out0", shapes, vkllm_float32, VKLLM_OP_ADD, srcs, 2, NULL, 0, true, &out0);
+    vkllm_tensor_new(context, "out0", shapes, vkllm_dtype_float32, VKLLM_OP_ADD, srcs, 2, NULL, 0, true, &out0);
 
     print_vec("in0: ", buf, 128);
     print_vec("in1: ", buf1, 128);

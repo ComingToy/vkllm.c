@@ -1,5 +1,8 @@
 #include "vkllm_tensor.h"
+#include "src/vkllm_ops.h"
+#include "vkllm_context.h"
 #include "vkllm_dtypes.h"
+#include "vkllm_gpu_device.h"
 
 #include "src/vkllm_common.h"
 #include <string.h>
@@ -50,6 +53,71 @@ static vkllm_err_t vkllm_create_vk_buffer(struct vkllm_tensor *tensor)
     }
 
     tensor->data.host = tensor->data.mapped ? tensor->data.alloc_info.pMappedData : NULL;
+    return VKLLM_ERR_OK;
+}
+
+static bool vkllm_tensor_match_desc(struct vkllm_pipeline_desc *desc, struct vkllm_tensor *tensor)
+{
+    if (desc->dtype != tensor->dtype)
+    {
+        return false;
+    }
+
+    if (desc->in_dtypes->used_n > VKLLM_MAX_SRCS)
+    {
+        return false;
+    }
+
+    for (uint32_t k = 0; k < desc->in_dtypes->used_n; ++k)
+    {
+        vkllm_dtype_t in_dtype = desc->in_dtypes->data[k];
+        struct vkllm_tensor *src = tensor->srcs[k];
+        if (!src)
+        {
+            return false;
+        }
+
+        if (src->dtype != in_dtype)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static vkllm_err_t vkllm_tensor_get_pipeline(struct vkllm_context *context, struct vkllm_tensor *tensor)
+{
+    _CHECK_ARGS(context && tensor);
+
+    tensor->pipeline = NULL;
+    if (tensor->op == VKLLM_OP_NONE)
+    {
+        return VKLLM_ERR_OK;
+    }
+    else if (tensor->op == VKLLM_OP_ADD)
+    {
+        for (uint32_t i = 0; i < context->pipelines.vec_add->used_n; ++i)
+        {
+            struct vkllm_pipeline_desc *desc = &context->pipelines.vec_add->data[i];
+            if (vkllm_tensor_match_desc(desc, tensor))
+            {
+                tensor->pipeline = desc->pipeline;
+            }
+        }
+    }
+    else
+    {
+        log_error("unsupported op type: %s", vkllm_op_s(tensor->op));
+        return VKLLM_ERR_ARGS;
+    }
+
+    if (!tensor->pipeline)
+    {
+        log_error("tensor %s op = %s, dtype = %s, pipeline not found.", tensor->name, vkllm_op_s(tensor->op));
+        return VKLLM_ERR_PIPELINE_NOT_FOUND;
+    }
+
     return VKLLM_ERR_OK;
 }
 
@@ -121,8 +189,15 @@ vkllm_err_t vkllm_tensor_new(struct vkllm_context *context, const char *name, co
         goto err_create_vk_buf;
     }
 
+    err = vkllm_tensor_get_pipeline(context, t);
+    if (err != VKLLM_ERR_OK)
+    {
+        goto err_get_pipeline;
+    }
+
     return VKLLM_ERR_OK;
 
+err_get_pipeline:
 err_calc_strides:
 err_create_vk_buf:
     free(*p);

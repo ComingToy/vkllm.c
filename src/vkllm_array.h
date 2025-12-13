@@ -2,6 +2,7 @@
 #define __VKLLM_ARRAY_H__
 
 #include "vkllm_common.h"
+#include "vkllm_dtypes.h"
 #include "vkllm_errors.h"
 #include <stddef.h>
 #include <stdint.h>
@@ -59,4 +60,5 @@
 VKLLM_DEF_ARRAY(ptr, void *)
 VKLLM_DEF_ARRAY(u8, uint8_t)
 VKLLM_DEF_ARRAY(u32, uint32_t)
+VKLLM_DEF_ARRAY(dtype, vkllm_dtype_t)
 #endif

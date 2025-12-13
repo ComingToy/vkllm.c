@@ -1,6 +1,11 @@
 #include "vkllm_pipeline.h"
 #include "vkllm_array.h"
 #include "vkllm_common.h"
+#include "vkllm_comp_shaders.h"
+#include "vkllm_context.h"
+#include "vkllm_dtypes.h"
+#include "vkllm_errors.h"
+#include "vkllm_gpu_device.h"
 #include "vkllm_tensor.h"
 
 vkllm_err_t vkllm_shader_constants_new(struct vkllm_shader_constants **constants, uint32_t init_bytes)
@@ -281,4 +286,58 @@ void vkllm_pipeline_free(struct vkllm_context *context, struct vkllm_pipeline *p
     vkDestroyDescriptorSetLayout(pipeline->device->vk_dev, pipeline->vk_desc_set_layout, NULL);
     vkDestroyDescriptorPool(pipeline->device->vk_dev, pipeline->vk_desc_pool, NULL);
     free(pipeline);
+}
+
+static vkllm_err_t vkllm_create_vec_add_pipeline(struct vkllm_context *context)
+{
+    _CHECK_ARGS(context);
+    struct vkllm_shader_info shader_info = {
+        .binding_count = 3, .push_constant_bytes = sizeof(uint32_t), .local_x = 32, .local_y = 1, .local_z = 1};
+
+    struct vkllm_pipeline *pipeline = NULL;
+    struct vkllm_shader_constants *specializations = NULL;
+
+    _CHECK(vkllm_shader_constants_new(&specializations, sizeof(uint32_t) * 3));
+
+    const uint8_t *spv = __get_vec_add_comp_spv_code();
+    const size_t spv_size = __get_vec_add_comp_spv_size();
+
+    vkllm_err_t err = vkllm_pipeline_new(context, shader_info, spv, spv_size, specializations, &pipeline);
+    vkllm_shader_constants_free(specializations);
+
+    if (err != VKLLM_ERR_OK)
+    {
+        log_error("vkllm_pipeline_new failed: %s", vkllm_err_s(err));
+        return err;
+    }
+
+    struct vkllm_array_dtype *dtypes = NULL;
+    vkllm_array_dtype_new(&dtypes, 2);
+    vkllm_array_dtype_append(dtypes, vkllm_dtype_float32);
+    vkllm_array_dtype_append(dtypes, vkllm_dtype_float32);
+    struct vkllm_pipeline_desc desc = {.in_dtypes = dtypes, .dtype = vkllm_dtype_float32, .pipeline = pipeline};
+
+    vkllm_array_pipeline_desc_append(context->pipelines.vec_add, desc);
+    return VKLLM_ERR_OK;
+}
+
+vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context)
+{
+    vkllm_create_vec_add_pipeline(context);
+    return VKLLM_ERR_OK;
+}
+
+static void vkllm_free_pipeline_desc(struct vkllm_context *context, struct vkllm_array_pipeline_desc *arr)
+{
+    for (uint32_t i = 0; i < arr->used_n; ++i)
+    {
+        struct vkllm_pipeline_desc *desc = &arr->data[i];
+        vkllm_pipeline_free(context, desc->pipeline);
+        vkllm_array_dtype_free(desc->in_dtypes);
+    }
+}
+
+void vkllm_free_all_pipelines(struct vkllm_context *context)
+{
+    vkllm_free_pipeline_desc(context, context->pipelines.vec_add);
 }

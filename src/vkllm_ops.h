@@ -7,4 +7,5 @@ typedef enum
     VKLLM_OP_ADD,
 } vkllm_op_t;
 
+extern const char *vkllm_op_s(const vkllm_op_t op);
 #endif

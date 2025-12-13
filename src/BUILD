@@ -8,6 +8,7 @@ cc_library(
         "vkllm_tensor.c",
         "vkllm_commands.c",
         "vkllm_pipeline.c",
+        "vkllm_ops.c",
         "vkllm_op_vector_add.c",
     ],
     hdrs = [

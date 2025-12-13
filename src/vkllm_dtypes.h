@@ -5,8 +5,8 @@
 #include <stdint.h>
 typedef enum
 {
-    VKLLM_DTYPE_START = 0,
-#define _VKLLM_DTYPE_OP(_dtype) vkllm_##_dtype,
+    vkllm_dtype_start = 0,
+#define _VKLLM_DTYPE_OP(_dtype) vkllm_dtype_##_dtype,
 #include "vkllm_dtypes.inc"
 #undef _VKLLM_DTYPE_OP
 } vkllm_dtype_t;
