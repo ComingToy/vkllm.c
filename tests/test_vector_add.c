@@ -1,7 +1,7 @@
 #include "src/vkllm_commands.h"
 #include "src/vkllm_common.h"
 #include "src/vkllm_context.h"
-#include "src/vkllm_op_vector_add.h"
+#include "src/vkllm_op_add.h"
 #include "src/vkllm_tensor.h"
 #include <stdio.h>
 
@@ -11,6 +11,26 @@ static void random_buf(float *a, const size_t n)
     {
         a[i] = 10.0 * (rand() % 100) / 100.0;
     }
+}
+
+static void add_buf(const float* a, const float* b, float* c, size_t n)
+{
+    for (uint32_t i = 0; i < n; ++i)
+    {
+        c[i] = a[i] + b[i];
+    }
+}
+
+static float compare_buf(const float* a, const float* b, size_t n)
+{
+    float w = 1.0 / n;
+    float err = .0;
+    for (uint32_t i = 0; i < n; ++i)
+    {
+        err = err + w * (a[i] - b[i]) * (a[i] - b[i]);
+    }
+
+    return err;
 }
 
 static void print_vec(const char *name, const float *a, const size_t n)
@@ -39,12 +59,15 @@ int main(void)
         return -1;
     }
 
-    float buf[128] = {0};
-    float buf1[128] = {0};
-    random_buf(buf, 128);
-    random_buf(buf1, 128);
+#define n (3 * 4 * 5 * 128)
+    float buf[n] = {0};
+    float buf1[n] = {0};
+    float buf2[n] = {0};
+    random_buf(buf, n);
+    random_buf(buf1, n);
+    add_buf(buf, buf1, buf2, n);
 
-    uint32_t shapes[] = {1, 1, 1, 128};
+    uint32_t shapes[] = {3, 4, 5, 128};
     struct vkllm_tensor *in0, *in1, *out0;
     vkllm_tensor_new(context, "in0", shapes, vkllm_dtype_float32, VKLLM_OP_NONE, NULL, 0, NULL, 0, false, &in0);
     vkllm_tensor_new(context, "in1", shapes, vkllm_dtype_float32, VKLLM_OP_NONE, NULL, 0, NULL, 0, false, &in1);
@@ -52,12 +75,12 @@ int main(void)
     struct vkllm_tensor *srcs[] = {in0, in1};
     vkllm_tensor_new(context, "out0", shapes, vkllm_dtype_float32, VKLLM_OP_ADD, srcs, 2, NULL, 0, true, &out0);
 
-    print_vec("in0: ", buf, 128);
-    print_vec("in1: ", buf1, 128);
+    // print_vec("in0: ", buf, 3 * 4 * 5 * 128);
+    // print_vec("in1: ", buf1, 3 * 4 * 5 * 128);
     _CHECK(vkllm_commands_begin(context, commands));
     _CHECK(vkllm_commands_upload(context, commands, in0, (const uint8_t *)buf, sizeof(buf)));
     _CHECK(vkllm_commands_upload(context, commands, in1, (const uint8_t *)buf1, sizeof(buf1)));
-    _CHECK(vkllm_op_vector_add(context, commands, out0));
+    _CHECK(vkllm_op_add(context, commands, out0));
     _CHECK(vkllm_commands_end(context, commands));
     _CHECK(vkllm_commands_submit(context, commands));
     _CHECK(vkllm_commands_wait_exec(context, commands));
@@ -65,7 +88,8 @@ int main(void)
     _CHECK(vkllm_tensor_invalid_cache(context, out0));
 
     const float *p = out0->data.host;
-    print_vec("vec add out: ", p, 128);
+    print_vec("vec add out: ", p, n);
+    log_info("add mse = %f", compare_buf(buf2, p, n));
 
     vkllm_tensor_free(context, in0);
     vkllm_tensor_free(context, in1);

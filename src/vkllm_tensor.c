@@ -18,8 +18,8 @@ static vkllm_err_t vkllm_calc_strides(const uint32_t *shapes, vkllm_dtype_t dtyp
 
     strides[3] = dtype_info.bytes;
     strides[2] = bytes;
-    strides[1] = shapes[1] * strides[2];
-    strides[0] = shapes[0] * strides[1];
+    strides[1] = shapes[2] * strides[2];
+    strides[0] = shapes[1] * strides[1];
 
     return VKLLM_ERR_OK;
 }

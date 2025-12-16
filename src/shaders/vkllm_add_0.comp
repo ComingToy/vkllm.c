@@ -1,0 +1,54 @@
+#version 450 core
+#extension GL_EXT_shader_16bit_storage: require
+
+#include "vkllm_shader_header.comp.h"
+layout(push_constant) uniform constants
+{
+    ShapeConstant shape;
+};
+
+layout(binding = 0) readonly buffer Input0
+{
+    float input0[];
+};
+
+layout(binding = 1) readonly buffer Input1
+{
+    float input1[];
+};
+
+layout(binding = 2) writeonly buffer Output0
+{
+    float output0[];
+};
+
+
+void get_indices(uint tid, out uint b, out uint c, out uint h, out uint w)
+{
+    uint cn = shape.shapes[2] * shape.shapes[3];
+    uint bn = shape.shapes[1] * cn;
+    b = tid / bn;
+    uint b_offset = b * bn;
+
+    c = (tid - b_offset) / cn;
+    uint c_offset = c * cn;
+
+    h = (tid - b_offset - c_offset) / shape.shapes[3];
+    w = tid - b_offset - c_offset - h * shape.shapes[3];
+}
+
+void main(void)
+{
+    uint tid = get_thread_id();
+    uint tid_b = 0, tid_c = 0, tid_h = 0, tid_w = 0;
+    get_indices(tid, tid_b, tid_c, tid_h, tid_w);
+
+    if (tid_b >= shape.shapes[0] || tid_c >= shape.shapes[1] || tid_h >= shape.shapes[2] || tid_w >= shape.shapes[3])
+    {
+        return;
+    }
+
+    uint off = tid_w * shape.strides[3] + tid_h * shape.strides[2] + tid_c * shape.strides[1] + tid_b * shape.strides[0];
+    off = off / 4;
+    output0[off] = input0[off] + input1[off];
+}
