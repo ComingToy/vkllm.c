@@ -103,6 +103,8 @@ static vkllm_err_t vkllm_pipeline_create_layout(struct vkllm_pipeline *pipeline)
                                                &pipeline->vk_desc_set_layout),
                    ret, fail);
 
+    free(bindings);
+
     VkPushConstantRange range = {
         .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT, .offset = 0, .size = pipeline->shader_info.push_constant_bytes};
 
@@ -288,7 +290,7 @@ void vkllm_pipeline_free(struct vkllm_context *context, struct vkllm_pipeline *p
     free(pipeline);
 }
 
-static vkllm_err_t vkllm_create_vec_add_pipeline(struct vkllm_context *context)
+static vkllm_err_t vkllm_create_add_pipeline(struct vkllm_context *context)
 {
     _CHECK_ARGS(context);
     struct vkllm_shader_info shader_info = {
@@ -317,13 +319,44 @@ static vkllm_err_t vkllm_create_vec_add_pipeline(struct vkllm_context *context)
     vkllm_array_dtype_append(dtypes, vkllm_dtype_float32);
     struct vkllm_pipeline_desc desc = {.in_dtypes = dtypes, .dtype = vkllm_dtype_float32, .pipeline = pipeline};
 
-    vkllm_array_pipeline_desc_append(context->pipelines.vec_add, desc);
+    vkllm_array_pipeline_desc_append(context->pipelines.add, desc);
+    return VKLLM_ERR_OK;
+}
+
+static vkllm_err_t vkllm_create_embedding_pipeline(struct vkllm_context *context)
+{
+    _CHECK_ARGS(context);
+    struct vkllm_shader_info shader_info = {
+        .binding_count = 3, .push_constant_bytes = sizeof(uint32_t) * 25, .local_x = 512, .local_y = 1, .local_z = 1};
+    const uint8_t *spv = __get_vkllm_embedding_0_comp_spv_code();
+    const size_t spv_size = __get_vkllm_embedding_0_comp_spv_size();
+
+    struct vkllm_pipeline *pipeline = NULL;
+    struct vkllm_shader_constants *specializations = NULL;
+    _CHECK(vkllm_shader_constants_new(&specializations, 24));
+
+    vkllm_err_t err = vkllm_pipeline_new(context, shader_info, spv, spv_size, specializations, &pipeline);
+    vkllm_shader_constants_free(specializations);
+
+    if (err != VKLLM_ERR_OK)
+    {
+        return err;
+    }
+
+    struct vkllm_array_dtype *dtypes = NULL;
+    vkllm_array_dtype_new(&dtypes, 2);
+    vkllm_array_dtype_append(dtypes, vkllm_dtype_uint32);
+    vkllm_array_dtype_append(dtypes, vkllm_dtype_float32);
+
+    struct vkllm_pipeline_desc desc = {.in_dtypes = dtypes, .dtype = vkllm_dtype_float32, .pipeline = pipeline};
+    vkllm_array_pipeline_desc_append(context->pipelines.embedding, desc);
     return VKLLM_ERR_OK;
 }
 
 vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context)
 {
-    vkllm_create_vec_add_pipeline(context);
+    _CHECK(vkllm_create_add_pipeline(context));
+    _CHECK(vkllm_create_embedding_pipeline(context));
     return VKLLM_ERR_OK;
 }
 
@@ -339,5 +372,6 @@ static void vkllm_free_pipeline_desc(struct vkllm_context *context, struct vkllm
 
 void vkllm_free_all_pipelines(struct vkllm_context *context)
 {
-    vkllm_free_pipeline_desc(context, context->pipelines.vec_add);
+    vkllm_free_pipeline_desc(context, context->pipelines.add);
+    vkllm_free_pipeline_desc(context, context->pipelines.embedding);
 }
