@@ -1,5 +1,7 @@
 #version 450 core
+#ifdef _SUPPORT_16BIT_STORAGE
 #extension GL_EXT_shader_16bit_storage: require
+#endif
 
 #include "vkllm_shader_header.comp.h"
 
