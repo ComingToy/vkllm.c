@@ -106,6 +106,17 @@ static vkllm_err_t vkllm_tensor_get_pipeline(struct vkllm_context *context, stru
             }
         }
     }
+    else if (tensor->op == VKLLM_OP_EMBEDDING)
+    {
+        for (uint32_t i = 0; i < context->pipelines.embedding->used_n; ++i)
+        {
+            struct vkllm_pipeline_desc *desc = &context->pipelines.embedding->data[i];
+            if (vkllm_tensor_match_desc(desc, tensor))
+            {
+                tensor->pipeline = desc->pipeline;
+            }
+        }
+    }
     else
     {
         log_error("unsupported op type: %s", vkllm_op_s(tensor->op));

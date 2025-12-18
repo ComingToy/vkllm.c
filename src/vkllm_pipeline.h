@@ -39,8 +39,19 @@ struct vkllm_pipeline
 extern vkllm_err_t vkllm_shader_constants_new(struct vkllm_shader_constants **constants, uint32_t init_bytes);
 extern vkllm_err_t _vkllm_shader_constants_append(struct vkllm_shader_constants *constants, const uint8_t *data,
                                                   uint32_t bytes);
+
 #define vkllm_shader_constants_append(constants, element)                                                              \
-    _vkllm_shader_constants_append(constants, (const uint8_t *)&element, sizeof(element))
+    _vkllm_shader_constants_append(constants, (const uint8_t *)&(element), sizeof(element))
+
+#define vkllm_shader_constants_append_n(constants, elements, n)                                                        \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        for (uint32_t __i = 0; __i < (n); ++__i)                                                                       \
+        {                                                                                                              \
+            vkllm_shader_constants_append(constants, (elements)[__i]);                                                 \
+        }                                                                                                              \
+    } while (0)
+
 extern void vkllm_shader_constants_free(struct vkllm_shader_constants *constants);
 
 extern vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, struct vkllm_shader_info shader_info,
