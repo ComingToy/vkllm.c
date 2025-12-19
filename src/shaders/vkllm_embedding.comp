@@ -56,7 +56,6 @@ void main(void)
 
     uint off = tid_b * indices_shape.strides[0] + tid_c * indices_shape.strides[1] +
                tid_h * indices_shape.strides[2] * tid_w * indices_shape.strides[3];
-    off = off / 4;
 
     uint tok = UNK_TOK;
     if (off < indices_shape.shapes[0] * indices_shape.shapes[1] * indices_shape.shapes[2] * indices_shape.shapes[3])
@@ -69,7 +68,7 @@ void main(void)
 
     for (uint w = 0; w < dim; ++w)
     {
-        uint params_off = (tok * params_shape.strides[2]) / 4;
+        uint params_off = (tok * params_shape.strides[2]);
 		output0[out_off + w] = OUT_DTYPE(params[params_off + w]);
     }
 }

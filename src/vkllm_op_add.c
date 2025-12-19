@@ -1,6 +1,7 @@
 #include "vkllm_op_add.h"
 #include "src/vkllm_array.h"
 #include "src/vkllm_commands.h"
+#include "src/vkllm_dtypes.h"
 #include "src/vkllm_pipeline.h"
 #include "vkllm_common.h"
 
@@ -21,17 +22,15 @@ vkllm_err_t vkllm_op_add(struct vkllm_context *context, struct vkllm_commands *c
 
     struct vkllm_pipeline *pipeline = tensor->pipeline;
 
+    struct vkllm_dtype_info dtype_info;
+    uint32_t strides[4];
+    _CHECK(vkllm_get_dtype_info(tensor->dtype, &dtype_info));
+    _DIV4_S(tensor->strides, dtype_info.bytes, strides);
+
     struct vkllm_shader_constants *constants = NULL;
     _CHECK(vkllm_shader_constants_new(&constants, 32));
-
-    vkllm_shader_constants_append(constants, tensor->shapes[0]);
-    vkllm_shader_constants_append(constants, tensor->shapes[1]);
-    vkllm_shader_constants_append(constants, tensor->shapes[2]);
-    vkllm_shader_constants_append(constants, tensor->shapes[3]);
-    vkllm_shader_constants_append(constants, tensor->strides[0]);
-    vkllm_shader_constants_append(constants, tensor->strides[1]);
-    vkllm_shader_constants_append(constants, tensor->strides[2]);
-    vkllm_shader_constants_append(constants, tensor->strides[3]);
+    vkllm_shader_constants_append_n(constants, tensor->shapes, 4);
+    vkllm_shader_constants_append_n(constants, strides, 4);
 
     struct vkllm_array_ptr *bindings = NULL;
     _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 3), err, free_constants_out);

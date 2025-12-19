@@ -55,7 +55,6 @@ void main(void)
     }
 
     uint off = tid_w * shape.strides[3] + tid_h * shape.strides[2] + tid_c * shape.strides[1] + tid_b * shape.strides[0];
-    off = off / 4;
     LOAD_DTYPE in0 = LOAD_DTYPE(input0[off]);
     LOAD_DTYPE in1 = LOAD_DTYPE(input1[off]);
     output0[off] = OUT_DTYPE(in0 + in1);

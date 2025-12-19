@@ -1,6 +1,7 @@
 #include "vkllm_op_embedding.h"
 #include "src/vkllm_array.h"
 #include "src/vkllm_common.h"
+#include "src/vkllm_dtypes.h"
 #include "src/vkllm_pipeline.h"
 #include "vkllm_commands.h"
 #include "vkllm_context.h"
@@ -18,14 +19,24 @@ vkllm_err_t vkllm_op_embedding(struct vkllm_context *context, struct vkllm_comma
     _CHECK_ARGS(in1->dtype == vkllm_dtype_float16);
     _CHECK_ARGS(in0->shapes[0] == 1 && in1->shapes[0] == 1 && in1->shapes[1] == 1);
 
+    struct vkllm_dtype_info in0_dtype_info, in1_dtype_info, dtype_info;
+    _CHECK(vkllm_get_dtype_info(in0->dtype, &in0_dtype_info));
+    _CHECK(vkllm_get_dtype_info(in1->dtype, &in1_dtype_info));
+    _CHECK(vkllm_get_dtype_info(tensor->dtype, &dtype_info));
+
+    uint32_t in0_strides[4], in1_strides[4], strides[4];
+    _DIV4_S(in0->strides, in0_dtype_info.bytes, in0_strides);
+    _DIV4_S(in1->strides, in1_dtype_info.bytes, in1_strides);
+    _DIV4_S(tensor->strides, dtype_info.bytes, strides);
+
     struct vkllm_shader_constants *constants = NULL;
     vkllm_shader_constants_new(&constants, 128);
     vkllm_shader_constants_append_n(constants, in0->shapes, 4);
-    vkllm_shader_constants_append_n(constants, in0->strides, 4);
+    vkllm_shader_constants_append_n(constants, in0_strides, 4);
     vkllm_shader_constants_append_n(constants, in1->shapes, 4);
-    vkllm_shader_constants_append_n(constants, in1->strides, 4);
+    vkllm_shader_constants_append_n(constants, in1_strides, 4);
     vkllm_shader_constants_append_n(constants, tensor->shapes, 4);
-    vkllm_shader_constants_append_n(constants, tensor->strides, 4);
+    vkllm_shader_constants_append_n(constants, strides, 4);
 
     uint32_t unk_tok = *(uint32_t *)tensor->params;
     vkllm_shader_constants_append(constants, unk_tok);
