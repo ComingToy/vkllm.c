@@ -1,7 +1,18 @@
-LINK_OPTS = [
+LINUX_LINK_OPTS = [
     "-lrt",
     "-lpthread",
 ]
+
+MACOS_LINK_OPTS = [
+    "-lpthread",
+]
+
+LINK_OPTS = select({
+    "//:macos": MACOS_LINK_OPTS,
+    "//:linux": LINUX_LINK_OPTS,
+    "//conditions:default": [], 
+})
+
 
 COPTS = [
     "-std=c11",

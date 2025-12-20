@@ -123,7 +123,7 @@ static vkllm_err_t vkllm_tensor_get_pipeline(struct vkllm_context *context, stru
         return VKLLM_ERR_ARGS;
     }
 
-    if (!tensor->pipeline)
+    if (!tensor->pipeline && tensor->op != VKLLM_OP_NONE)
     {
         log_error("tensor %s op = %s, dtype = %s, pipeline not found.", tensor->name, vkllm_op_s(tensor->op));
         return VKLLM_ERR_PIPELINE_NOT_FOUND;

@@ -45,7 +45,7 @@ int main(int argc, const char *argv[])
     float buf1[65536] = {.0};
     struct vkllm_tensor *tensor;
     uint32_t shapes[] = {1, 1, 1, 65536};
-    vkllm_tensor_new(context, "t0", shapes, vkllm_dtype_float32, VKLLM_OP_ADD, NULL, 0, NULL, 0, false, &tensor);
+    vkllm_tensor_new(context, "t0", shapes, vkllm_dtype_float32, VKLLM_OP_NONE, NULL, 0, NULL, 0, false, &tensor);
 
     random_buf(buf, 65536);
 
