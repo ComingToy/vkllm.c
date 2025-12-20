@@ -134,8 +134,6 @@ static vkllm_err_t init_physical_device(struct vkllm_context *context)
 
     vkGetPhysicalDeviceProperties2(pdev->vk_physical_dev.dev, &pdev->vk_physical_dev.properties2);
 
-    log_info("physical device subgroup size = %u", pdev->vk_physical_dev.subgroup_properties.subgroupSize);
-
     uint32_t n_exts = pdev->vk_physical_dev.n_ext_properties;
     for (uint32_t i = 0; i < n_exts; ++i)
     {

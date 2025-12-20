@@ -38,7 +38,7 @@ vkllm_err_t vkllm_op_add(struct vkllm_context *context, struct vkllm_commands *c
     vkllm_array_ptr_append(bindings, in1);
     vkllm_array_ptr_append(bindings, tensor);
 
-    uint32_t N = tensor->shapes[0] * tensor->shapes[1] * tensor->shapes[2] * tensor->shapes[3];
+    uint32_t N = _MUL4(tensor->shapes);
     uint32_t group_x = (N + pipeline->shader_info.local_x - 1) / pipeline->shader_info.local_x;
     uint32_t group_y = 1;
     uint32_t group_z = 1;
