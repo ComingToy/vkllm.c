@@ -15,12 +15,12 @@ layout(push_constant) uniform constants
 
 layout(binding = 0) readonly buffer Input0
 {
-    IN_DTYPE0 input0[];
+    IN_DTYPE input0[];
 };
 
 layout(binding = 1) readonly buffer Input1
 {
-    IN_DTYPE1 input1[];
+    IN_DTYPE input1[];
 };
 
 layout(binding = 2) writeonly buffer Output0
