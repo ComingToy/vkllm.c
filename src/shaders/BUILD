@@ -4,10 +4,6 @@ load("//vulkan_rules:shader.bzl", "cc_shader_library")
 COMP_SHADER_SRCS = glob(["*.comp"])
 COMP_SHADER_HDRS = glob(["*.comp.h"])
 
-F32_F32_F32_ARGS = [
-
-]
-
 COMMON_ARGS = [
     "--target-env=vulkan1.2",
     "--target-spv=spv1.5",

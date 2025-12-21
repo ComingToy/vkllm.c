@@ -1,6 +1,10 @@
 #ifndef __VKLLM_CONTEXT_H__
 #define __VKLLM_CONTEXT_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <log.h>
 #include <stdint.h>
 
@@ -33,4 +37,7 @@ struct vkllm_context
 
 extern vkllm_err_t vkllm_context_new(uint32_t dev, struct vkllm_context **context);
 extern void vkllm_context_free(struct vkllm_context *pcontext);
+#ifdef __cplusplus
+}
+#endif
 #endif

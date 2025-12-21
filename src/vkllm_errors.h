@@ -1,6 +1,9 @@
 #ifndef __VKLLM_ERRORS_H__
 #define __VKLLM_ERRORS_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 #define _VKLLM_ERR_OP(_err) _err,
 
 typedef enum
@@ -13,4 +16,7 @@ typedef enum
 
 extern const char *vkllm_err_s(vkllm_err_t err);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

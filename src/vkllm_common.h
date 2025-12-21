@@ -4,6 +4,10 @@
 #include <stddef.h>
 #include <stdlib.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "vkllm_errors.h"
 
 #define _NEW_AND_CHECK(_p, _type)                                                                                      \
@@ -89,4 +93,8 @@
 
 #define VKLLM_MAX_PHY_DEVS 16
 #define VKLLM_MAX_SRCS 4
+
+#ifdef __cplusplus
+}
+#endif
 #endif

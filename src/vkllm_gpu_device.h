@@ -1,6 +1,10 @@
 #ifndef __VKLLM_GPU_DEVICE_H__
 #define __VKLLM_GPU_DEVICE_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <vulkan/vulkan.h>
@@ -47,4 +51,8 @@ struct vkllm_gpu_device
 extern vkllm_err_t vkllm_gpu_device_new(struct vkllm_context *context, uint32_t id);
 extern vkllm_err_t vkllm_gpu_device_require_queue(struct vkllm_context *context, VkQueueFlagBits flags, uint32_t *type);
 extern void vkllm_gpu_device_free(struct vkllm_context *context);
+
+#ifdef __cplusplus
+}
+#endif
 #endif
