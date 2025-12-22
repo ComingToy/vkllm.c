@@ -11,7 +11,7 @@ COMMON_ARGS = [
 
 glsl_shader(
     # f32 in f32 load f32 out
-    name = "vkllm_comp_shaders_f32_f32_f32",
+    name = "vkllm_comp_shaders_f32f32f32",
     shaders = COMP_SHADER_SRCS,
     hdrs = COMP_SHADER_HDRS,
     extra_args = [
@@ -20,12 +20,12 @@ glsl_shader(
         "-DOUT_DTYPE=float",
     ] + COMMON_ARGS,
     tool = "//tools:binary_to_array",
-    suffix = "_f32_f32_f32",
+    suffix = "_f32f32f32",
     visibility = ["//visibility:public"]
 )
 
 glsl_shader(
-    name = "vkllm_comp_shaders_f16_f32_f32",
+    name = "vkllm_comp_shaders_f16f32f32",
     shaders = COMP_SHADER_SRCS,
     hdrs = COMP_SHADER_HDRS,
     extra_args = [
@@ -35,12 +35,12 @@ glsl_shader(
         "-DOUT_DTYPE=float",
     ] + COMMON_ARGS,
     tool = "//tools:binary_to_array",
-    suffix = "_f16_f32_f32",
+    suffix = "_f16f32f32",
     visibility = ["//visibility:public"]
 )
 
 glsl_shader(
-    name = "vkllm_comp_shaders_f16_f32_f16",
+    name = "vkllm_comp_shaders_f16f32f16",
     shaders = COMP_SHADER_SRCS,
     hdrs = COMP_SHADER_HDRS,
     extra_args = [
@@ -50,12 +50,12 @@ glsl_shader(
         "-DOUT_DTYPE=float16_t",
     ] + COMMON_ARGS,
     tool = "//tools:binary_to_array",
-    suffix = "_f16_f32_f16",
+    suffix = "_f16f32f16",
     visibility = ["//visibility:public"]
 )
 
 glsl_shader(
-    name = "vkllm_comp_shaders_f16_f16_f32",
+    name = "vkllm_comp_shaders_f16f16f32",
     shaders = COMP_SHADER_SRCS,
     hdrs = COMP_SHADER_HDRS,
     extra_args = [
@@ -66,12 +66,12 @@ glsl_shader(
         "-DOUT_DTYPE=float",
     ] + COMMON_ARGS,
     tool = "//tools:binary_to_array",
-    suffix = "_f16_f16_f32",
+    suffix = "_f16f16f32",
     visibility = ["//visibility:public"]
 )
 
 glsl_shader(
-    name = "vkllm_comp_shaders_f16_f16_f16",
+    name = "vkllm_comp_shaders_f16f16f16",
     shaders = COMP_SHADER_SRCS,
     hdrs = COMP_SHADER_HDRS,
     extra_args = [
@@ -82,17 +82,17 @@ glsl_shader(
         "-DOUT_DTYPE=float16_t",
     ] + COMMON_ARGS,
     tool = "//tools:binary_to_array",
-    suffix = "_f16_f16_f16",
+    suffix = "_f16f16f16",
     visibility = ["//visibility:public"]
 )
 
 cc_shader_library(
     name = 'vkllm_shaders',
     deps = [
-        ':vkllm_comp_shaders_f16_f16_f16',
-        ':vkllm_comp_shaders_f16_f16_f32',
-        ':vkllm_comp_shaders_f16_f32_f32',
-        ':vkllm_comp_shaders_f32_f32_f32',
+        ':vkllm_comp_shaders_f16f16f16',
+        ':vkllm_comp_shaders_f16f16f32',
+        ':vkllm_comp_shaders_f16f32f32',
+        ':vkllm_comp_shaders_f32f32f32',
     ],
     visibility = ["//visibility:public"]
 )

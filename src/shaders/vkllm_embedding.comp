@@ -15,12 +15,12 @@ layout(push_constant) uniform constants
 
 layout(binding = 0) readonly buffer Indices
 {
-    uint indices[];
+    IN_DTYPE params[];
 };
 
 layout(binding = 1) readonly buffer Params
 {
-    IN_DTYPE params[];
+    uint indices[];
 };
 
 layout(binding = 2) writeonly buffer Out

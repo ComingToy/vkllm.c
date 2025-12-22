@@ -56,36 +56,6 @@ static vkllm_err_t vkllm_create_vk_buffer(struct vkllm_tensor *tensor)
     return VKLLM_ERR_OK;
 }
 
-static bool vkllm_tensor_match_desc(struct vkllm_pipeline_desc *desc, struct vkllm_tensor *tensor)
-{
-    if (desc->dtype != tensor->dtype)
-    {
-        return false;
-    }
-
-    if (desc->in_dtypes->used_n > VKLLM_MAX_SRCS)
-    {
-        return false;
-    }
-
-    for (uint32_t k = 0; k < desc->in_dtypes->used_n; ++k)
-    {
-        vkllm_dtype_t in_dtype = desc->in_dtypes->data[k];
-        struct vkllm_tensor *src = tensor->srcs[k];
-        if (!src)
-        {
-            return false;
-        }
-
-        if (src->dtype != in_dtype)
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 static vkllm_err_t vkllm_tensor_get_pipeline(struct vkllm_context *context, struct vkllm_tensor *tensor)
 {
     _CHECK_ARGS(context && tensor);
@@ -97,25 +67,24 @@ static vkllm_err_t vkllm_tensor_get_pipeline(struct vkllm_context *context, stru
     }
     else if (tensor->op == VKLLM_OP_ADD)
     {
-        for (uint32_t i = 0; i < context->pipelines.add->used_n; ++i)
+        _CHECK_ARGS(tensor->srcs[0] && tensor->srcs[1]);
+        if (tensor->srcs[0]->dtype == vkllm_dtype_float16 && tensor->srcs[1]->dtype == vkllm_dtype_float16)
         {
-            struct vkllm_pipeline_desc *desc = &context->pipelines.add->data[i];
-            if (vkllm_tensor_match_desc(desc, tensor))
-            {
-                tensor->pipeline = desc->pipeline;
-            }
+            tensor->pipeline = context->pipelines.add.pipeline_f16f32f32;
+            return VKLLM_ERR_OK;
+        }
+        else if (tensor->srcs[0]->dtype == vkllm_dtype_float32 && tensor->srcs[1]->dtype == vkllm_dtype_float32)
+        {
+            tensor->pipeline = context->pipelines.add.pipeline_f32f32f32;
+            return VKLLM_ERR_OK;
+        }
+        else
+        {
+            return VKLLM_ERR_ARGS;
         }
     }
     else if (tensor->op == VKLLM_OP_EMBEDDING)
     {
-        for (uint32_t i = 0; i < context->pipelines.embedding->used_n; ++i)
-        {
-            struct vkllm_pipeline_desc *desc = &context->pipelines.embedding->data[i];
-            if (vkllm_tensor_match_desc(desc, tensor))
-            {
-                tensor->pipeline = desc->pipeline;
-            }
-        }
     }
     else
     {

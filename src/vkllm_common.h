@@ -89,6 +89,9 @@ extern "C" {
 
 #define _MUL4(__vec4) ((__vec4)[0] * (__vec4)[1] * (__vec4)[2] * (__vec4)[3])
 
+#define _ARRAY_SIZE(_arr) (sizeof(_arr)/sizeof((_arr)[0]))
+
+#define __PACKED__ __attribute__((packed))
 // configs
 
 #define VKLLM_MAX_PHY_DEVS 16
