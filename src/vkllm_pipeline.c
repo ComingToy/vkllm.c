@@ -316,6 +316,8 @@ vkllm_err_t vkllm_pipeline_update_bindings(struct vkllm_context *context, struct
 
 void vkllm_pipeline_free(struct vkllm_context *context, struct vkllm_pipeline *pipeline)
 {
+    if (!pipeline)
+        return;
     vkDestroyPipeline(pipeline->device->vk_dev, pipeline->vk_pipeline, NULL);
     vkDestroyShaderModule(pipeline->device->vk_dev, pipeline->vk_shader_module, NULL);
     vkDestroyPipelineLayout(pipeline->device->vk_dev, pipeline->vk_pipeline_layout, NULL);
@@ -347,8 +349,16 @@ static vkllm_err_t vkllm_create_all_add_pipeline(struct vkllm_context *context)
     _CHECK(vkllm_create_add_pipeline(context, _vkllm_add_comp_##_tag##_spv(), _vkllm_add_comp_##_tag##_size(),         \
                                      &context->pipelines.add.pipeline_##_tag))
 
-    _CREATE_ADD_PIPELINE(f16f16f16);
-    _CREATE_ADD_PIPELINE(f16f16f32);
+    if (context->device->support_fp16_arithmetic)
+    {
+        _CREATE_ADD_PIPELINE(f16f16f16);
+        _CREATE_ADD_PIPELINE(f16f16f32);
+    }
+    else
+    {
+        context->pipelines.add.pipeline_f16f16f32 = NULL;
+        context->pipelines.add.pipeline_f16f16f16 = NULL;
+    }
     _CREATE_ADD_PIPELINE(f16f32f32);
     _CREATE_ADD_PIPELINE(f32f32f32);
 
@@ -367,8 +377,16 @@ static vkllm_err_t vkllm_create_embedding_pipeline(struct vkllm_context *context
                               _vkllm_embedding_comp_##_tag##_size(), NULL,                                             \
                               &context->pipelines.embedding.pipeline_##_tag))
 
-    _CREATE_EMBEDDING_PIPELINE(f16f16f16);
-    _CREATE_EMBEDDING_PIPELINE(f16f16f32);
+    if (context->device->support_fp16_arithmetic)
+    {
+        _CREATE_EMBEDDING_PIPELINE(f16f16f16);
+        _CREATE_EMBEDDING_PIPELINE(f16f16f32);
+    }
+    else
+    {
+        context->pipelines.embedding.pipeline_f16f16f32 = NULL;
+        context->pipelines.embedding.pipeline_f16f16f16 = NULL;
+    }
     _CREATE_EMBEDDING_PIPELINE(f16f32f32);
     _CREATE_EMBEDDING_PIPELINE(f32f32f32);
 #undef _CREATE_EMBEDDING_PIPELINE
@@ -382,16 +400,18 @@ vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context)
     return VKLLM_ERR_OK;
 }
 
-static void _vkllm_free_pipelines(struct vkllm_context *context, struct vkllm_pipeline **pipelines, const size_t size)
-{
-    for (uint32_t i = 0; i < size; ++i)
-    {
-        vkllm_pipeline_free(context, pipelines[i]);
+#define _member(context, op, tag) ((context)->pipelines.op.pipeline_##tag)
+#define _vkllm_free_op_pipeline(context, op, tag)                                                                      \
+    if (_member(context, op, tag))                                                                                     \
+    {                                                                                                                  \
+        vkllm_pipeline_free(context, _member(context, op, tag));                                                       \
     }
-}
 
 #define vkllm_free_op_pipelines(context, op)                                                                           \
-    _vkllm_free_pipelines(context, context->pipelines.op.pipelines, _ARRAY_SIZE(context->pipelines.op.pipelines))
+    _vkllm_free_op_pipeline(context, op, f16f16f16);                                                                   \
+    _vkllm_free_op_pipeline(context, op, f16f16f32);                                                                   \
+    _vkllm_free_op_pipeline(context, op, f16f32f32);                                                                   \
+    _vkllm_free_op_pipeline(context, op, f32f32f32)
 
 void vkllm_free_all_pipelines(struct vkllm_context *context)
 {
@@ -399,3 +419,5 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
     vkllm_free_op_pipelines(context, embedding);
 }
 #undef vkllm_free_op_pipelines
+#undef _vkllm_free_op_pipeline
+#undef _member

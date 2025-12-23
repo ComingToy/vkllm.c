@@ -21,25 +21,19 @@ extern "C"
         struct vkllm_gpu_device *device;
         struct
         {
-            union {
-                struct
-                {
-                    struct vkllm_pipeline *pipeline_f32f32f32;
-                    struct vkllm_pipeline *pipeline_f16f32f32;
-                    struct vkllm_pipeline *pipeline_f16f16f32;
-                    struct vkllm_pipeline *pipeline_f16f16f16;
-                } __PACKED__;
-                struct vkllm_pipeline *pipelines[4];
+            struct
+            {
+                struct vkllm_pipeline *pipeline_f32f32f32;
+                struct vkllm_pipeline *pipeline_f16f32f32;
+                struct vkllm_pipeline *pipeline_f16f16f32;
+                struct vkllm_pipeline *pipeline_f16f16f16;
             } add;
-            union {
-                struct
-                {
-                    struct vkllm_pipeline *pipeline_f32f32f32;
-                    struct vkllm_pipeline *pipeline_f16f32f32;
-                    struct vkllm_pipeline *pipeline_f16f16f32;
-                    struct vkllm_pipeline *pipeline_f16f16f16;
-                } __PACKED__;
-                struct vkllm_pipeline *pipelines[4];
+            struct
+            {
+                struct vkllm_pipeline *pipeline_f32f32f32;
+                struct vkllm_pipeline *pipeline_f16f32f32;
+                struct vkllm_pipeline *pipeline_f16f16f32;
+                struct vkllm_pipeline *pipeline_f16f16f16;
             } embedding;
         } pipelines;
     };
