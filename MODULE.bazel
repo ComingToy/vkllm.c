@@ -53,6 +53,5 @@ use_repo(
     vkllm_thirdparty_deps,
     "log.c",
     "check",
-    "openblas",
     "vma",
 )
