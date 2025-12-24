@@ -162,6 +162,7 @@ int main(void)
 {
     Suite *s = vkllm_op_add_test_suite();
     SRunner *runner = srunner_create(s);
+    srunner_set_fork_status(runner, CK_NOFORK);
 
     srunner_run_all(runner, CK_NORMAL);
     int nfail = srunner_ntests_failed(runner);
