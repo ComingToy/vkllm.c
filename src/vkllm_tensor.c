@@ -68,6 +68,12 @@ static vkllm_err_t vkllm_tensor_get_pipeline(struct vkllm_context *context, stru
     else if (tensor->op == VKLLM_OP_ADD)
     {
         _CHECK_ARGS(tensor->srcs[0] && tensor->srcs[1]);
+        if (tensor->dtype != vkllm_dtype_float32)
+        {
+            log_error("unsupported op result dtype: %s", vkllm_dtype_s(tensor->dtype));
+            return VKLLM_ERR_ARGS;
+        }
+
         if (tensor->srcs[0]->dtype == vkllm_dtype_float16 && tensor->srcs[1]->dtype == vkllm_dtype_float16)
         {
             tensor->pipeline = context->pipelines.add.pipeline_f16f32f32;
