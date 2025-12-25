@@ -102,34 +102,11 @@ static vkllm_err_t vkllm_tensor_get_pipeline(struct vkllm_context *context, stru
 
         if (tensor->srcs[1]->dtype == vkllm_dtype_float16)
         {
-            if (tensor->dtype == vkllm_dtype_float16)
-            {
-                if (tensor->device->support_fp16_arithmetic)
-                {
-                    tensor->pipeline = context->pipelines.embedding.pipeline_f16f16f16;
-                }
-                else
-                {
-                    tensor->pipeline = context->pipelines.embedding.pipeline_f16f32f16;
-                }
-            }
-            else
-            {
-                tensor->pipeline = context->pipelines.embedding.pipeline_f16f32f32;
-            }
+            tensor->pipeline = context->pipelines.embedding.f16;
         }
         else if (tensor->srcs[1]->dtype == vkllm_dtype_float32)
         {
-            if (tensor->dtype == vkllm_dtype_float16)
-            {
-                log_error("unsupported op result dtype: %s, dtype of in0: %s", vkllm_dtype_s(tensor->dtype),
-                          vkllm_dtype_s(tensor->srcs[0]->dtype));
-                return VKLLM_ERR_ARGS;
-            }
-            else
-            {
-                tensor->pipeline = context->pipelines.embedding.pipeline_f32f32f32;
-            }
+            tensor->pipeline = context->pipelines.embedding.f32;
         }
         else
         {
