@@ -20,12 +20,12 @@ layout(binding = 0) readonly buffer Indices
 
 layout(binding = 1) readonly buffer Params
 {
-    IN_DTYPE params[];
+    DTYPE params[];
 };
 
 layout(binding = 2) writeonly buffer Out
 {
-    IN_DTYPE output0[];
+    DTYPE output0[];
 };
 
 void get_indices(uint tid, in out uint b, out uint c, out uint h, out uint w)

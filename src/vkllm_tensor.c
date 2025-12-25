@@ -76,12 +76,19 @@ static vkllm_err_t vkllm_tensor_get_pipeline(struct vkllm_context *context, stru
 
         if (tensor->srcs[0]->dtype == vkllm_dtype_float16 && tensor->srcs[1]->dtype == vkllm_dtype_float16)
         {
-            tensor->pipeline = context->pipelines.add.pipeline_f16f32f32;
+            if (context->device->support_fp16_arithmetic)
+            {
+                tensor->pipeline = context->pipelines.add.f16f16f32;
+            }
+            else
+            {
+                tensor->pipeline = context->pipelines.add.f16f32f32;
+            }
             return VKLLM_ERR_OK;
         }
         else if (tensor->srcs[0]->dtype == vkllm_dtype_float32 && tensor->srcs[1]->dtype == vkllm_dtype_float32)
         {
-            tensor->pipeline = context->pipelines.add.pipeline_f32f32f32;
+            tensor->pipeline = context->pipelines.add.f32f32f32;
             return VKLLM_ERR_OK;
         }
         else

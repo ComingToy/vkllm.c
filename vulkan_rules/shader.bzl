@@ -24,26 +24,31 @@ def _glsl_shader(ctx):
         includes[header.dirname] = 1
 
     for shader in shaders:
-        spv_name = shader.basename + ctx.attr.suffix
-        spv_file = ctx.actions.declare_file(spv_name)
-        
-        args = ctx.actions.args()
-        for d, _ in includes.items():
-            args.add('-I', d)
+        for suffix, macro in zip(ctx.attr.suffixes, ctx.attr.macros):
+            spv_name = shader.basename.removesuffix(".comp") + suffix 
 
-        args.add_all(ctx.attr.extra_args)
-        args.add('-o', spv_file.path)
-        args.add(shader.path)
+            spv_file = ctx.actions.declare_file(spv_name)
+            
+            args = ctx.actions.args()
+            for d, _ in includes.items():
+                args.add('-I', d)
 
-        ctx.actions.run(
-            inputs = [shader] + ctx.files.hdrs,
-            outputs = [spv_file],
-            arguments = [args],
-            executable = toolchain.glslc_executable,
-            progress_message = 'compiling compute shader',
-            mnemonic = 'GLSLC'
-        )
-        output_spvs.append(spv_file)
+            defs = [d.strip() for d in macro.split(' ')]
+
+            args.add_all(ctx.attr.extra_args)
+            args.add_all(defs)
+            args.add('-o', spv_file.path)
+            args.add(shader.path)
+
+            ctx.actions.run(
+                inputs = [shader] + ctx.files.hdrs,
+                outputs = [spv_file],
+                arguments = [args],
+                executable = toolchain.glslc_executable,
+                progress_message = 'compiling compute shader',
+                mnemonic = 'GLSLC'
+            )
+            output_spvs.append(spv_file)
 
     output_header = ctx.actions.declare_file(ctx.label.name + '.h')
     output_cpp = ctx.actions.declare_file(ctx.label.name + '.c')
@@ -181,7 +186,8 @@ glsl_shader = rule(
         'shaders': attr.label_list(allow_files=['.comp']),
         'hdrs': attr.label_list(allow_files=['.h']),
         'extra_args': attr.string_list(allow_empty=False),
-        'suffix': attr.string(default=''),
+        'suffixes': attr.string_list(allow_empty=True),
+        'macros': attr.string_list(allow_empty=True),
         'tool': attr.label(executable=True, cfg='exec', allow_files=True),
     },
     toolchains = ['//vulkan_rules:toolchain_type'],
