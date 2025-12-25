@@ -67,7 +67,7 @@ extern "C" {
         }                                                                                                              \
     } while (0)
 
-#define BOOL_S(_cond) (!!(_cond) ? "false" : "true")
+#define BOOL_S(_cond) (!!(_cond) ? "true" : "false")
 #define _CHECK_ARGS(_cond)                                                                                             \
     do                                                                                                                 \
     {                                                                                                                  \

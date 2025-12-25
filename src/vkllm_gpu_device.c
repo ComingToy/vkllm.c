@@ -39,18 +39,20 @@ static int create_instance(struct vkllm_gpu_device *pdev)
 #endif
     };
 
-    VkInstanceCreateInfo instance_create_info = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-                                                 .pNext = NULL,
+    VkInstanceCreateInfo instance_create_info = {
+        .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+        .pNext = NULL,
 #if __APPLE__
-                                                 .flags = VK_KHR_portability_enumeration,
+        .flags = VK_KHR_portability_enumeration,
 #else
-                                                 .flags = 0,
+        .flags = 0,
 #endif
-                                                 .pApplicationInfo = &app_info,
-                                                 .enabledLayerCount = sizeof(enable_layers) / sizeof(const char *),
-                                                 .ppEnabledLayerNames = enable_layers,
-                                                 .enabledExtensionCount = sizeof(exts) / sizeof(const char *),
-                                                 .ppEnabledExtensionNames = exts};
+        .pApplicationInfo = &app_info,
+        .enabledLayerCount = sizeof(enable_layers) / sizeof(const char *),
+        .ppEnabledLayerNames = enable_layers,
+        .enabledExtensionCount = sizeof(exts) / sizeof(const char *),
+        .ppEnabledExtensionNames = exts
+    };
 
     ret = vkCreateInstance(&instance_create_info, NULL, &pdev->vk_instance);
     if (ret != VK_SUCCESS)
@@ -133,7 +135,7 @@ static vkllm_err_t init_physical_device(struct vkllm_context *context)
     uint32_t n_exts = pdev->vk_physical_dev.n_ext_properties;
     for (uint32_t i = 0; i < n_exts; ++i)
     {
-        const char *ext_name = pdev->vk_physical_dev.ext_properties->extensionName;
+        const char *ext_name = pdev->vk_physical_dev.ext_properties[i].extensionName;
         if (!strcmp(ext_name, VK_KHR_DESCRIPTOR_UPDATE_TEMPLATE_EXTENSION_NAME))
         {
             pdev->support_descriptor_templ_update = true;
@@ -322,6 +324,12 @@ vkllm_err_t vkllm_gpu_device_new(struct vkllm_context *context, uint32_t id)
     _NEW_AND_CHECK(context->device, struct vkllm_gpu_device);
 
     struct vkllm_gpu_device *pdev = context->device;
+    pdev->support_16bit_storage = false;
+    pdev->support_8bit_storage = false;
+    pdev->support_descriptor_templ_update = false;
+    pdev->support_fp16_arithmetic = false;
+    pdev->support_int8_arithmetic = false;
+    pdev->support_pipeline_statistics = false;
 
     vkllm_err_t ret = create_instance(pdev);
     if (ret != VKLLM_ERR_OK)
@@ -336,6 +344,13 @@ vkllm_err_t vkllm_gpu_device_new(struct vkllm_context *context, uint32_t id)
         goto err_init_gpu_dev;
     }
 
+    log_info("gpu device info:");
+    log_info("support_16bit_storage: %s", BOOL_S(pdev->support_16bit_storage));
+    log_info("support_8bit_storage: %s", BOOL_S(pdev->support_8bit_storage));
+    log_info("support_descriptor_templ_update: %s", BOOL_S(pdev->support_descriptor_templ_update));
+    log_info("support_fp16_arithmetic: %s", BOOL_S(pdev->support_fp16_arithmetic));
+    log_info("support_int8_arithmetic: %s", BOOL_S(pdev->support_int8_arithmetic));
+    log_info("support_pipeline_statistics: %s", BOOL_S(pdev->support_pipeline_statistics));
     return VKLLM_ERR_OK;
 
 err_init_gpu_dev:
