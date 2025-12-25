@@ -3,6 +3,7 @@
 
 #include "src/vkllm_common.h"
 #include "src/vkllm_dtypes.h"
+#include <math.h>
 #include <stdlib.h>
 typedef struct fp16_pack
 {
@@ -200,7 +201,19 @@ static inline float compare_buf(const void *lhs, const void *rhs, uint32_t shape
                 for (uint32_t w = 0; w < shapes[3]; ++w)
                 {
                     uint32_t i = b * es[0] + c * es[1] + h * es[2] + w * es[3];
-
+                    if (i > n)
+                    {
+                        log_error("index %u at (%u, %u, %u, %u) out of range %u", i, b, c, h, w, n);
+                        continue;
+                    }
+#if 0
+                    if (fabsf(lhs_fp32[i] - rhs_fp32[i]) > 1e-2)
+                    {
+                        log_error("index %u at (%u, %u, %u, %u) err lhs %f rhs %f", i, b, c, h, w, lhs_fp32[i],
+                                  rhs_fp32[i]);
+                        continue;
+                    }
+#endif
                     if (dtype == vkllm_dtype_float16)
                     {
                         float v0 = vkllm_fp16_to_fp32(lhs_fp16[i]);
@@ -220,7 +233,7 @@ static inline float compare_buf(const void *lhs, const void *rhs, uint32_t shape
 
 static inline void print_n(const char *prefix, const float *buf, const size_t n)
 {
-    fprintf(stderr, "%s: ", prefix);
+    fprintf(stderr, "%s: \n", prefix);
     for (size_t i = 0; i < n; ++i)
     {
         fprintf(stderr, "%f ", buf[i]);

@@ -16,7 +16,7 @@ vkllm_err_t vkllm_op_embedding(struct vkllm_context *context, struct vkllm_comma
     struct vkllm_tensor *in0 = tensor->srcs[0], *in1 = tensor->srcs[1];
 
     _CHECK_ARGS(in0->dtype == vkllm_dtype_uint32);
-    _CHECK_ARGS(in1->dtype == vkllm_dtype_float16);
+    _CHECK_ARGS(in1->dtype == vkllm_dtype_float16 || in1->dtype == vkllm_dtype_float32);
     _CHECK_ARGS(in0->shapes[0] == 1 && in1->shapes[0] == 1 && in1->shapes[1] == 1);
 
     struct vkllm_dtype_info in0_dtype_info, in1_dtype_info, dtype_info;
@@ -48,7 +48,7 @@ vkllm_err_t vkllm_op_embedding(struct vkllm_context *context, struct vkllm_comma
     vkllm_array_ptr_append(bindings, tensor);
 
     struct vkllm_pipeline *pipeline = tensor->pipeline;
-    uint32_t N = _MUL4(tensor->shapes);
+    uint32_t N = _MUL4(in0->shapes);
     uint32_t group_x = (N + pipeline->shader_info.local_x - 1) / pipeline->shader_info.local_x;
     vkllm_err_t err = vkllm_commands_pipeline(context, commands, pipeline, bindings, NULL, constants, group_x, 1, 1);
 

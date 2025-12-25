@@ -29,7 +29,6 @@ extern "C"
 
     struct vkllm_pipeline
     {
-
         struct vkllm_shader_info shader_info;
         struct vkllm_gpu_device *device;
 
@@ -39,6 +38,7 @@ extern "C"
         VkDescriptorSetLayout vk_desc_set_layout;
         VkDescriptorPool vk_desc_pool;
         VkDescriptorSet vk_desc_set;
+        const char *name[];
     };
 
     extern vkllm_err_t vkllm_shader_constants_new(struct vkllm_shader_constants **constants, uint32_t init_bytes);
@@ -61,9 +61,9 @@ extern "C"
 
     extern void vkllm_shader_constants_free(struct vkllm_shader_constants *constants);
 
-    extern vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, struct vkllm_shader_info shader_info,
-                                          const uint8_t *spv, const size_t spv_size,
-                                          struct vkllm_shader_constants *specializations,
+    extern vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, const char *name,
+                                          struct vkllm_shader_info shader_info, const uint8_t *spv,
+                                          const size_t spv_size, struct vkllm_shader_constants *specializations,
                                           struct vkllm_pipeline **pipeline);
     extern vkllm_err_t vkllm_pipeline_update_bindings(struct vkllm_context *context, struct vkllm_pipeline *pipeline,
                                                       struct vkllm_array_ptr *bindings,
