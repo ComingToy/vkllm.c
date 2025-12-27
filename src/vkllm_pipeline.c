@@ -7,6 +7,7 @@
 #include "vkllm_embedding_shaders.h"
 #include "vkllm_errors.h"
 #include "vkllm_gpu_device.h"
+#include "vkllm_rmsnorm_shaders.h"
 #include "vkllm_tensor.h"
 #include <stdlib.h>
 #include <string.h>
@@ -379,10 +380,37 @@ static vkllm_err_t vkllm_create_embedding_pipeline(struct vkllm_context *context
     return VKLLM_ERR_OK;
 }
 
+static vkllm_err_t vkllm_create_rmsnorm_pipeline(struct vkllm_context *context)
+{
+    _CHECK_ARGS(context);
+
+    struct vkllm_shader_info shader_info = {
+        .binding_count = 3,
+        .push_constant_bytes = sizeof(uint32_t) * 8 * 2,
+        .local_x = 512,
+        .local_y = 1,
+        .local_z = 1,
+    };
+
+    context->pipelines.rmsnorm.f16f32f32 = NULL;
+
+    if (context->device->support_16bit_storage)
+    {
+        _CHECK(vkllm_pipeline_new(context, "pipeline_rmsnorm_f16f32f32", shader_info, _vkllm_rmsnorm_f16f32f32_spv(),
+                                  _vkllm_rmsnorm_f16f32f32_size(), NULL, &context->pipelines.rmsnorm.f16f32f32));
+    }
+
+    _CHECK(vkllm_pipeline_new(context, "pipeline_rmsnorm_f32f32f32", shader_info, _vkllm_rmsnorm_f32f32f32_spv(),
+                              _vkllm_rmsnorm_f32f32f32_size(), NULL, &context->pipelines.rmsnorm.f32f32f32));
+
+    return VKLLM_ERR_OK;
+}
+
 vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context)
 {
     _CHECK(vkllm_create_all_add_pipeline(context));
     _CHECK(vkllm_create_embedding_pipeline(context));
+    _CHECK(vkllm_create_rmsnorm_pipeline(context));
     return VKLLM_ERR_OK;
 }
 
@@ -394,6 +422,9 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
 
     vkllm_pipeline_free(context, context->pipelines.embedding.f16);
     vkllm_pipeline_free(context, context->pipelines.embedding.f32);
+
+    vkllm_pipeline_free(context, context->pipelines.rmsnorm.f16f32f32);
+    vkllm_pipeline_free(context, context->pipelines.rmsnorm.f32f32f32);
 }
 #undef vkllm_free_op_pipelines
 #undef _vkllm_free_op_pipeline

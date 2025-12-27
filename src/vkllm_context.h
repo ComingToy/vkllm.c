@@ -33,6 +33,12 @@ extern "C"
                 struct vkllm_pipeline *f32;
                 struct vkllm_pipeline *f16;
             } embedding;
+
+            struct
+            {
+                struct vkllm_pipeline *f16f32f32;
+                struct vkllm_pipeline *f32f32f32;
+            } rmsnorm;
         } pipelines;
     };
 
