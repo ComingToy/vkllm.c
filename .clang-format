@@ -61,10 +61,10 @@ BraceWrapping:
   AfterClass:      true
   AfterControlStatement: Always
   AfterEnum:       true
-  AfterExternBlock: true
+  AfterExternBlock: false
   AfterFunction:   true
   AfterNamespace:  true
-  AfterObjCDeclaration: true
+  AfterObjCDeclaration: false 
   AfterStruct:     true
   AfterUnion:      false
   BeforeCatch:     true
