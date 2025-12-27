@@ -351,6 +351,9 @@ vkllm_err_t vkllm_gpu_device_new(struct vkllm_context *context, uint32_t id)
     log_info("support_fp16_arithmetic: %s", BOOL_S(pdev->support_fp16_arithmetic));
     log_info("support_int8_arithmetic: %s", BOOL_S(pdev->support_int8_arithmetic));
     log_info("support_pipeline_statistics: %s", BOOL_S(pdev->support_pipeline_statistics));
+
+    const uint32_t *max_group_counts = pdev->vk_physical_dev.properties.limits.maxComputeWorkGroupCount;
+    log_info("group count limits.xyz = (%u, %u, %u)", max_group_counts[0], max_group_counts[1], max_group_counts[2]);
     return VKLLM_ERR_OK;
 
 err_init_gpu_dev:
@@ -358,6 +361,31 @@ err_init_gpu_dev:
 err_create_instance:
     free(pdev);
     return ret;
+}
+
+vkllm_err_t compute_group_counts(struct vkllm_context *context, uint32_t N, uint32_t local_x, uint32_t local_y,
+                                 uint32_t local_z, uint32_t *group_x, uint32_t *group_y, uint32_t *group_z)
+{
+    _CHECK_ARGS(context && group_x && group_y && group_z);
+    VkPhysicalDeviceLimits *limits = &context->device->vk_physical_dev.properties.limits;
+    *group_x = 1;
+    *group_y = 1;
+    *group_z = 1;
+
+    if (*group_x > limits->maxComputeWorkGroupCount[0])
+    {
+        *group_x = limits->maxComputeWorkGroupCount[0];
+        N = N - *group_x * local_x;
+        *group_y = (N + local_y - 1) / local_y;
+        if (*group_y > limits->maxComputeWorkGroupCount[1])
+        {
+            *group_y = limits->maxComputeWorkGroupCount[1];
+            N = N - *group_y * local_y;
+            *group_z = (N + local_z - 1) / local_z;
+        }
+    }
+
+    return VKLLM_ERR_OK;
 }
 
 void vkllm_gpu_device_free(struct vkllm_context *context)

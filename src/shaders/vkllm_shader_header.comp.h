@@ -15,7 +15,7 @@ struct ShapeConstant
 
 uint get_thread_id()
 {
-    uint tid = gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * gl_WorkGroupSize.x +
-                 gl_GlobalInvocationID.z * gl_WorkGroupSize.x * gl_WorkGroupSize.y;
-	return tid;
+    uvec3 glb_dims = gl_WorkGroupSize * gl_NumWorkGroups;
+    uint glb_tid = gl_GlobalInvocationID.z * glb_dims.y * glb_dims.x + gl_GlobalInvocationID.y * glb_dims.x + gl_GlobalInvocationID.x;
+	return glb_tid;
 }

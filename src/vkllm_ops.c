@@ -6,6 +6,7 @@ const char *vkllm_op_s(const vkllm_op_t op)
         "VKLLM_OP_NONE",
         "VKLLM_OP_ADD",
         "VKLLM_OP_EMBEDDING",
+        "VKLLM_OP_RMSNORM",
     };
 
     return ops[op];
