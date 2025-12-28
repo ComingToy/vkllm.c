@@ -55,3 +55,11 @@ cc_test(
     copts = COPTS,
     linkopts = LINK_OPTS,
 )
+
+cc_test(
+    name = "vkllm_test_op_rmsnorm",
+    srcs = ["vkllm_test_op_rmsnorm.c"],
+    deps = DEPS,
+    copts = COPTS,
+    linkopts = LINK_OPTS,
+)

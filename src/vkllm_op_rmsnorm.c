@@ -54,8 +54,8 @@ vkllm_err_t vkllm_op_rmsnorm(struct vkllm_context *context, struct vkllm_command
     float power = 2.0f;
     float eps = 1e-6f;
 
-    vkllm_shader_constants_append(constants, *(uint32_t *)&power);
-    vkllm_shader_constants_append(constants, *(uint32_t *)&eps);
+    vkllm_shader_constants_append(constants, power);
+    vkllm_shader_constants_append(constants, eps);
 
     struct vkllm_array_ptr *bindings = NULL;
     _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 3), err, free_constants_out);
