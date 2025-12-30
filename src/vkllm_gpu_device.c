@@ -222,6 +222,8 @@ static vkllm_err_t init_physical_device(struct vkllm_context *context)
         pdev->support_int8_arithmetic = pdev->vk_physical_dev.feat_shader_fp16_int8.shaderInt8;
     }
 
+    pdev->support_query_timestamp = pdev->vk_physical_dev.properties.limits.timestampComputeAndGraphics;
+
     return VKLLM_ERR_OK;
 }
 
@@ -374,7 +376,7 @@ vkllm_err_t vkllm_gpu_device_new(struct vkllm_context *context, uint32_t id)
     pdev->support_descriptor_templ_update = false;
     pdev->support_fp16_arithmetic = false;
     pdev->support_int8_arithmetic = false;
-    pdev->support_pipeline_statistics = false;
+    pdev->support_query_timestamp = false;
 
     vkllm_err_t ret = create_instance(pdev);
     if (ret != VKLLM_ERR_OK)
@@ -396,7 +398,7 @@ vkllm_err_t vkllm_gpu_device_new(struct vkllm_context *context, uint32_t id)
     log_info("support_descriptor_templ_update: %s", BOOL_S(pdev->support_descriptor_templ_update));
     log_info("support_fp16_arithmetic: %s", BOOL_S(pdev->support_fp16_arithmetic));
     log_info("support_int8_arithmetic: %s", BOOL_S(pdev->support_int8_arithmetic));
-    log_info("support_pipeline_statistics: %s", BOOL_S(pdev->support_pipeline_statistics));
+    log_info("support_query_timestamp: %s", BOOL_S(pdev->support_query_timestamp));
 
     const uint32_t *max_group_counts = pdev->vk_physical_dev.properties.limits.maxComputeWorkGroupCount;
     log_info("group count limits.xyz = (%u, %u, %u)", max_group_counts[0], max_group_counts[1], max_group_counts[2]);

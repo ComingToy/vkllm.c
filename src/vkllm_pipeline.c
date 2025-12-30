@@ -7,6 +7,7 @@
 #include "vkllm_embedding_shaders.h"
 #include "vkllm_errors.h"
 #include "vkllm_gpu_device.h"
+#include "vkllm_matmul_shaders.h"
 #include "vkllm_rmsnorm_shaders.h"
 #include "vkllm_tensor.h"
 #include <stdlib.h>
@@ -268,6 +269,17 @@ vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, const char *name, 
         log_error("vkCreateComputePipelines failed: %d", (int)vkresult);
         return VKLLM_ERR_VULKAN;
     }
+
+    VkQueryPoolCreateInfo query_pool_create_info = {
+        .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .queryType = VK_QUERY_TYPE_TIMESTAMP,
+        .queryCount = 2,
+        .pipelineStatistics = 0,
+    };
+
+    _CHECK_VK(vkCreateQueryPool(p->device->vk_dev, &query_pool_create_info, NULL, &p->vk_query_pool));
     return VKLLM_ERR_OK;
 }
 
@@ -328,6 +340,21 @@ void vkllm_pipeline_free(struct vkllm_context *context, struct vkllm_pipeline *p
     vkDestroyDescriptorSetLayout(pipeline->device->vk_dev, pipeline->vk_desc_set_layout, NULL);
     vkDestroyDescriptorPool(pipeline->device->vk_dev, pipeline->vk_desc_pool, NULL);
     free(pipeline);
+}
+
+vkllm_err_t vkllm_pipeline_query_exec_time(struct vkllm_context *context, struct vkllm_pipeline *pipeline,
+                                           uint64_t *cost)
+{
+    _CHECK_ARGS(context->device->support_query_timestamp && cost);
+
+    uint64_t time_stamps[2] = {0, 0};
+    vkGetQueryPoolResults(context->device->vk_dev, pipeline->vk_query_pool, 0, 2, sizeof(time_stamps), time_stamps,
+                          sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+
+    float delta =
+        (time_stamps[1] - time_stamps[0]) * context->device->vk_physical_dev.properties.limits.timestampPeriod;
+    *cost = (uint64_t)delta;
+    return VKLLM_ERR_OK;
 }
 
 static vkllm_err_t vkllm_create_all_add_pipeline(struct vkllm_context *context)
@@ -408,11 +435,32 @@ static vkllm_err_t vkllm_create_rmsnorm_pipeline(struct vkllm_context *context)
     return VKLLM_ERR_OK;
 }
 
+static vkllm_err_t vkllm_create_matmul_pipelines(struct vkllm_context *context)
+{
+    _CHECK_ARGS(context);
+
+    struct vkllm_shader_info shader_info = {
+        .binding_count = 3,
+        .push_constant_bytes = sizeof(uint32_t) * 6,
+        .local_x = 16,
+        .local_y = 16,
+        .local_z = 1,
+    };
+
+    context->pipelines.matmul.f32f32f32 = NULL;
+
+    _CHECK(vkllm_pipeline_new(context, "matmul_f32f32f32", shader_info, _vkllm_matmul_f32f32f32_spv(),
+                              _vkllm_matmul_f32f32f32_size(), NULL, &context->pipelines.matmul.f32f32f32));
+
+    return VKLLM_ERR_OK;
+}
+
 vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context)
 {
     _CHECK(vkllm_create_all_add_pipeline(context));
     _CHECK(vkllm_create_embedding_pipeline(context));
     _CHECK(vkllm_create_rmsnorm_pipeline(context));
+    _CHECK(vkllm_create_matmul_pipelines(context));
     return VKLLM_ERR_OK;
 }
 
@@ -428,6 +476,8 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
     vkllm_pipeline_free(context, context->pipelines.rmsnorm.f16f32f32);
     vkllm_pipeline_free(context, context->pipelines.rmsnorm.f16f32f16);
     vkllm_pipeline_free(context, context->pipelines.rmsnorm.f32f32f32);
+
+    vkllm_pipeline_free(context, context->pipelines.matmul.f32f32f32);
 }
 #undef vkllm_free_op_pipelines
 #undef _vkllm_free_op_pipeline

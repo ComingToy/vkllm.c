@@ -44,7 +44,7 @@ struct vkllm_gpu_device
     bool support_8bit_storage;
     bool support_fp16_arithmetic;
     bool support_int8_arithmetic;
-    bool support_pipeline_statistics;
+    bool support_query_timestamp;
     int subgroup_size;
     VmaAllocator vma_allocator;
 };
