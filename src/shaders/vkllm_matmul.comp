@@ -99,20 +99,23 @@ void main(void)
         barrier();
 
         // 每个线程使用smem中的[TM, BK]和smem_b中的[BK, TN]个元素计算得到[TM, TN]个结果;
-        for (uint tk = 0; tk < SMEM_BK; ++tk)
+        vec4 cache_a[TM];
+
+        [[unroll]] for (uint tk = 0; tk < SMEM_BK; ++tk)
         {
-            for (uint r = 0; r < TM; ++r)
+            uint smem_a_off = local_tid_x * TM;
+            [[unroll]] for (uint r = 0; r < TM; ++r)
             {
-                for (uint c = 0; c < TN; ++c)
+                cache_a[r] = smem_a[smem_a_off + r][tk];
+            }
+
+            uint smem_b_off = local_tid_y * TN;
+            [[unroll]] for (uint r = 0; r < TM; ++r)
+            {
+                [[unroll]] for (uint c = 0; c < TN; ++c)
                 {
-#if 0
-                    vec4 a = smem_a[local_tid_x * TM + r][tk];
-                    vec4 b = smem_b[local_tid_y * TN + c][tk];
-                    thread_results[r][c] =
-                        fma(a.x, b.x, fma(a.y, b.y, fma(a.z, b.z, fma(a.w, b.w, thread_results[r][c]))));
-#else
-                    thread_results[r][c] += dot(smem_a[local_tid_x * TM + r][tk], smem_b[local_tid_y * TN + c][tk]);
-#endif
+
+                    thread_results[r][c] += dot(cache_a[r], smem_b[smem_b_off + c][tk]);
                 }
             }
         }
@@ -122,12 +125,14 @@ void main(void)
     }
 
     // Write results back to global memory
+    uint out_row_off = blk_x + local_tid_x * TM;
+    uint out_col_off = blk_y + local_tid_y * TN;
     [[unroll]] for (uint tm = 0; tm < TM; ++tm)
     {
         [[unroll]] for (uint tn = 0; tn < TN; ++tn)
         {
-            uint out_row = blk_x + local_tid_x * TM + tm;
-            uint out_col = blk_y + local_tid_y * TN + tn;
+            uint out_row = out_row_off + tm;
+            uint out_col = out_col_off + tn;
             if (out_row < M && out_col < N)
             {
                 out0[out_row * out0_stride + out_col] = thread_results[tm][tn];
