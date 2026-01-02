@@ -7,7 +7,8 @@
 #include "src/vkllm_common.h"
 #include <string.h>
 
-static vkllm_err_t vkllm_calc_strides(const uint32_t *shapes, vkllm_dtype_t dtype, uint32_t *strides)
+static vkllm_err_t vkllm_calc_strides(struct vkllm_gpu_device *device, const uint32_t *shapes, vkllm_dtype_t dtype,
+                                      uint32_t *strides)
 {
     struct vkllm_dtype_info dtype_info;
     _CHECK(vkllm_get_dtype_info(dtype, &dtype_info));
@@ -16,8 +17,11 @@ static vkllm_err_t vkllm_calc_strides(const uint32_t *shapes, vkllm_dtype_t dtyp
     uint32_t blocks = (w + dtype_info.items_per_block - 1) / dtype_info.items_per_block;
     uint32_t bytes = blocks * dtype_info.bytes_per_block;
 
+    size_t align = device->vk_physical_dev.subgroup_properties.subgroupSize * dtype_info.bytes;
+    size_t align_bytes = (bytes + align - 1) / align * align;
+
     strides[3] = dtype_info.bytes;
-    strides[2] = bytes;
+    strides[2] = (uint32_t)align_bytes;
     strides[1] = shapes[2] * strides[2];
     strides[0] = shapes[1] * strides[1];
 
@@ -191,7 +195,7 @@ vkllm_err_t vkllm_tensor_new(struct vkllm_context *context, const char *name, co
     t->shapes[2] = shapes[2];
     t->shapes[3] = shapes[3];
 
-    vkllm_err_t err = vkllm_calc_strides(shapes, dtype, t->strides);
+    vkllm_err_t err = vkllm_calc_strides(device, shapes, dtype, t->strides);
     if (err != VKLLM_ERR_OK)
     {
         goto err_calc_strides;

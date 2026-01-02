@@ -339,6 +339,7 @@ void vkllm_pipeline_free(struct vkllm_context *context, struct vkllm_pipeline *p
     vkDestroyPipelineLayout(pipeline->device->vk_dev, pipeline->vk_pipeline_layout, NULL);
     vkDestroyDescriptorSetLayout(pipeline->device->vk_dev, pipeline->vk_desc_set_layout, NULL);
     vkDestroyDescriptorPool(pipeline->device->vk_dev, pipeline->vk_desc_pool, NULL);
+    vkDestroyQueryPool(pipeline->device->vk_dev, pipeline->vk_query_pool, NULL);
     free(pipeline);
 }
 

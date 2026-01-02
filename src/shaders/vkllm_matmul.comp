@@ -4,8 +4,7 @@
 #include "vkllm_shader_header.comp.h"
 
 layout(binding = 0) readonly buffer in0_type
-{
-    float in0[];
+{ float in0[];
 };
 
 layout(binding = 1) readonly buffer in1_type
@@ -85,15 +84,30 @@ void main(void)
         uint a_row = blk_x + ld_a_x;
         uint a_col = k * BK + ld_a_y;
         uint smem_a_idx = a_row * in0_stride + a_col;
-        smem_a[ld_a_x][ld_a_y / 4] =
-            vec4(in0[smem_a_idx], in0[smem_a_idx + 1], in0[smem_a_idx + 2], in0[smem_a_idx + 3]);
+
+        if (a_row < M)
+        {
+            smem_a[ld_a_x][ld_a_y / 4] =
+                vec4(in0[smem_a_idx], in0[smem_a_idx + 1], in0[smem_a_idx + 2], in0[smem_a_idx + 3]);
+        }
+        else
+        {
+            smem_a[ld_a_x][ld_a_y / 4] = vec4(0.0);
+        }
 
         uint b_row = blk_y + ld_b_x;
         uint b_col = a_col;
         uint smem_b_idx = b_row * in1_stride + b_col;
 
-        smem_b[ld_b_x][ld_b_y / load_n_per_thread] =
-            vec4(in1[smem_b_idx], in1[smem_b_idx + 1], in1[smem_b_idx + 2], in1[smem_b_idx + 3]);
+        if (b_row < N)
+        {
+            smem_b[ld_b_x][ld_b_y / load_n_per_thread] =
+                vec4(in1[smem_b_idx], in1[smem_b_idx + 1], in1[smem_b_idx + 2], in1[smem_b_idx + 3]);
+        }
+        else
+        {
+            smem_b[ld_b_x][ld_b_y / load_n_per_thread] = vec4(0.0);
+        }
 
         memoryBarrierShared();
         barrier();
