@@ -65,8 +65,8 @@ static struct
 } tests[] = {
     // Larger matrices
     {512, 1024, 2048, vkllm_dtype_float32},
-    // {333, 1259, 365, vkllm_dtype_float32},
-    // {2048, 1024, 10240, vkllm_dtype_float32},
+    {333, 1259, 365, vkllm_dtype_float32},
+    {2048, 1024, 10240, vkllm_dtype_float32},
     // {512, 1024, 2048, vkllm_dtype_float32},
 };
 

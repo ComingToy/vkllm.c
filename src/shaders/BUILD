@@ -7,7 +7,6 @@ COMP_SHADER_HDRS = glob(["*.comp.h"])
 COMMON_ARGS = [
     "--target-env=vulkan1.2",
     "--target-spv=spv1.5",
-    "-g",
 ]
 
 glsl_shader(
