@@ -455,28 +455,53 @@ static vkllm_err_t vkllm_create_matmul_pipelines(struct vkllm_context *context)
     context->pipelines.matmul.b0t1f16f32f32 = NULL;
     context->pipelines.matmul.b0t1f16f16f32 = NULL;
 
-    _CHECK(vkllm_pipeline_new(context, "matmul_b0t0f32f32f32", shader_info, _vkllm_matmul_b0t0f32f32f32_spv(),
-                              _vkllm_matmul_b0t0f32f32f32_size(), NULL, &context->pipelines.matmul.b0t0f32f32f32));
-    _CHECK(vkllm_pipeline_new(context, "matmul_b0t1f32f32f32", shader_info, _vkllm_matmul_b0t1f32f32f32_spv(),
-                              _vkllm_matmul_b0t1f32f32f32_size(), NULL, &context->pipelines.matmul.b0t1f32f32f32));
+    context->pipelines.matmul.b1t0f32f32f32 = NULL;
+    context->pipelines.matmul.b1t0f16f32f32 = NULL;
+    context->pipelines.matmul.b1t0f16f16f32 = NULL;
+    context->pipelines.matmul.b1t1f32f32f32 = NULL;
+    context->pipelines.matmul.b1t1f16f32f32 = NULL;
+    context->pipelines.matmul.b1t1f16f16f32 = NULL;
+
+    _CHECK(vkllm_pipeline_new(context, "matmul_b0t0f32f32f32", shader_info, _vkllm_matmul_t0b0f32f32f32_spv(),
+                              _vkllm_matmul_t0b0f32f32f32_size(), NULL, &context->pipelines.matmul.b0t0f32f32f32));
+    _CHECK(vkllm_pipeline_new(context, "matmul_b0t1f32f32f32", shader_info, _vkllm_matmul_t1b0f32f32f32_spv(),
+                              _vkllm_matmul_t1b0f32f32f32_size(), NULL, &context->pipelines.matmul.b0t1f32f32f32));
+
+    _CHECK(vkllm_pipeline_new(context, "matmul_b1t0f32f32f32", shader_info, _vkllm_matmul_t0b1f32f32f32_spv(),
+                              _vkllm_matmul_t0b1f32f32f32_size(), NULL, &context->pipelines.matmul.b1t0f32f32f32));
+    _CHECK(vkllm_pipeline_new(context, "matmul_b1t1f32f32f32", shader_info, _vkllm_matmul_t1b1f32f32f32_spv(),
+                              _vkllm_matmul_t1b1f32f32f32_size(), NULL, &context->pipelines.matmul.b1t1f32f32f32));
 
     if (context->device->support_16bit_storage)
     {
-        _CHECK(vkllm_pipeline_new(context, "matmul_b0t1f16f32f32", shader_info, _vkllm_matmul_b0t1f16f32f32_spv(),
-                                  _vkllm_matmul_b0t1f16f32f32_size(), NULL, &context->pipelines.matmul.b0t1f16f32f32));
-        _CHECK(vkllm_pipeline_new(context, "matmul_b0t0f16f32f32", shader_info, _vkllm_matmul_b0t0f16f32f32_spv(),
-                                  _vkllm_matmul_b0t0f16f32f32_size(), NULL, &context->pipelines.matmul.b0t0f16f32f32));
+        _CHECK(vkllm_pipeline_new(context, "matmul_b0t1f16f32f32", shader_info, _vkllm_matmul_t1b0f16f32f32_spv(),
+                                  _vkllm_matmul_t1b0f16f32f32_size(), NULL, &context->pipelines.matmul.b0t1f16f32f32));
+        _CHECK(vkllm_pipeline_new(context, "matmul_b0t0f16f32f32", shader_info, _vkllm_matmul_t0b0f16f32f32_spv(),
+                                  _vkllm_matmul_t0b0f16f32f32_size(), NULL, &context->pipelines.matmul.b0t0f16f32f32));
+
+        _CHECK(vkllm_pipeline_new(context, "matmul_b1t1f16f32f32", shader_info, _vkllm_matmul_t1b1f16f32f32_spv(),
+                                  _vkllm_matmul_t1b1f16f32f32_size(), NULL, &context->pipelines.matmul.b1t1f16f32f32));
+        _CHECK(vkllm_pipeline_new(context, "matmul_b1t0f16f32f32", shader_info, _vkllm_matmul_t0b1f16f32f32_spv(),
+                                  _vkllm_matmul_t0b1f16f32f32_size(), NULL, &context->pipelines.matmul.b1t0f16f32f32));
 
         if (context->device->support_fp16_arithmetic)
         {
 
-            _CHECK(vkllm_pipeline_new(context, "matmul_b0t0f16f16f32", shader_info, _vkllm_matmul_b0t0f16f16f32_spv(),
-                                      _vkllm_matmul_b0t0f16f16f32_size(), NULL,
+            _CHECK(vkllm_pipeline_new(context, "matmul_b0t0f16f16f32", shader_info, _vkllm_matmul_t0b0f16f16f32_spv(),
+                                      _vkllm_matmul_t0b0f16f16f32_size(), NULL,
                                       &context->pipelines.matmul.b0t0f16f16f32));
 
-            _CHECK(vkllm_pipeline_new(context, "matmul_b0t1f16f16f32", shader_info, _vkllm_matmul_b0t1f16f16f32_spv(),
-                                      _vkllm_matmul_b0t1f16f16f32_size(), NULL,
+            _CHECK(vkllm_pipeline_new(context, "matmul_b0t1f16f16f32", shader_info, _vkllm_matmul_t1b0f16f16f32_spv(),
+                                      _vkllm_matmul_t1b0f16f16f32_size(), NULL,
                                       &context->pipelines.matmul.b0t1f16f16f32));
+
+            _CHECK(vkllm_pipeline_new(context, "matmul_b1t0f16f16f32", shader_info, _vkllm_matmul_t0b1f16f16f32_spv(),
+                                      _vkllm_matmul_t0b1f16f16f32_size(), NULL,
+                                      &context->pipelines.matmul.b1t0f16f16f32));
+
+            _CHECK(vkllm_pipeline_new(context, "matmul_b1t1f16f16f32", shader_info, _vkllm_matmul_t1b1f16f16f32_spv(),
+                                      _vkllm_matmul_t1b1f16f16f32_size(), NULL,
+                                      &context->pipelines.matmul.b1t1f16f16f32));
         }
     }
 
@@ -508,10 +533,15 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
     vkllm_pipeline_free(context, context->pipelines.matmul.b0t0f32f32f32);
     vkllm_pipeline_free(context, context->pipelines.matmul.b0t0f16f32f32);
     vkllm_pipeline_free(context, context->pipelines.matmul.b0t0f16f16f32);
-
     vkllm_pipeline_free(context, context->pipelines.matmul.b0t1f32f32f32);
     vkllm_pipeline_free(context, context->pipelines.matmul.b0t1f16f32f32);
     vkllm_pipeline_free(context, context->pipelines.matmul.b0t1f16f16f32);
+    vkllm_pipeline_free(context, context->pipelines.matmul.b1t0f32f32f32);
+    vkllm_pipeline_free(context, context->pipelines.matmul.b1t0f16f32f32);
+    vkllm_pipeline_free(context, context->pipelines.matmul.b1t0f16f16f32);
+    vkllm_pipeline_free(context, context->pipelines.matmul.b1t1f32f32f32);
+    vkllm_pipeline_free(context, context->pipelines.matmul.b1t1f16f32f32);
+    vkllm_pipeline_free(context, context->pipelines.matmul.b1t1f16f16f32);
 }
 #undef vkllm_free_op_pipelines
 #undef _vkllm_free_op_pipeline

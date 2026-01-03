@@ -72,21 +72,28 @@ glsl_shader(
 glsl_shader(
     name = "vkllm_matmul_shaders",
     shaders = [
-        "vkllm_matmul_b0t0.comp",
-        "vkllm_matmul_b0t1.comp",
+        "vkllm_matmul_t0.comp",
+        "vkllm_matmul_t1.comp",
     ],
     hdrs = COMP_SHADER_HDRS,
     extra_args = COMMON_ARGS,
     tool = "//tools:binary_to_array",
     macros = [
         "-DIN0_DTYPE=float -DIN1_DTYPE=float -DSMEM_DTYPE=vec4 -DOUT_DTYPE=float",
-        "-D_SUPPORT_16BIT_STORAGE -D_SUPPORT_FLOAT16_ARITHMETIC -DIN0_DTYPE=float16_t -DIN1_DTYPE=float16_t -DSMEM_DTYPE=f16vec4 -DOUT_DTYPE=float",
-        "-D_SUPPORT_16BIT_STORAGE -DIN0_DTYPE=float16_t -DIN1_DTYPE=float16_t -DSMEM_DTYPE=vec4 -DLOAD_DTYPE=float -DOUT_DTYPE=float",
+        "-D_SUPPORT_16BIT_STORAGE -D_SUPPORT_FLOAT16_ARITHMETIC -DIN0_DTYPE=float16_t -DIN1_DTYPE=float16_t -DSMEM_DTYPE=f16vec4 -DOUT_DTYPE=float -DBROADCASE_A=0 -DBROADCASE_B=0",
+        "-D_SUPPORT_16BIT_STORAGE -DIN0_DTYPE=float16_t -DIN1_DTYPE=float16_t -DSMEM_DTYPE=vec4 -DLOAD_DTYPE=float -DOUT_DTYPE=float -DBROADCASE_A=0 -DBROADCASE_B=0",
+
+        "-DIN0_DTYPE=float -DIN1_DTYPE=float -DSMEM_DTYPE=vec4 -DOUT_DTYPE=float -DBROADCASE_A=0 -DBROADCASE_B=1",
+        "-D_SUPPORT_16BIT_STORAGE -D_SUPPORT_FLOAT16_ARITHMETIC -DIN0_DTYPE=float16_t -DIN1_DTYPE=float16_t -DSMEM_DTYPE=f16vec4 -DOUT_DTYPE=float -DBROADCASE_A=0 -DBROADCASE_B=1",
+        "-D_SUPPORT_16BIT_STORAGE -DIN0_DTYPE=float16_t -DIN1_DTYPE=float16_t -DSMEM_DTYPE=vec4 -DLOAD_DTYPE=float -DOUT_DTYPE=float -DBROADCASE_A=0 -DBROADCASE_B=1",
     ],
     suffixes = [
-        "f32f32f32",
-        "f16f16f32",
-        "f16f32f32",
+        "b0f32f32f32",
+        "b0f16f16f32",
+        "b0f16f32f32",
+        "b1f32f32f32",
+        "b1f16f16f32",
+        "b1f16f32f32",
     ],
 )
 

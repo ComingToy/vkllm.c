@@ -27,14 +27,6 @@
 #define LOAD_DTYPE
 #endif
 
-#ifndef BROADCAST_A
-#define BROADCAST_A 0
-#endif
-
-#ifndef BROADCAST_B
-#define BROADCAST_B 0
-#endif
-
 layout(binding = 0) readonly buffer in0_type
 {
     IN0_DTYPE in0[];
