@@ -16,7 +16,7 @@
 // Using 4D tensor format: [1, 1, M, K/N]
 static void matmul_op_host(const void *input_a, const void *input_b, void *output, uint32_t M, uint32_t K, uint32_t N,
                            const uint32_t strides_a[4], const uint32_t strides_b[4], const uint32_t strides_c[4],
-                           vkllm_dtype_t dtype)
+                           vkllm_dtype_t dtype, bool transposed_b)
 {
     struct vkllm_dtype_info info;
     vkllm_get_dtype_info(dtype, &info);
@@ -29,7 +29,9 @@ static void matmul_op_host(const void *input_a, const void *input_b, void *outpu
     uint32_t es_c[4] = {strides_c[0] / 4, strides_c[1] / 4, strides_c[2] / 4, strides_c[3] / 4};
 
     // C[i][j] = sum(A[i][k] * B[k][j]) for k in [0, K)
-    // A shape: [1, 1, M, K], B shape: [1, 1, N, K], C shape: [1, 1, M, N]
+    // A shape: [1, 1, M, K]
+    // B shape: [1, 1, N, K] if transposed_b == true, or [1, 1, K, N] if transposed_b == false
+    // C shape: [1, 1, M, N]
     if (dtype == vkllm_dtype_float16)
     {
         const vkllm_fp16_pack *a_fp16 = (const vkllm_fp16_pack *)input_a;
@@ -45,8 +47,18 @@ static void matmul_op_host(const void *input_a, const void *input_b, void *outpu
                 {
                     // A[0, 0, i, k]
                     uint32_t idx_a = 0 * es_a[0] + 0 * es_a[1] + i * es_a[2] + k * es_a[3];
-                    // B[0, 0, j, k]
-                    uint32_t idx_b = 0 * es_b[0] + 0 * es_b[1] + j * es_b[2] + k * es_b[3];
+                    // B index depends on whether B is transposed
+                    uint32_t idx_b;
+                    if (transposed_b)
+                    {
+                        // B[0, 0, j, k] - B shape is [1, 1, N, K]
+                        idx_b = 0 * es_b[0] + 0 * es_b[1] + j * es_b[2] + k * es_b[3];
+                    }
+                    else
+                    {
+                        // B[0, 0, k, j] - B shape is [1, 1, K, N]
+                        idx_b = 0 * es_b[0] + 0 * es_b[1] + k * es_b[2] + j * es_b[3];
+                    }
                     // Convert fp16 to fp32 for computation
                     float a_val = vkllm_fp16_to_fp32(a_fp16[idx_a]);
                     float b_val = vkllm_fp16_to_fp32(b_fp16[idx_b]);
@@ -73,8 +85,18 @@ static void matmul_op_host(const void *input_a, const void *input_b, void *outpu
                 {
                     // A[0, 0, i, k]
                     uint32_t idx_a = 0 * es_a[0] + 0 * es_a[1] + i * es_a[2] + k * es_a[3];
-                    // B[0, 0, j, k]
-                    uint32_t idx_b = 0 * es_b[0] + 0 * es_b[1] + j * es_b[2] + k * es_b[3];
+                    // B index depends on whether B is transposed
+                    uint32_t idx_b;
+                    if (transposed_b)
+                    {
+                        // B[0, 0, j, k] - B shape is [1, 1, N, K]
+                        idx_b = 0 * es_b[0] + 0 * es_b[1] + j * es_b[2] + k * es_b[3];
+                    }
+                    else
+                    {
+                        // B[0, 0, k, j] - B shape is [1, 1, K, N]
+                        idx_b = 0 * es_b[0] + 0 * es_b[1] + k * es_b[2] + j * es_b[3];
+                    }
                     sum += a_fp32[idx_a] * b_fp32[idx_b];
                 }
                 // C[0, 0, i, j]
@@ -91,10 +113,14 @@ static struct
     uint32_t K;
     uint32_t N;
     vkllm_dtype_t dtype;
+    bool transposed_b;
 } tests[] = {
-    {512, 1024, 2048, vkllm_dtype_float16},   {333, 1259, 365, vkllm_dtype_float16},
-    {512, 1024, 2048, vkllm_dtype_float32},   {333, 1259, 365, vkllm_dtype_float32},
-    {2048, 1024, 10240, vkllm_dtype_float32},
+    {512, 1024, 2048, vkllm_dtype_float16, true},    {333, 1259, 365, vkllm_dtype_float16, true},
+    {512, 1024, 2048, vkllm_dtype_float32, true},    {333, 1259, 365, vkllm_dtype_float32, true},
+    {2048, 1024, 10240, vkllm_dtype_float32, true},
+
+    {512, 1024, 2048, vkllm_dtype_float32, false},   {333, 1259, 365, vkllm_dtype_float32, false},
+    {2048, 1024, 10240, vkllm_dtype_float32, false},
 };
 
 START_TEST(test_op_matmul)
@@ -120,9 +146,11 @@ START_TEST(test_op_matmul)
 
     // Create input tensor B: shape [1, 1, K, N]
     uint32_t shapes_b[4] = {1, 1, N, K};
+    uint32_t shapes_b_t0[4] = {1, 1, K, N};
+
     struct vkllm_tensor *input_b;
-    ck_assert_int_eq(vkllm_tensor_new(context, "input_b", shapes_b, tests[_i].dtype, VKLLM_OP_NONE, NULL, 0, NULL, 0,
-                                      false, &input_b),
+    ck_assert_int_eq(vkllm_tensor_new(context, "input_b", tests[_i].transposed_b ? shapes_b : shapes_b_t0,
+                                      tests[_i].dtype, VKLLM_OP_NONE, NULL, 0, NULL, 0, false, &input_b),
                      VKLLM_ERR_OK);
 
     // Create output tensor C: shape [1, 1, M, N]
@@ -150,7 +178,7 @@ START_TEST(test_op_matmul)
 
     // Compute expected result on CPU
     matmul_op_host(buf_a->data, buf_b->data, buf_c_expected->data, M, K, N, input_a->strides, input_b->strides,
-                   output->strides, tests[_i].dtype);
+                   output->strides, tests[_i].dtype, tests[_i].transposed_b);
 
     // Execute on GPU
 
@@ -176,7 +204,9 @@ START_TEST(test_op_matmul)
         total_time_cost += time_cost;
     }
 
-    log_info("matmul: avg time cost: %lu micro secs", total_time_cost / 50 / 1000);
+    log_info("matmul (M = %u, K = %u, N = %u, dtype = %s, transposed_b: %s): avg time cost: %lu micro secs",
+             tests[_i].M, tests[_i].K, tests[_i].N, vkllm_dtype_s(tests[_i].dtype), BOOL_S(tests[_i].transposed_b),
+             total_time_cost / 50 / 1000);
     // Compare results
     const void *gpu_output = output->data.host;
     // print_n("gpu_output", gpu_output, 64);

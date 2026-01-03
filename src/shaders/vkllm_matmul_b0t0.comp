@@ -41,8 +41,8 @@ layout(push_constant) uniform constants
 #define TN 8
 
 #define SMEM_BK (BK / 4)
-shared vec4 smem_a[BM][SMEM_BK];
-shared vec4 smem_b[BN][SMEM_BK];
+shared vec4 smem_a[BM][SMEM_BK + 1];
+shared vec4 smem_b[BN][SMEM_BK + 1];
 
 #define load_n_per_thread 4
 
@@ -129,16 +129,25 @@ void main(void)
         barrier();
 
         // 每个线程使用smem中的[TM, BK]和smem_b中的[BK, TN]个元素计算得到[TM, TN]个结果;
-        for (uint tk = 0; tk < SMEM_BK; ++tk)
+        [[unroll]] for (uint tk = 0; tk < SMEM_BK; ++tk)
         {
-            for (uint r = 0; r < TM; ++r)
+            [[unroll]] for (uint tr = 0; tr < 2; ++tr)
             {
-                for (uint c = 0; c < TN; ++c)
+                vec4 cache_a[TM / 2];
+                uint R = tr * TM / 2;
+                uint smem_b_off = local_tid_y * TN;
+                uint smem_a_off = local_tid_x * TM + R;
+                [[unroll]] for (uint r = 0; r < TM / 2; ++r)
                 {
-                    vec4 a = smem_a[local_tid_x * TM + r][tk];
-                    vec4 b = smem_b[local_tid_y * TN + c][tk];
-                    thread_results[r][c] =
-                        fma(a.x, b.x, fma(a.y, b.y, fma(a.z, b.z, fma(a.w, b.w, thread_results[r][c]))));
+                    cache_a[r] = smem_a[smem_a_off + r][tk];
+                }
+
+                [[unroll]] for (uint r = 0; r < TM / 2; ++r)
+                {
+                    [[unroll]] for (uint c = 0; c < TN; ++c)
+                    {
+                        thread_results[R + r][c] += dot(cache_a[r], smem_b[smem_b_off + c][tk]);
+                    }
                 }
             }
         }

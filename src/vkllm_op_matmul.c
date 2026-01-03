@@ -6,6 +6,18 @@
 #include "vkllm_gpu_device.h"
 #include "vkllm_pipeline.h"
 
+static bool is_transposed_b(struct vkllm_tensor *tensor)
+{
+    struct vkllm_tensor *a = tensor->srcs[0];
+    struct vkllm_tensor *b = tensor->srcs[1];
+
+    uint32_t M = tensor->shapes[2];
+    uint32_t N = tensor->shapes[3];
+    uint32_t K = a->shapes[3];
+
+    return a->shapes[2] == M && b->shapes[2] == N && a->shapes[3] == K && b->shapes[3] == K;
+}
+
 static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, struct vkllm_tensor *tensor,
                                                 struct vkllm_pipeline **pipeline)
 {
@@ -19,6 +31,7 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
         return VKLLM_ERR_PIPELINE_NOT_FOUND;
     }
 
+    bool tranposed_b = is_transposed_b(tensor);
     if (tensor->srcs[0]->dtype == vkllm_dtype_float16 && tensor->srcs[0]->dtype == vkllm_dtype_float16)
     {
         if (!context->device->support_16bit_storage)
@@ -29,16 +42,16 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
 
         if (context->device->support_fp16_arithmetic)
         {
-            *pipeline = context->pipelines.matmul.b0t1f16f16f32;
+            *pipeline = tranposed_b ? context->pipelines.matmul.b0t1f16f16f32 : context->pipelines.matmul.b0t0f16f16f32;
         }
         else
         {
-            *pipeline = context->pipelines.matmul.b0t1f16f32f32;
+            *pipeline = tranposed_b ? context->pipelines.matmul.b0t1f16f32f32 : context->pipelines.matmul.b0t0f16f32f32;
         }
     }
     else if (tensor->srcs[0]->dtype == vkllm_dtype_float32 && tensor->srcs[0]->dtype == vkllm_dtype_float32)
     {
-        *pipeline = context->pipelines.matmul.b0t1f32f32f32;
+        *pipeline = tranposed_b ? context->pipelines.matmul.b0t1f32f32f32 : context->pipelines.matmul.b0t0f32f32f32;
     }
     else
     {
@@ -62,13 +75,17 @@ vkllm_err_t vkllm_op_matmul(struct vkllm_context *context, struct vkllm_commands
     // in0 shape: [1, 1, M, K]
     // in1 shape: [1, 1, K, N]
     // output shape: [1, 1, M, N]
-    uint32_t M = in0->shapes[2];
-    uint32_t K = in0->shapes[3];
-    uint32_t N = in1->shapes[2];
 
-    _CHECK_ARGS(K == in1->shapes[3]);
-    _CHECK_ARGS(tensor->shapes[2] == M);
-    _CHECK_ARGS(tensor->shapes[3] == N);
+    uint32_t M = tensor->shapes[2];
+    uint32_t N = tensor->shapes[3];
+    _CHECK_ARGS(in0->shapes[2] == M);
+
+    uint32_t K = in0->shapes[3];
+
+    if (!is_transposed_b(tensor))
+    {
+        _CHECK_ARGS(in1->shapes[3] == N && in1->shapes[2] == K);
+    }
 
     vkllm_err_t err = VKLLM_ERR_OK;
 
