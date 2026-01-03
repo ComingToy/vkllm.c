@@ -35,8 +35,14 @@ vkllm_err_t vkllm_op_matmul(struct vkllm_context *context, struct vkllm_commands
     struct vkllm_dtype_info dtype_info;
     _CHECK(vkllm_get_dtype_info(tensor->dtype, &dtype_info));
 
-    uint32_t in0_stride = in0->strides[2] / dtype_info.bytes;
-    uint32_t in1_stride = in1->strides[2] / dtype_info.bytes;
+    struct vkllm_dtype_info in0_dtype_info;
+    _CHECK(vkllm_get_dtype_info(in0->dtype, &in0_dtype_info));
+
+    struct vkllm_dtype_info in1_dtype_info;
+    _CHECK(vkllm_get_dtype_info(in1->dtype, &in1_dtype_info));
+
+    uint32_t in0_stride = in0->strides[2] / in0_dtype_info.bytes;
+    uint32_t in1_stride = in1->strides[2] / in1_dtype_info.bytes;
     uint32_t out0_stride = tensor->strides[2] / dtype_info.bytes;
 
     struct vkllm_shader_constants *constants = NULL;
