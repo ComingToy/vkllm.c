@@ -78,6 +78,8 @@ vkllm_err_t vkllm_op_matmul(struct vkllm_context *context, struct vkllm_commands
 
     uint32_t M = tensor->shapes[2];
     uint32_t N = tensor->shapes[3];
+    uint32_t BATCH = tensor->shapes[0] * tensor->shapes[1];
+
     _CHECK_ARGS(in0->shapes[2] == M);
 
     uint32_t K = in0->shapes[3];
@@ -107,11 +109,18 @@ vkllm_err_t vkllm_op_matmul(struct vkllm_context *context, struct vkllm_commands
     uint32_t in1_stride = in1->strides[2] / in1_dtype_info.bytes;
     uint32_t out0_stride = tensor->strides[2] / dtype_info.bytes;
 
+    uint32_t in0_bstride = in0->strides[1] / in0_dtype_info.bytes;
+    uint32_t in1_bstride = in1->strides[1] / in1_dtype_info.bytes;
+    uint32_t out0_bstride = tensor->strides[1] / dtype_info.bytes;
+
     struct vkllm_shader_constants *constants = NULL;
     _CHECK(vkllm_shader_constants_new(&constants, 24));
     vkllm_shader_constants_append(constants, in0_stride);
     vkllm_shader_constants_append(constants, in1_stride);
     vkllm_shader_constants_append(constants, out0_stride);
+    vkllm_shader_constants_append(constants, in0_bstride);
+    vkllm_shader_constants_append(constants, in1_bstride);
+    vkllm_shader_constants_append(constants, out0_bstride);
     vkllm_shader_constants_append(constants, M);
     vkllm_shader_constants_append(constants, N);
     vkllm_shader_constants_append(constants, K);
@@ -129,7 +138,7 @@ vkllm_err_t vkllm_op_matmul(struct vkllm_context *context, struct vkllm_commands
     uint32_t BN = 128;
     uint32_t group_x = (M + BM - 1) / BM;
     uint32_t group_y = (N + BN - 1) / BN;
-    uint32_t group_z = 1;
+    uint32_t group_z = BATCH;
 
     _CHECK_JUMP(
         vkllm_commands_pipeline(context, commands, pipeline, bindings, NULL, constants, group_x, group_y, group_z), err,
