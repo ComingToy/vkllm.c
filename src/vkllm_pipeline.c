@@ -464,7 +464,7 @@ static vkllm_err_t vkllm_create_matmul_pipelines(struct vkllm_context *context)
         {
 
             _CHECK(vkllm_pipeline_new(context, "matmul_f16f16f32", shader_info, _vkllm_matmul_f16f16f32_spv(),
-                                      _vkllm_matmul_f16f16f32_size(), NULL, &context->pipelines.matmul.f16f32f32));
+                                      _vkllm_matmul_f16f16f32_size(), NULL, &context->pipelines.matmul.f16f16f32));
         }
     }
 
