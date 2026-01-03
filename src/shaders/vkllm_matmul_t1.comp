@@ -42,15 +42,25 @@ layout(binding = 2) writeonly buffer out0_type
     OUT_DTYPE out0[];
 };
 
+layout(constant_id = 0) const int a_broadcast_axis = 0;
+layout(constant_id = 1) const int b_broadcast_axis = 0;
+
 layout(push_constant) uniform constants
 {
     uint in0_stride;
     uint in1_stride;
     uint out0_stride;
+
     uint in0_bstride;
     uint in1_bstride;
     uint out0_bstride;
 
+    uint in0_cstride;
+    uint in1_cstride;
+    uint out0_cstride;
+
+    uint B;
+    uint C;
     uint M; // in0.shape = [M, K], in1.shape = [N, K], out0.shape = [M, N]
     uint N;
     uint K;
@@ -88,21 +98,40 @@ void main(void)
     uint local_tid_y = gl_LocalInvocationID.y;
     uint tid = local_tid_x * gl_WorkGroupSize.y + local_tid_y;
 
-    uint batch_id = gl_GlobalInvocationID.z;
+    uint glb_tid_z = gl_GlobalInvocationID.z;
+    uint batch_id = glb_tid_z / C;
+    uint channel_id = glb_tid_z % C;
 
-#if BROADCAST_A
     uint a_batch_off = 0;
-#else
-    uint a_batch_off = batch_id * in0_bstride;
-#endif
+    if (a_broadcast_axis == 0)
+    {
+        a_batch_off = channel_id * in0_cstride;
+    }
+    else if (a_broadcast_axis == 1)
+    {
+        a_batch_off = batch_id * in0_bstride;
+    }
+    else
+    {
+        a_batch_off = batch_id * in0_bstride + channel_id * in0_cstride;
+    }
 
-#if BROADCAST_B
     uint b_batch_off = 0;
-#else
-    uint b_batch_off = batch_id * in1_bstride;
-#endif
 
-    uint out_batch_off = batch_id * out0_bstride;
+    if (b_broadcast_axis == 0)
+    {
+        b_batch_off = channel_id * in1_cstride;
+    }
+    else if (b_broadcast_axis == 1)
+    {
+        b_batch_off = batch_id * in1_bstride;
+    }
+    else
+    {
+        b_batch_off = batch_id * in1_bstride + channel_id * in1_cstride;
+    }
+
+    uint out_batch_off = batch_id * out0_bstride + channel_id * out0_cstride;
 
     uint blk_tid = tid * load_n_per_thread;
     uint ld_a_x = blk_tid / BK; // tid * 4 / BK

@@ -31,7 +31,10 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
         return VKLLM_ERR_PIPELINE_NOT_FOUND;
     }
 
-    bool tranposed_b = is_transposed_b(tensor);
+    int tranposed_b = (int)is_transposed_b(tensor);
+    int b_broadcast_type = 2;
+    int a_broadcast_type = 2;
+
     if (tensor->srcs[0]->dtype == vkllm_dtype_float16 && tensor->srcs[0]->dtype == vkllm_dtype_float16)
     {
         if (!context->device->support_16bit_storage)
@@ -42,16 +45,16 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
 
         if (context->device->support_fp16_arithmetic)
         {
-            *pipeline = tranposed_b ? context->pipelines.matmul.b0t1f16f16f32 : context->pipelines.matmul.b0t0f16f16f32;
+            *pipeline = context->pipelines.matmul.f16f16f32[a_broadcast_type][b_broadcast_type][tranposed_b];
         }
         else
         {
-            *pipeline = tranposed_b ? context->pipelines.matmul.b0t1f16f32f32 : context->pipelines.matmul.b0t0f16f32f32;
+            *pipeline = context->pipelines.matmul.f16f32f32[a_broadcast_type][b_broadcast_type][tranposed_b];
         }
     }
     else if (tensor->srcs[0]->dtype == vkllm_dtype_float32 && tensor->srcs[0]->dtype == vkllm_dtype_float32)
     {
-        *pipeline = tranposed_b ? context->pipelines.matmul.b0t1f32f32f32 : context->pipelines.matmul.b0t0f32f32f32;
+        *pipeline = context->pipelines.matmul.f32f32f32[a_broadcast_type][b_broadcast_type][tranposed_b];
     }
     else
     {
@@ -76,9 +79,11 @@ vkllm_err_t vkllm_op_matmul(struct vkllm_context *context, struct vkllm_commands
     // in1 shape: [1, 1, K, N]
     // output shape: [1, 1, M, N]
 
+    uint32_t B = tensor->shapes[0];
+    uint32_t C = tensor->shapes[1];
     uint32_t M = tensor->shapes[2];
     uint32_t N = tensor->shapes[3];
-    uint32_t BATCH = tensor->shapes[0] * tensor->shapes[1];
+    uint32_t BATCH = B * C;
 
     _CHECK_ARGS(in0->shapes[2] == M);
 
@@ -109,9 +114,13 @@ vkllm_err_t vkllm_op_matmul(struct vkllm_context *context, struct vkllm_commands
     uint32_t in1_stride = in1->strides[2] / in1_dtype_info.bytes;
     uint32_t out0_stride = tensor->strides[2] / dtype_info.bytes;
 
-    uint32_t in0_bstride = in0->strides[1] / in0_dtype_info.bytes;
-    uint32_t in1_bstride = in1->strides[1] / in1_dtype_info.bytes;
-    uint32_t out0_bstride = tensor->strides[1] / dtype_info.bytes;
+    uint32_t in0_bstride = in0->strides[0] / in0_dtype_info.bytes;
+    uint32_t in1_bstride = in1->strides[0] / in1_dtype_info.bytes;
+    uint32_t out0_bstride = tensor->strides[0] / dtype_info.bytes;
+
+    uint32_t in0_cstride = in0->strides[1] / in0_dtype_info.bytes;
+    uint32_t in1_cstride = in1->strides[1] / in1_dtype_info.bytes;
+    uint32_t out0_cstride = tensor->strides[1] / dtype_info.bytes;
 
     struct vkllm_shader_constants *constants = NULL;
     _CHECK(vkllm_shader_constants_new(&constants, 24));
@@ -121,6 +130,11 @@ vkllm_err_t vkllm_op_matmul(struct vkllm_context *context, struct vkllm_commands
     vkllm_shader_constants_append(constants, in0_bstride);
     vkllm_shader_constants_append(constants, in1_bstride);
     vkllm_shader_constants_append(constants, out0_bstride);
+    vkllm_shader_constants_append(constants, in0_cstride);
+    vkllm_shader_constants_append(constants, in1_cstride);
+    vkllm_shader_constants_append(constants, out0_cstride);
+    vkllm_shader_constants_append(constants, B);
+    vkllm_shader_constants_append(constants, C);
     vkllm_shader_constants_append(constants, M);
     vkllm_shader_constants_append(constants, N);
     vkllm_shader_constants_append(constants, K);
