@@ -1,7 +1,7 @@
 #ifndef __VKLLM_TENSOR_H__
 #define __VKLLM_TENSOR_H__
 
-#ifdef __cplusplus 
+#ifdef __cplusplus
 extern "C" {
 #endif
 

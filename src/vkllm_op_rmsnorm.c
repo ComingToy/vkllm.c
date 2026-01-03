@@ -8,6 +8,37 @@
 #include "vkllm_gpu_device.h"
 #include "vkllm_tensor.h"
 
+static vkllm_err_t vkllm_op_rmsnorm_get_pipeline(struct vkllm_context *context, struct vkllm_tensor *tensor,
+                                                 struct vkllm_pipeline **pipeline)
+{
+    _CHECK_ARGS(context && tensor && pipeline);
+    _CHECK_ARGS(tensor->srcs[0] && tensor->srcs[1]);
+
+    *pipeline = NULL;
+
+    if (tensor->dtype == vkllm_dtype_float32 && tensor->srcs[0]->dtype == vkllm_dtype_float32 &&
+        tensor->srcs[1]->dtype == vkllm_dtype_float32)
+    {
+        *pipeline = context->pipelines.rmsnorm.f32f32f32;
+    }
+    else if (tensor->dtype == vkllm_dtype_float32 && tensor->srcs[0]->dtype == vkllm_dtype_float16 &&
+             tensor->srcs[1]->dtype == vkllm_dtype_float16)
+    {
+        *pipeline = context->pipelines.rmsnorm.f16f32f32;
+    }
+    else if (tensor->dtype == vkllm_dtype_float16 && tensor->srcs[0]->dtype == vkllm_dtype_float16 &&
+             tensor->srcs[1]->dtype == vkllm_dtype_float16)
+    {
+        *pipeline = context->pipelines.rmsnorm.f16f32f16;
+    }
+    else
+    {
+        return VKLLM_ERR_PIPELINE_NOT_FOUND;
+    }
+
+    return VKLLM_ERR_OK;
+}
+
 vkllm_err_t vkllm_op_rmsnorm(struct vkllm_context *context, struct vkllm_commands *commands,
                              struct vkllm_tensor *tensor)
 {
@@ -30,7 +61,9 @@ vkllm_err_t vkllm_op_rmsnorm(struct vkllm_context *context, struct vkllm_command
 
     vkllm_err_t err = VKLLM_ERR_OK;
 
-    struct vkllm_pipeline *pipeline = tensor->pipeline;
+    struct vkllm_pipeline *pipeline = NULL;
+    _CHECK(vkllm_op_rmsnorm_get_pipeline(context, tensor, &pipeline));
+    tensor->pipeline = pipeline;
 
     struct vkllm_dtype_info in0_dtype_info, in1_dtype_info, dtype_info;
     _CHECK(vkllm_get_dtype_info(in0->dtype, &in0_dtype_info));

@@ -6,6 +6,48 @@
 #include "vkllm_gpu_device.h"
 #include "vkllm_pipeline.h"
 
+static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, struct vkllm_tensor *tensor,
+                                                struct vkllm_pipeline **pipeline)
+{
+    _CHECK_ARGS(context && tensor && pipeline);
+    *pipeline = NULL;
+
+    if (tensor->dtype != vkllm_dtype_float32)
+    {
+        log_error("tensor %s op = %s, dtype = %s, pipeline not found.", tensor->name, vkllm_op_s(tensor->op),
+                  vkllm_dtype_s(tensor->dtype));
+        return VKLLM_ERR_PIPELINE_NOT_FOUND;
+    }
+
+    if (tensor->srcs[0]->dtype == vkllm_dtype_float16 && tensor->srcs[0]->dtype == vkllm_dtype_float16)
+    {
+        if (!context->device->support_16bit_storage)
+        {
+            log_error("matmul pipeline: fp16 type inputs is unsupported.");
+            return VKLLM_ERR_PIPELINE_NOT_FOUND;
+        }
+
+        if (context->device->support_fp16_arithmetic)
+        {
+            *pipeline = context->pipelines.matmul.b0t1f16f16f32;
+        }
+        else
+        {
+            *pipeline = context->pipelines.matmul.b0t1f16f32f32;
+        }
+    }
+    else if (tensor->srcs[0]->dtype == vkllm_dtype_float32 && tensor->srcs[0]->dtype == vkllm_dtype_float32)
+    {
+        *pipeline = context->pipelines.matmul.b0t1f32f32f32;
+    }
+    else
+    {
+        return VKLLM_ERR_PIPELINE_NOT_FOUND;
+    }
+
+    return VKLLM_ERR_OK;
+}
+
 vkllm_err_t vkllm_op_matmul(struct vkllm_context *context, struct vkllm_commands *commands, struct vkllm_tensor *tensor)
 {
     _CHECK_ARGS(context && commands && tensor);
@@ -30,7 +72,10 @@ vkllm_err_t vkllm_op_matmul(struct vkllm_context *context, struct vkllm_commands
 
     vkllm_err_t err = VKLLM_ERR_OK;
 
-    struct vkllm_pipeline *pipeline = tensor->pipeline;
+    struct vkllm_pipeline *pipeline = NULL;
+
+    _CHECK(vkllm_op_matmul_get_pipeline(context, tensor, &pipeline));
+    tensor->pipeline = pipeline;
 
     struct vkllm_dtype_info dtype_info;
     _CHECK(vkllm_get_dtype_info(tensor->dtype, &dtype_info));

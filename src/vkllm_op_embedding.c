@@ -7,6 +7,38 @@
 #include "vkllm_context.h"
 #include "vkllm_tensor.h"
 
+static vkllm_err_t vkllm_op_embedding_get_pipeline(struct vkllm_context *context, struct vkllm_tensor *tensor,
+                                                   struct vkllm_pipeline **pipeline)
+{
+    _CHECK_ARGS(context && tensor && pipeline);
+    _CHECK_ARGS(tensor->srcs[0] && tensor->srcs[1]);
+
+    *pipeline = NULL;
+    if ((tensor->dtype != vkllm_dtype_float32 && tensor->dtype != vkllm_dtype_float16) ||
+        tensor->srcs[0]->dtype != vkllm_dtype_uint32)
+    {
+        log_error("unsupported op result dtype: %s, dtype of in0: %s", vkllm_dtype_s(tensor->dtype),
+                  vkllm_dtype_s(tensor->srcs[0]->dtype));
+        return VKLLM_ERR_ARGS;
+    }
+
+    if (tensor->srcs[1]->dtype == vkllm_dtype_float16)
+    {
+        *pipeline = context->pipelines.embedding.f16;
+    }
+    else if (tensor->srcs[1]->dtype == vkllm_dtype_float32)
+    {
+        *pipeline = context->pipelines.embedding.f32;
+    }
+    else
+    {
+        *pipeline = NULL;
+        return VKLLM_ERR_PIPELINE_NOT_FOUND;
+    }
+
+    return VKLLM_ERR_OK;
+}
+
 vkllm_err_t vkllm_op_embedding(struct vkllm_context *context, struct vkllm_commands *commands,
                                struct vkllm_tensor *tensor)
 {
@@ -47,7 +79,10 @@ vkllm_err_t vkllm_op_embedding(struct vkllm_context *context, struct vkllm_comma
     vkllm_array_ptr_append(bindings, in1);
     vkllm_array_ptr_append(bindings, tensor);
 
-    struct vkllm_pipeline *pipeline = tensor->pipeline;
+    struct vkllm_pipeline *pipeline = NULL;
+    _CHECK(vkllm_op_embedding_get_pipeline(context, tensor, &pipeline));
+    tensor->pipeline = pipeline;
+
     uint32_t N = _MUL4(in0->shapes);
     uint32_t group_x = (N + pipeline->shader_info.local_x - 1) / pipeline->shader_info.local_x;
     vkllm_err_t err = vkllm_commands_pipeline(context, commands, pipeline, bindings, NULL, constants, group_x, 1, 1);
