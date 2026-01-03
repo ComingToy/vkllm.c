@@ -27,6 +27,14 @@
 #define LOAD_DTYPE
 #endif
 
+#ifndef BROADCAST_A
+#define BROADCAST_A 0
+#endif
+
+#ifndef BROADCAST_B
+#define BROADCAST_B 0
+#endif
+
 layout(binding = 0) readonly buffer in0_type
 {
     IN0_DTYPE in0[];
@@ -88,8 +96,18 @@ void main(void)
     uint tid = local_tid_x * gl_WorkGroupSize.y + local_tid_y;
 
     uint batch_id = gl_GlobalInvocationID.z;
+#if BROADCAST_A
+    uint a_batch_off = 0;
+#else
     uint a_batch_off = batch_id * in0_bstride;
+#endif
+
+#if BROADCAST_B
+    uint b_batch_off = 0;
+#else
     uint b_batch_off = batch_id * in1_bstride;
+#endif
+
     uint out_batch_off = batch_id * out0_bstride;
 
     uint blk_tid = tid * load_n_per_thread;
