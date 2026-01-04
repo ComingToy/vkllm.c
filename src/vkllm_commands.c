@@ -307,6 +307,7 @@ vkllm_err_t vkllm_commands_wait_exec(struct vkllm_context *context, struct vkllm
 
 void vkllm_commands_free(struct vkllm_context *context, struct vkllm_commands *commands)
 {
+    vkQueueWaitIdle(commands->vk_queue);
     vkFreeCommandBuffers(commands->device->vk_dev, commands->vk_command_pool, 1, &commands->vk_command_buffer);
     vkDestroyCommandPool(commands->device->vk_dev, commands->vk_command_pool, NULL);
     vkDestroyFence(commands->device->vk_dev, commands->vk_fence, NULL);
