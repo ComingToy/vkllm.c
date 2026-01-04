@@ -39,6 +39,14 @@ static int boardcast_type(struct vkllm_tensor *a, struct vkllm_tensor *b)
     {
         type = BOARDCAST_AXIS01;
     }
+    else if (a->shapes[0] == 1 && a->shapes[1] == 1 && b->shapes[0] != 1 && b->shapes[1] == 1)
+    {
+        type = BOARDCAST_AXIS0;
+    }
+    else if (a->shapes[0] == 1 && a->shapes[1] == 1 && b->shapes[0] == 1 && b->shapes[1] != 1)
+    {
+        type = BOARDCAST_AXIS1;
+    }
 
     return type;
 }
