@@ -153,7 +153,6 @@ static struct
     vkllm_dtype_t dtype;
     bool transposed_b;
 } tests[] = {
-#if 1
     // Single batch tests (B=1, C=1, no broadcasting) with transposed B
     {1, 1, 1, 1, 512, 1024, 2048, vkllm_dtype_float16, true},
     {1, 1, 1, 1, 333, 1259, 365, vkllm_dtype_float16, true},
@@ -183,16 +182,16 @@ static struct
     // Multi-batch and multi-channel tests (B>1, C>1, no broadcasting) without transposed B
     {2, 4, 2, 4, 128, 256, 512, vkllm_dtype_float16, false},
     {4, 2, 4, 2, 256, 512, 1024, vkllm_dtype_float32, false},
-#endif
 
     // Broadcasting tests: B_a=1, B_b>1 (broadcast A's batch dimension)
-    // {1, 1, 4, 1, 128, 256, 512, vkllm_dtype_float16, true},
-    // {1, 1, 8, 1, 64, 128, 256, vkllm_dtype_float32, true},
-    // {1, 1, 4, 1, 128, 256, 512, vkllm_dtype_float16, false},
-    // {1, 1, 8, 1, 64, 128, 256, vkllm_dtype_float32, false},
+    {1, 1, 4, 1, 128, 256, 512, vkllm_dtype_float16, true},
+    {1, 1, 8, 1, 64, 128, 256, vkllm_dtype_float32, true},
+    {1, 1, 4, 1, 128, 256, 512, vkllm_dtype_float16, false},
+    {1, 1, 8, 1, 64, 128, 256, vkllm_dtype_float32, false},
 
     // Broadcasting tests: B_a>1, B_b=1 (broadcast B's batch dimension)
-    // {4, 1, 1, 1, 128, 256, 512, vkllm_dtype_float16, true},
+    {4, 1, 1, 1, 128, 256, 512, vkllm_dtype_float16, true},
+
     {8, 1, 1, 1, 64, 128, 256, vkllm_dtype_float32, true},
     {4, 1, 1, 1, 128, 256, 512, vkllm_dtype_float16, false},
     {8, 1, 1, 1, 64, 128, 256, vkllm_dtype_float32, false},
@@ -300,29 +299,20 @@ START_TEST(test_op_matmul)
     ck_assert_int_eq(vkllm_commands_begin(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_upload(context, commands, input_a, buf_a->data, buf_a->alloc_n), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_upload(context, commands, input_b, buf_b->data, buf_b->alloc_n), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_op_matmul(context, commands, output), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_end(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_submit(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_wait_exec(context, commands), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_tensor_flush_cache(context, output), VKLLM_ERR_OK);
 
-    uint64_t total_time_cost = 0;
-    for (uint32_t i = 0; i < 50; ++i)
-    {
-        ck_assert_int_eq(vkllm_commands_begin(context, commands), VKLLM_ERR_OK);
-        ck_assert_int_eq(vkllm_op_matmul(context, commands, output), VKLLM_ERR_OK);
-        ck_assert_int_eq(vkllm_commands_end(context, commands), VKLLM_ERR_OK);
-        ck_assert_int_eq(vkllm_commands_submit(context, commands), VKLLM_ERR_OK);
-        ck_assert_int_eq(vkllm_commands_wait_exec(context, commands), VKLLM_ERR_OK);
-        ck_assert_int_eq(vkllm_tensor_flush_cache(context, output), VKLLM_ERR_OK);
+    uint64_t time_cost = 0;
+    ck_assert_int_eq(vkllm_pipeline_query_exec_time(context, output->pipeline, &time_cost), VKLLM_ERR_OK);
 
-        uint64_t time_cost = 0;
-        ck_assert_int_eq(vkllm_pipeline_query_exec_time(context, output->pipeline, &time_cost), VKLLM_ERR_OK);
-        total_time_cost += time_cost;
-    }
-
-    log_info("matmul A[%u,%u,%u,%u] x B[%u,%u,%u,%u] -> C[%u,%u,%u,%u], dtype=%s, transposed_b=%s: avg time cost: %lu "
+    log_info("test %d matmul A[%u,%u,%u,%u] x B[%u,%u,%u,%u] -> C[%u,%u,%u,%u], dtype=%s, transposed_b=%s: avg time "
+             "cost: %lu "
              "micro secs",
-             B_a, C_a, M, K, B_b, C_b, tests[_i].transposed_b ? N : K, tests[_i].transposed_b ? K : N, B_c, C_c, M, N,
-             vkllm_dtype_s(tests[_i].dtype), BOOL_S(tests[_i].transposed_b), total_time_cost / 50 / 1000);
+             _i, B_a, C_a, M, K, B_b, C_b, tests[_i].transposed_b ? N : K, tests[_i].transposed_b ? K : N, B_c, C_c, M,
+             N, vkllm_dtype_s(tests[_i].dtype), BOOL_S(tests[_i].transposed_b), time_cost / 1000);
     // Compare results
     const void *gpu_output = output->data.host;
     // print_n("gpu_output", gpu_output, 64);

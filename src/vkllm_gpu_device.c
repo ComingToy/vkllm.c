@@ -103,7 +103,12 @@ static int create_instance(struct vkllm_gpu_device *pdev)
     {
         _CHECK_VK(pfn(pdev->vk_instance, &debugCreateInfo, NULL, &pdev->vk_debug_msgr));
     }
-
+    else
+    {
+        pdev->vk_debug_msgr = VK_NULL_HANDLE;
+    }
+#else
+    pdev->vk_debug_msgr = VK_NULL_HANDLE;
 #endif
 
     return VKLLM_ERR_OK;
@@ -135,7 +140,16 @@ static vkllm_err_t init_physical_device(struct vkllm_context *context)
 
     VkPhysicalDevice vk_physical_dev = pdev->vk_physical_dev.dev;
 
+    vkGetPhysicalDeviceProperties(vk_physical_dev, &pdev->vk_physical_dev.properties);
     vkGetPhysicalDeviceFeatures(vk_physical_dev, &pdev->vk_physical_dev.features);
+
+    for (uint32_t i = 0; i < ndev; ++i)
+    {
+        VkPhysicalDeviceProperties properties;
+        vkGetPhysicalDeviceProperties(physical_devices[i], &properties);
+        log_info("gpu id: %u device name: %s, device id: %u, device type: %d", i, properties.deviceName,
+                 properties.deviceID, (int)properties.deviceType);
+    }
 
     _CHECK_VK(
         vkEnumerateDeviceExtensionProperties(vk_physical_dev, NULL, &pdev->vk_physical_dev.n_ext_properties, NULL));
@@ -154,9 +168,6 @@ static vkllm_err_t init_physical_device(struct vkllm_context *context)
 
     vkGetPhysicalDeviceQueueFamilyProperties(vk_physical_dev, &pdev->vk_physical_dev.n_queue_family_properties,
                                              pdev->vk_physical_dev.queue_family_properties);
-
-    vkGetPhysicalDeviceProperties(vk_physical_dev, &pdev->vk_physical_dev.properties);
-
     pdev->vk_physical_dev.feat_shader_fp16_int8.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES;
     pdev->vk_physical_dev.feat_shader_fp16_int8.pNext = NULL;
 
@@ -440,16 +451,35 @@ vkllm_err_t compute_group_counts(struct vkllm_context *context, uint32_t N, uint
 void vkllm_gpu_device_free(struct vkllm_context *context)
 {
     struct vkllm_gpu_device *pdev = context->device;
+    
+    // CRITICAL: Wait for all GPU operations to complete before destroying resources
+    // This prevents device state corruption when resources are destroyed while still in use
+    vkDeviceWaitIdle(pdev->vk_dev);
+    
+    // Destroy VMA allocator before destroying device
     vmaDestroyAllocator(pdev->vma_allocator);
-
-    PFN_vkDestroyDebugUtilsMessengerEXT pfn = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
-        pdev->vk_instance, "vkDestroyDebugUtilsMessengerEXT");
-    if (pfn)
-    {
-        pfn(pdev->vk_instance, pdev->vk_debug_msgr, NULL);
-    }
+    
+    // Destroy logical device before debug messenger and instance
     vkDestroyDevice(pdev->vk_dev, NULL);
+
+    // Destroy debug messenger before instance
+    if (pdev->vk_debug_msgr != VK_NULL_HANDLE)
+    {
+        PFN_vkDestroyDebugUtilsMessengerEXT pfn = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
+            pdev->vk_instance, "vkDestroyDebugUtilsMessengerEXT");
+        if (pfn)
+        {
+            pfn(pdev->vk_instance, pdev->vk_debug_msgr, NULL);
+        }
+        else
+        {
+            log_error("get vkDestroyDebugUtilsMessengerEXT pfn failed.");
+        }
+    }
+
+    // Destroy instance last
     vkDestroyInstance(pdev->vk_instance, NULL);
+
     free(pdev->vk_physical_dev.ext_properties);
     free(pdev->vk_physical_dev.queue_family_properties);
     free(pdev);
