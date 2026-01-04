@@ -481,9 +481,9 @@ static vkllm_err_t vkllm_create_matmul_pipelines(struct vkllm_context *context)
     _CREATE_MATMUL_PIPELINE_T(__tag, 0);                                                                               \
     _CREATE_MATMUL_PIPELINE_T(__tag, 1)
 
-    for (uint32_t a = 0; a < 4; ++a)
+    for (int a = 0; a < 4; ++a)
     {
-        for (uint32_t b = 0; b < 4; ++b)
+        for (int b = 0; b < 4; ++b)
         {
             _CREATE_MATMUL_PIPELINE(f32f32f32);
             if (context->device->support_16bit_storage)
