@@ -189,3 +189,37 @@ vkllm_err_t vkllm_tensor_new_staging(struct vkllm_context *context, struct vkllm
                             staging));
     return VKLLM_ERR_OK;
 }
+
+vkllm_err_t vkllm_tensor_reshape(struct vkllm_context *context, struct vkllm_tensor *tensor, const uint32_t *shapes)
+{
+    _CHECK_ARGS(context && tensor && shapes);
+    _CHECK_ARGS(_MUL4(tensor->shapes) == _MUL4(shapes));
+
+    tensor->shapes[0] = shapes[0];
+    tensor->shapes[1] = shapes[1];
+    tensor->shapes[2] = shapes[2];
+    tensor->shapes[3] = shapes[3];
+
+    return VKLLM_ERR_OK;
+}
+
+vkllm_err_t vkllm_tensor_permute(struct vkllm_context *context, struct vkllm_tensor *tensor, const uint32_t *axis)
+{
+    _CHECK_ARGS(context && tensor && axis);
+
+    uint32_t shapes[4] = {tensor->shapes[0], tensor->shapes[1], tensor->shapes[2], tensor->shapes[3]};
+    uint32_t strides[4] = {tensor->strides[0], tensor->strides[1], tensor->strides[2], tensor->strides[3]};
+
+    // Apply permutation: new dimension i gets the shape and stride from old dimension axis[i]
+    tensor->shapes[0] = shapes[axis[0]];
+    tensor->shapes[1] = shapes[axis[1]];
+    tensor->shapes[2] = shapes[axis[2]];
+    tensor->shapes[3] = shapes[axis[3]];
+
+    tensor->strides[0] = strides[axis[0]];
+    tensor->strides[1] = strides[axis[1]];
+    tensor->strides[2] = strides[axis[2]];
+    tensor->strides[3] = strides[axis[3]];
+
+    return VKLLM_ERR_OK;
+}
