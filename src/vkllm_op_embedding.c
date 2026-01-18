@@ -39,8 +39,25 @@ static vkllm_err_t vkllm_op_embedding_get_pipeline(struct vkllm_context *context
     return VKLLM_ERR_OK;
 }
 
-vkllm_err_t vkllm_op_embedding(struct vkllm_context *context, struct vkllm_commands *commands,
-                               struct vkllm_tensor *tensor)
+vkllm_err_t vkllm_op_embedding_init(struct vkllm_context *context, struct vkllm_commands *commands,
+                                    struct vkllm_tensor *tensor)
+{
+    _CHECK_ARGS(context && commands && tensor);
+    _CHECK_ARGS(tensor->srcs[0] && tensor->srcs[1]);
+
+    struct vkllm_tensor *in0 = tensor->srcs[0], *in1 = tensor->srcs[1];
+
+    _CHECK_ARGS(in0->dtype == vkllm_dtype_uint32);
+    _CHECK_ARGS(in1->dtype == vkllm_dtype_float16 || in1->dtype == vkllm_dtype_float32);
+    _CHECK_ARGS(in0->shapes[0] == 1 && in1->shapes[0] == 1 && in1->shapes[1] == 1);
+
+    _CHECK(vkllm_op_embedding_get_pipeline(context, tensor, &tensor->pipeline));
+
+    return VKLLM_ERR_OK;
+}
+
+vkllm_err_t vkllm_op_embedding_run(struct vkllm_context *context, struct vkllm_commands *commands,
+                                   struct vkllm_tensor *tensor)
 {
     _CHECK_ARGS(context && commands && tensor);
     _CHECK_ARGS(tensor->srcs[0] && tensor->srcs[1]);
@@ -79,10 +96,7 @@ vkllm_err_t vkllm_op_embedding(struct vkllm_context *context, struct vkllm_comma
     vkllm_array_ptr_append(bindings, in1);
     vkllm_array_ptr_append(bindings, tensor);
 
-    struct vkllm_pipeline *pipeline = NULL;
-    _CHECK(vkllm_op_embedding_get_pipeline(context, tensor, &pipeline));
-    tensor->pipeline = pipeline;
-
+    struct vkllm_pipeline *pipeline = tensor->pipeline;
     uint32_t N = _MUL4(in0->shapes);
     uint32_t group_x = (N + pipeline->shader_info.local_x - 1) / pipeline->shader_info.local_x;
     vkllm_err_t err = vkllm_commands_pipeline(context, commands, pipeline, bindings, NULL, constants, group_x, 1, 1);
@@ -90,4 +104,14 @@ vkllm_err_t vkllm_op_embedding(struct vkllm_context *context, struct vkllm_comma
     vkllm_shader_constants_free(constants);
     vkllm_array_ptr_free(bindings);
     return err;
+}
+
+vkllm_err_t vkllm_op_embedding_post_run(struct vkllm_context *context, struct vkllm_commands *commands,
+                                        struct vkllm_tensor *tensor)
+{
+    __UNUSED(context);
+    __UNUSED(commands);
+    __UNUSED(tensor);
+
+    return VKLLM_ERR_OK;
 }

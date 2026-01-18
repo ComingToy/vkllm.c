@@ -47,6 +47,13 @@ struct vkllm_context
             struct vkllm_pipeline *f16f32f32[4][4][2];
             struct vkllm_pipeline *f16f16f32[4][4][2];
         } matmul;
+
+        struct
+        {
+            struct vkllm_pipeline *f16f16;
+            struct vkllm_pipeline *f16f32;
+            struct vkllm_pipeline *f32f32;
+        } rope;
     } pipelines;
 };
 

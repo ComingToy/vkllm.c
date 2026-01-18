@@ -147,8 +147,8 @@ static vkllm_err_t init_physical_device(struct vkllm_context *context)
     {
         VkPhysicalDeviceProperties properties;
         vkGetPhysicalDeviceProperties(physical_devices[i], &properties);
-        log_info("gpu id: %u device name: %s, device id: %u, device type: %d", i, properties.deviceName,
-                 properties.deviceID, (int)properties.deviceType);
+        // log_info("gpu id: %u device name: %s, device id: %u, device type: %d", i, properties.deviceName,
+        //          properties.deviceID, (int)properties.deviceType);
     }
 
     _CHECK_VK(

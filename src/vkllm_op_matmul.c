@@ -97,7 +97,22 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
     return VKLLM_ERR_OK;
 }
 
-vkllm_err_t vkllm_op_matmul(struct vkllm_context *context, struct vkllm_commands *commands, struct vkllm_tensor *tensor)
+vkllm_err_t vkllm_op_matmul_init(struct vkllm_context *context, struct vkllm_commands *commands,
+                                 struct vkllm_tensor *tensor)
+{
+    _CHECK_ARGS(context && commands && tensor);
+    _CHECK_ARGS(tensor->srcs[0] && tensor->srcs[1]);
+    _CHECK_ARGS(tensor->op == VKLLM_OP_MATMUL);
+
+    struct vkllm_tensor *in0 = tensor->srcs[0], *in1 = tensor->srcs[1];
+    _CHECK_ARGS(in0 && in1);
+    _CHECK(vkllm_op_matmul_get_pipeline(context, tensor, &tensor->pipeline));
+
+    return VKLLM_ERR_OK;
+}
+
+vkllm_err_t vkllm_op_matmul_run(struct vkllm_context *context, struct vkllm_commands *commands,
+                                struct vkllm_tensor *tensor)
 {
     _CHECK_ARGS(context && commands && tensor);
     _CHECK_ARGS(tensor->srcs[0] && tensor->srcs[1]);
@@ -129,10 +144,7 @@ vkllm_err_t vkllm_op_matmul(struct vkllm_context *context, struct vkllm_commands
 
     vkllm_err_t err = VKLLM_ERR_OK;
 
-    struct vkllm_pipeline *pipeline = NULL;
-
-    _CHECK(vkllm_op_matmul_get_pipeline(context, tensor, &pipeline));
-    tensor->pipeline = pipeline;
+    struct vkllm_pipeline *pipeline = tensor->pipeline;
 
     struct vkllm_dtype_info dtype_info;
     _CHECK(vkllm_get_dtype_info(tensor->dtype, &dtype_info));
@@ -196,4 +208,14 @@ free_bindings_out:
 free_constants_out:
     vkllm_shader_constants_free(constants);
     return err;
+}
+
+vkllm_err_t vkllm_op_matmul_post_run(struct vkllm_context *context, struct vkllm_commands *commands,
+                                     struct vkllm_tensor *tensor)
+{
+    __UNUSED(context);
+    __UNUSED(commands);
+    __UNUSED(tensor);
+
+    return VKLLM_ERR_OK;
 }

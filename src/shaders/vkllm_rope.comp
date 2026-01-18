@@ -1,0 +1,72 @@
+#version 450 core
+#include "vkllm_shader_header.comp.h"
+
+#ifndef DTYPE
+#define DTYPE float
+#endif
+
+#ifndef LOAD_DTYE
+#define LOAD_DTYE float
+#endif
+
+layout(binding = 0) readonly buffer in0_type
+{
+    DTYPE freqc[];
+};
+
+layout(binding = 1) readonly buffer in1_type
+{
+    DTYPE freqs[];
+};
+
+layout(binding = 2) buffer kv_type
+{
+    DTYPE kv[];
+};
+
+layout(push_constant) uniform constants
+{
+    ShapeConstant freq_shape;
+    ShapeConstant kv_shape;
+    uint offsets;
+};
+
+void get_indices(uint tid, out uint b, out uint c, out uint h, out uint w)
+{
+    uint shape3 = kv_shape.shapes[3] / 2;
+    uint cn = kv_shape.shapes[2] * shape3;
+    uint bn = kv_shape.shapes[1] * cn;
+    b = tid / bn;
+    uint b_offset = b * bn;
+
+    c = (tid - b_offset) / cn;
+    uint c_offset = c * cn;
+
+    h = (tid - b_offset - c_offset) / shape3;
+    w = tid - b_offset - c_offset - h * shape3;
+}
+
+void main(void)
+{
+    uint tid = get_thread_id();
+    uint b = 0, c = 0, h = 0, w = 0;
+    get_indices(tid, b, c, h, w);
+
+    if (b >= kv_shape.shapes[0] || c >= kv_shape.shapes[1] || h >= kv_shape.shapes[2] || 2 * w >= kv_shape.shapes[3])
+    {
+        return;
+    }
+
+    uint i0 = b * kv_shape.strides[0] + c * kv_shape.strides[1] + h * kv_shape.strides[2] + 2 * w * kv_shape.strides[3];
+    uint i1 = i0 + 1;
+
+    uint f0 = (h + offsets) * freq_shape.strides[2] + w * freq_shape.strides[3];
+
+    LOAD_DTYE fc = LOAD_DTYE(freqc[f0]);
+    LOAD_DTYE fs = LOAD_DTYE(freqs[f0]);
+    LOAD_DTYE q0 = LOAD_DTYE(kv[i0]);
+    LOAD_DTYE q1 = LOAD_DTYE(kv[i1]);
+
+    kv[i0] = DTYPE(q0 * fc - q1 * fs);
+    kv[i1] = DTYPE(q0 * fs + q1 * fc);
+}
