@@ -13,6 +13,7 @@ cc_library(
         "vkllm_op_embedding.c",
         "vkllm_op_rmsnorm.c",
         "vkllm_op_matmul.c",
+        "vkllm_op_rope.c",
     ],
     hdrs = [
         "vkllm_gpu_device.h",
@@ -32,6 +33,7 @@ cc_library(
         "vkllm_op_embedding.h",
         "vkllm_op_rmsnorm.h",
         "vkllm_op_matmul.h",
+        "vkllm_op_rope.h",
     ],
     deps = [
 		"//vulkan_rules:vulkan_cc_library",

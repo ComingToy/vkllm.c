@@ -9,8 +9,6 @@
 #include "vkllm_common.h"
 #include "vulkan/vulkan_core.h"
 
-// #define __VKLLM_DEBUG__ 1
-
 #ifdef __VKLLM_DEBUG__
 static VKAPI_ATTR VkBool32 VKAPI_CALL
 debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,    // 消息严重级别

@@ -1,34 +1,21 @@
 #version 450 core
 #include "vkllm_shader_header.comp.h"
 
-#ifndef DTYPE
-#define DTYPE float
-#endif
-
-#ifndef LOAD_DTYE
-#define LOAD_DTYE float
-#endif
-
-layout(binding = 0) readonly buffer in0_type
-{
-    DTYPE freqc[];
-};
-
-layout(binding = 1) readonly buffer in1_type
-{
-    DTYPE freqs[];
-};
-
-layout(binding = 2) buffer kv_type
+layout(binding = 0) readonly buffer kv_type
 {
     DTYPE kv[];
 };
 
+layout(binding = 1) writeonly buffer kv_type1
+{
+    DTYPE kv_out[];
+};
+
 layout(push_constant) uniform constants
 {
-    ShapeConstant freq_shape;
     ShapeConstant kv_shape;
     uint offsets;
+    LOAD_DTYPE base;
 };
 
 void get_indices(uint tid, out uint b, out uint c, out uint h, out uint w)
@@ -60,13 +47,15 @@ void main(void)
     uint i0 = b * kv_shape.strides[0] + c * kv_shape.strides[1] + h * kv_shape.strides[2] + 2 * w * kv_shape.strides[3];
     uint i1 = i0 + 1;
 
-    uint f0 = (h + offsets) * freq_shape.strides[2] + w * freq_shape.strides[3];
+    LOAD_DTYPE f = LOAD_DTYPE(offsets + h) / pow(base, LOAD_DTYPE(2 * w) / LOAD_DTYPE(kv_shape.shapes[3]));
+    LOAD_DTYPE freqc = cos(f);
+    LOAD_DTYPE freqs = sin(f);
 
-    LOAD_DTYE fc = LOAD_DTYE(freqc[f0]);
-    LOAD_DTYE fs = LOAD_DTYE(freqs[f0]);
-    LOAD_DTYE q0 = LOAD_DTYE(kv[i0]);
-    LOAD_DTYE q1 = LOAD_DTYE(kv[i1]);
+    LOAD_DTYPE v0 = LOAD_DTYPE(kv[i0]);
+    LOAD_DTYPE v1 = LOAD_DTYPE(kv[i1]);
+    LOAD_DTYPE o0 = freqc * v0 - freqs * v1;
+    LOAD_DTYPE o1 = freqs * v0 + freqc * v1;
 
-    kv[i0] = DTYPE(q0 * fc - q1 * fs);
-    kv[i1] = DTYPE(q0 * fs + q1 * fc);
+    kv_out[i0] = DTYPE(o0);
+    kv_out[i1] = DTYPE(o1);
 }

@@ -506,17 +506,21 @@ static vkllm_err_t vkllm_create_matmul_pipelines(struct vkllm_context *context)
 
 static vkllm_err_t vkllm_create_rope_pipelines(struct vkllm_context *context)
 {
-    struct vkllm_shader_info shader_info = {
-        .binding_count = 3, .push_constant_bytes = sizeof(uint32_t) * 17, .local_x = 512, .local_y = 1, .local_z = 1};
-
-    _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f16f16", shader_info, _vkllm_rope_f16f16_spv(),
-                              _vkllm_rope_f16f16_size(), NULL, &context->pipelines.rope.f16f16));
+    struct vkllm_shader_info shader_info = {.binding_count = 2,
+                                            .push_constant_bytes = sizeof(uint32_t) * 9 + sizeof(float),
+                                            .local_x = 512,
+                                            .local_y = 1,
+                                            .local_z = 1};
 
     _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f16f32", shader_info, _vkllm_rope_f16f32_spv(),
                               _vkllm_rope_f16f32_size(), NULL, &context->pipelines.rope.f16f32));
 
     _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f32f32", shader_info, _vkllm_rope_f32f32_spv(),
                               _vkllm_rope_f32f32_size(), NULL, &context->pipelines.rope.f32f32));
+
+    shader_info.push_constant_bytes = sizeof(uint32_t) * 9 + 2*sizeof(uint16_t);
+    _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f16f16", shader_info, _vkllm_rope_f16f16_spv(),
+                              _vkllm_rope_f16f16_size(), NULL, &context->pipelines.rope.f16f16));
     return VKLLM_ERR_OK;
 }
 
@@ -555,6 +559,10 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
             }
         }
     }
+
+    vkllm_pipeline_free(context, context->pipelines.rope.f16f16);
+    vkllm_pipeline_free(context, context->pipelines.rope.f16f32);
+    vkllm_pipeline_free(context, context->pipelines.rope.f32f32);
 }
 #undef vkllm_free_op_pipelines
 #undef _vkllm_free_op_pipeline
