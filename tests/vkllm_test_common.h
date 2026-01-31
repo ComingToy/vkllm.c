@@ -3,8 +3,8 @@
 
 #include "src/vkllm_common.h"
 #include "src/vkllm_dtypes.h"
-#include <stdio.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 static inline void random_buf(void *a, const size_t n, vkllm_dtype_t dtype)
@@ -28,7 +28,7 @@ static inline void random_buf(void *a, const size_t n, vkllm_dtype_t dtype)
     }
 }
 
-static inline void random_tensor(void *data, uint32_t shapes[4], uint32_t strides[4], vkllm_dtype_t dtype)
+static inline void random_tensor(void *data, uint32_t shapes[4], uint32_t strides[4], vkllm_dtype_t dtype, float min, float max)
 {
 
     struct vkllm_dtype_info info;
@@ -49,13 +49,15 @@ static inline void random_tensor(void *data, uint32_t shapes[4], uint32_t stride
                 for (uint32_t w = 0; w < shapes[3]; ++w)
                 {
                     uint32_t i = b * es[0] + c * es[1] + h * es[2] + w * es[3];
+					float val = (rand() % 1000) / 1000.0f;
+					val = val * (max - min) + min;
                     if (dtype == vkllm_dtype_float16)
                     {
-                        fp16[i] = vkllm_fp32_to_fp16((rand() % 10) / 10.0f);
+                        fp16[i] = vkllm_fp32_to_fp16(val);
                     }
                     else if (dtype == vkllm_dtype_float32)
                     {
-                        fp32[i] = (rand() % 10) / 10.0f;
+                        fp32[i] = val;
                     }
                     else if (dtype == vkllm_dtype_uint32)
                     {
@@ -132,14 +134,7 @@ static inline float compare_buf(const void *lhs, const void *rhs, uint32_t shape
                         log_error("index %u at (%u, %u, %u, %u) out of range %u", i, b, c, h, w, n);
                         continue;
                     }
-#if 0
-                    if (fabsf(lhs_fp32[i] - rhs_fp32[i]) > 1e-1)
-                    {
-                        log_error("index %u at (%u, %u, %u, %u) err lhs %f rhs %f", i, b, c, h, w, lhs_fp32[i],
-                                  rhs_fp32[i]);
-                        continue;
-                    }
-#endif
+
                     if (dtype == vkllm_dtype_float16)
                     {
                         float v0 = vkllm_fp16_to_fp32(lhs_fp16[i]);
@@ -158,6 +153,14 @@ static inline float compare_buf(const void *lhs, const void *rhs, uint32_t shape
                     }
 
                     err = err + alpha * (lhs_fp32[i] - rhs_fp32[i]) * (lhs_fp32[i] - rhs_fp32[i]);
+#if 0
+                    if (fabsf(lhs_fp32[i] - rhs_fp32[i]) > 1e-3 || isnan(err))
+                    {
+                        log_error("index %u at (%u, %u, %u, %u) err lhs %f rhs %f", i, b, c, h, w, lhs_fp32[i],
+                                  rhs_fp32[i]);
+                        continue;
+                    }
+#endif
                 }
             }
         }

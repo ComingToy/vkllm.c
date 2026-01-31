@@ -62,6 +62,12 @@ struct vkllm_context
             struct vkllm_pipeline *f32f32;
         } softmax;
     } pipelines;
+
+    struct
+    {
+        int tensor_alloc_counts;
+        int tensor_free_counts;
+    } stats;
 };
 
 extern vkllm_err_t vkllm_context_new(uint32_t dev, struct vkllm_context **context);

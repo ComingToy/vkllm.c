@@ -50,7 +50,7 @@ START_TEST(test_op_permute)
     ck_assert_ptr_nonnull(input_buf);
 
     // Fill input buffer with random data
-    random_tensor(input_buf, tensor->shapes, tensor->strides, tests[_i].dtype);
+    random_tensor(input_buf, tensor->shapes, tensor->strides, tests[_i].dtype, 0, 2.0);
 
     // Copy input data to tensor
     memcpy(tensor->data.host, input_buf, tensor->bytes);

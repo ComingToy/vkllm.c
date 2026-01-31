@@ -141,8 +141,8 @@ START_TEST(test_op_rmsnorm)
     memset(output_host->data, 0, output_host->alloc_n);
 
     // Generate random data
-    random_tensor(input_host->data, input->shapes, input->strides, input->dtype);
-    random_tensor(weight_host->data, weight->shapes, weight->strides, weight->dtype);
+    random_tensor(input_host->data, input->shapes, input->strides, input->dtype, -1.0, 1.0);
+    random_tensor(weight_host->data, weight->shapes, weight->strides, weight->dtype, -1.0, 1.0);
 
     // Upload data and execute
     ck_assert_int_eq(vkllm_commands_begin(context, commands), VKLLM_ERR_OK);

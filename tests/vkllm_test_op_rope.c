@@ -144,7 +144,7 @@ START_TEST(test_op_rope)
     memset(output_host->data, 0, output_host->alloc_n);
 
     // Generate random data
-    random_tensor(input_host->data, input->shapes, input->strides, input->dtype);
+    random_tensor(input_host->data, input->shapes, input->strides, input->dtype, -1.0, 1.0);
     // print_n_f16("input host: ", input_host->data, 64);
 
     // Upload data and execute

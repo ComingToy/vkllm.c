@@ -294,8 +294,8 @@ START_TEST(test_op_matmul)
     memset(buf_c_expected->data, 0, buf_c_expected->alloc_n);
 
     // Generate random input data
-    random_tensor(buf_a->data, input_a->shapes, input_a->strides, input_a->dtype);
-    random_tensor(buf_b->data, input_b->shapes, input_b->strides, input_b->dtype);
+    random_tensor(buf_a->data, input_a->shapes, input_a->strides, input_a->dtype, 0, 1.0);
+    random_tensor(buf_b->data, input_b->shapes, input_b->strides, input_b->dtype, 0, 2.0);
 
     // Compute expected result on CPU
     matmul_op_host(buf_a->data, buf_b->data, buf_c_expected->data, B_a, C_a, B_b, C_b, M, K, N, input_a->strides,
