@@ -3,7 +3,7 @@
 #include "src/vkllm_commands.h"
 #include "src/vkllm_context.h"
 #include "src/vkllm_dtypes.h"
-#include "src/vkllm_op_add.h"
+#include "src/vkllm_op_bin.h"
 #include "src/vkllm_tensor.h"
 #include "vkllm_test_common.h"
 #include <stdio.h>
@@ -63,8 +63,9 @@ START_TEST(test_op_add)
                      VKLLM_ERR_OK);
 
     struct vkllm_tensor *srcs[] = {in0, in1};
-    ck_assert_int_eq(vkllm_tensor_new(context, "out0", tests[_i].shapes, vkllm_dtype_float32, VKLLM_OP_ADD, srcs, 2,
-                                      NULL, 0, true, &out0),
+    int32_t op = 0;
+    ck_assert_int_eq(vkllm_tensor_new(context, "out0", tests[_i].shapes, vkllm_dtype_float32, VKLLM_OP_BIN, srcs, 2,
+                                      (uint8_t *)&op, sizeof(op), true, &out0),
                      VKLLM_ERR_OK);
 
     struct vkllm_dtype_info dtype_info;
@@ -92,9 +93,9 @@ START_TEST(test_op_add)
     ck_assert_int_eq(vkllm_commands_begin(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_upload(context, commands, in0, (const uint8_t *)buf->data, bytes), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_upload(context, commands, in1, (const uint8_t *)buf1->data, bytes), VKLLM_ERR_OK);
-    ck_assert_int_eq(vkllm_op_add_init(context, commands, out0), VKLLM_ERR_OK);
-    ck_assert_int_eq(vkllm_op_add_run(context, commands, out0), VKLLM_ERR_OK);
-    ck_assert_int_eq(vkllm_op_add_post_run(context, commands, out0), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_op_bin_init(context, commands, out0), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_op_bin_run(context, commands, out0), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_op_bin_post_run(context, commands, out0), VKLLM_ERR_OK);
     // ck_assert_int_eq(vkllm_commands_download(context, commands, out0, (uint8_t *)buf3->data, out0->bytes),
     //                  VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_end(context, commands), VKLLM_ERR_OK);

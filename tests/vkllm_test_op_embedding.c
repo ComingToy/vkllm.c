@@ -3,7 +3,6 @@
 #include "src/vkllm_commands.h"
 #include "src/vkllm_context.h"
 #include "src/vkllm_dtypes.h"
-#include "src/vkllm_op_add.h"
 #include "src/vkllm_op_embedding.h"
 #include "src/vkllm_tensor.h"
 #include "vkllm_test_common.h"

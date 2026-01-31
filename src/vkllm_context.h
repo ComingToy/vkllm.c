@@ -22,11 +22,11 @@ struct vkllm_context
     {
         struct
         {
-            struct vkllm_pipeline *f32f32f32;
-            struct vkllm_pipeline *f16f32f32;
-            struct vkllm_pipeline *f16f16f32;
-            struct vkllm_pipeline *f16f16f16;
-        } add;
+            struct vkllm_pipeline *f32f32f32[4];
+            struct vkllm_pipeline *f16f32f32[4];
+            struct vkllm_pipeline *f16f16f32[4];
+            struct vkllm_pipeline *f16f16f16[4];
+        } bin;
         struct
         {
             struct vkllm_pipeline *f32;

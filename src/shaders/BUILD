@@ -10,9 +10,9 @@ COMMON_ARGS = [
 ]
 
 glsl_shader(
-    name = "vkllm_add_shaders",
+    name = "vkllm_bin_op_shaders",
     shaders = [
-        "vkllm_add.comp",
+        "vkllm_bin_op.comp",
     ],
     hdrs = COMP_SHADER_HDRS,
     extra_args = COMMON_ARGS,
@@ -133,7 +133,7 @@ glsl_shader(
 cc_shader_library(
     name = "vkllm_shaders",
     deps = [
-        ":vkllm_add_shaders",
+        ":vkllm_bin_op_shaders",
         ":vkllm_embedding_shaders",
         ":vkllm_rmsnorm_shaders",
         ":vkllm_matmul_shaders",

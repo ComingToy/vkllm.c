@@ -1,4 +1,4 @@
-#include "vkllm_op_add.h"
+#include "vkllm_op_bin.h"
 #include "vkllm_array.h"
 #include "vkllm_commands.h"
 #include "vkllm_common.h"
@@ -6,11 +6,13 @@
 #include "vkllm_gpu_device.h"
 #include "vkllm_pipeline.h"
 
-static vkllm_err_t vkllm_op_add_get_pipeline(struct vkllm_context *context, struct vkllm_tensor *tensor,
+static vkllm_err_t vkllm_op_bin_get_pipeline(struct vkllm_context *context, struct vkllm_tensor *tensor,
                                              struct vkllm_pipeline **pipeline)
 {
     _CHECK_ARGS(context && tensor && pipeline && tensor->srcs[0] && tensor->srcs[1]);
     *pipeline = NULL;
+
+    const int32_t op = *(const int32_t *)tensor->params;
     if (tensor->dtype != vkllm_dtype_float32)
     {
         log_error("unsupported op result dtype: %s", vkllm_dtype_s(tensor->dtype));
@@ -21,17 +23,17 @@ static vkllm_err_t vkllm_op_add_get_pipeline(struct vkllm_context *context, stru
     {
         if (context->device->support_fp16_arithmetic)
         {
-            *pipeline = context->pipelines.add.f16f16f32;
+            *pipeline = context->pipelines.bin.f16f16f32[op];
         }
         else
         {
-            *pipeline = context->pipelines.add.f16f32f32;
+            *pipeline = context->pipelines.bin.f16f32f32[op];
         }
         return VKLLM_ERR_OK;
     }
     else if (tensor->srcs[0]->dtype == vkllm_dtype_float32 && tensor->srcs[1]->dtype == vkllm_dtype_float32)
     {
-        *pipeline = context->pipelines.add.f32f32f32;
+        *pipeline = context->pipelines.bin.f32f32f32[op];
         return VKLLM_ERR_OK;
     }
     else
@@ -40,12 +42,12 @@ static vkllm_err_t vkllm_op_add_get_pipeline(struct vkllm_context *context, stru
     }
 }
 
-vkllm_err_t vkllm_op_add_init(struct vkllm_context *context, struct vkllm_commands *commands,
+vkllm_err_t vkllm_op_bin_init(struct vkllm_context *context, struct vkllm_commands *commands,
                               struct vkllm_tensor *tensor)
 {
     _CHECK_ARGS(context && commands && tensor);
     _CHECK_ARGS(tensor->srcs[0] && tensor->srcs[1]);
-    _CHECK_ARGS(tensor->op == VKLLM_OP_ADD);
+    _CHECK_ARGS(tensor->op == VKLLM_OP_BIN);
 
     struct vkllm_tensor *in0 = tensor->srcs[0], *in1 = tensor->srcs[1];
     _CHECK_ARGS(in0 && in1);
@@ -55,13 +57,13 @@ vkllm_err_t vkllm_op_add_init(struct vkllm_context *context, struct vkllm_comman
     _CHECK_ARGS(in0->shapes[3] == in1->shapes[3] && in0->shapes[3] == tensor->shapes[3]);
 
     struct vkllm_pipeline *pipeline = NULL;
-    _CHECK(vkllm_op_add_get_pipeline(context, tensor, &pipeline));
+    _CHECK(vkllm_op_bin_get_pipeline(context, tensor, &pipeline));
     tensor->pipeline = pipeline;
 
     return VKLLM_ERR_OK;
 }
 
-vkllm_err_t vkllm_op_add_run(struct vkllm_context *context, struct vkllm_commands *commands,
+vkllm_err_t vkllm_op_bin_run(struct vkllm_context *context, struct vkllm_commands *commands,
                              struct vkllm_tensor *tensor)
 {
 
@@ -116,7 +118,7 @@ free_constants_out:
     return err;
 }
 
-extern vkllm_err_t vkllm_op_add_post_run(struct vkllm_context *context, struct vkllm_commands *commands,
+extern vkllm_err_t vkllm_op_bin_post_run(struct vkllm_context *context, struct vkllm_commands *commands,
                                          struct vkllm_tensor *tensor)
 {
     __UNUSED(context);
