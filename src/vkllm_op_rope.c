@@ -73,7 +73,7 @@ vkllm_err_t vkllm_op_rope_run(struct vkllm_context *context, struct vkllm_comman
     _CHECK_ARGS(in0);
 
     // Extract RoPE parameters from tensor params
-    struct vkllm_rope_params *params = (struct vkllm_rope_params *)tensor->params;
+    struct vkllm_op_rope_params *params = (struct vkllm_op_rope_params *)tensor->params;
     uint32_t offset = params ? params->offset : 0;
     float base = params ? params->base : 10000.0f;
 

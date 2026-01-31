@@ -232,6 +232,7 @@ static vkllm_err_t init_physical_device(struct vkllm_context *context)
     }
 
     pdev->support_query_timestamp = pdev->vk_physical_dev.properties.limits.timestampComputeAndGraphics;
+    pdev->subgroup_size = pdev->vk_physical_dev.subgroup_properties.subgroupSize;
 
     return VKLLM_ERR_OK;
 }
@@ -449,14 +450,14 @@ vkllm_err_t compute_group_counts(struct vkllm_context *context, uint32_t N, uint
 void vkllm_gpu_device_free(struct vkllm_context *context)
 {
     struct vkllm_gpu_device *pdev = context->device;
-    
+
     // CRITICAL: Wait for all GPU operations to complete before destroying resources
     // This prevents device state corruption when resources are destroyed while still in use
     vkDeviceWaitIdle(pdev->vk_dev);
-    
+
     // Destroy VMA allocator before destroying device
     vmaDestroyAllocator(pdev->vma_allocator);
-    
+
     // Destroy logical device before debug messenger and instance
     vkDestroyDevice(pdev->vk_dev, NULL);
 

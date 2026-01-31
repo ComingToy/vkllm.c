@@ -1,10 +1,10 @@
 #version 450 core
 #extension GL_KHR_shader_subgroup_arithmetic : require
+// #extension GL_EXT_debug_printf : enable
 #include "vkllm_shader_header.comp.h"
 
-
 #ifdef _SUPPORT_FLOAT16_ARITHMETIC
-#extension GL_EXT_shader_subgroup_extended_types_float16 : require 
+#extension GL_EXT_shader_subgroup_extended_types_float16 : require
 #endif
 
 layout(binding = 0) readonly buffer In0
@@ -50,11 +50,11 @@ void main()
         return;
     }
 
-    uint row_base = b * shape.strides[0] + c * shape.strides[1] * h * shape.strides[2];
+    uint row_base = b * shape.strides[0] + c * shape.strides[1] + h * shape.strides[2];
     LOAD_DTYPE local_max = LOAD_DTYPE(in0[row_base]);
 
     const uint W = shape.shapes[3];
-    for (uint i = gl_SubgroupInvocationID; i < W; i += gl_SubgroupInvocationID)
+    for (uint i = gl_SubgroupInvocationID.x; i < W; i += gl_SubgroupSize)
     {
         local_max = max(local_max, LOAD_DTYPE(in0[row_base + i]));
     }
@@ -62,7 +62,7 @@ void main()
     LOAD_DTYPE glb_max = subgroupMax(local_max);
 
     LOAD_DTYPE local_sum = LOAD_DTYPE(0);
-    for (uint i = gl_SubgroupInvocationID; i < W; i += gl_SubgroupInvocationID)
+    for (uint i = gl_SubgroupInvocationID.x; i < W; i += gl_SubgroupSize)
     {
         if (seq_mask > 0 && i > h + offsets)
         {
@@ -74,13 +74,23 @@ void main()
 
     LOAD_DTYPE glb_sum = subgroupAdd(local_sum);
 
-    for (uint i = gl_SubgroupInvocationID; i < W; i += gl_SubgroupInvocationID)
+    for (uint i = gl_SubgroupInvocationID.x; i < W; i += gl_SubgroupSize)
     {
         if (seq_mask > 0 && i > h + offsets)
         {
             out0[row_base + i] = DTYPE(0);
-        }else{
-            out0[row_base + i] = DTYPE(exp(LOAD_DTYPE(in0[row_base + i]) - glb_max)/glb_sum);
+        }
+        else
+        {
+            out0[row_base + i] = DTYPE(exp(LOAD_DTYPE(in0[row_base + i]) - glb_max) / glb_sum);
+#if 0
+            if (b == 0 && c == 0 && h == 1)
+            {
+                debugPrintfEXT("glb tid = %u, indices = (%u, %u, %u, %u), shapes = (%u, %u, %u, %u), row_base = %u, i = %u, glb_sum = %f, glb_max = %f, output value: %f",
+                               tid, b, c, h, w, shape.shapes[0], shape.shapes[1], shape.shapes[2], shape.shapes[3],
+                               row_base, i, glb_sum, glb_max, out0[row_base + i]);
+            }
+#endif
         }
     }
 }
