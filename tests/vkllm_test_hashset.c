@@ -1,5 +1,5 @@
 #include "check.h"
-#include "src/vkllm_hashset.h"
+#include "src/core/vkllm_hashset.h"
 #include <stdio.h>
 
 START_TEST(test_hashset_create_and_free)

@@ -1,6 +1,6 @@
 #include "check.h"
-#include "src/vkllm_hashset.h"
-#include "src/vkllm_array.h"
+#include "src/core/vkllm_hashset.h"
+#include "src/core/vkllm_array.h"
 #include <stdio.h>
 #include <time.h>
 
