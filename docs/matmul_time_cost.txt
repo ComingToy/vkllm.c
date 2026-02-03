@@ -1,0 +1,8 @@
+Running suite(s): vkllm_op_matmul
+08:45:21 INFO  tests/vkllm_test_op_matmul.c:126: matmul: avg time cost: 42679 micro secs
+08:46:18 INFO  tests/vkllm_test_op_matmul.c:126: matmul: avg time cost: 3060 micro secs
+100%: Checks: 2, Failures: 0, Errors: 0
+
+Running suite(s): vkllm_op_matmul
+06:20:49 INFO  tests/vkllm_test_op_matmul.c:129: matmul: avg time cost: 27717 micro secs
+06:21:45 INFO  tests/vkllm_test_op_matmul.c:129: matmul: avg time cost: 2846 micro secs
