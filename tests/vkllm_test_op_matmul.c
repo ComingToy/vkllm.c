@@ -36,7 +36,8 @@ static void matmul_op_host(const void *input_a, const void *input_b, void *outpu
                         strides_a[3] / info.bytes};
     uint32_t es_b[4] = {strides_b[0] / info.bytes, strides_b[1] / info.bytes, strides_b[2] / info.bytes,
                         strides_b[3] / info.bytes};
-    uint32_t es_c[4] = {strides_c[0] / 4, strides_c[1] / 4, strides_c[2] / 4, strides_c[3] / 4};
+    uint32_t es_c[4] = {strides_c[0] / info.bytes, strides_c[1] / info.bytes, strides_c[2] / info.bytes,
+                        strides_c[3] / info.bytes};
 
     // Output dimensions after broadcasting
     uint32_t B_c = B_a > B_b ? B_a : B_b;
@@ -52,6 +53,7 @@ static void matmul_op_host(const void *input_a, const void *input_b, void *outpu
         const vkllm_fp16_pack *a_fp16 = (const vkllm_fp16_pack *)input_a;
         const vkllm_fp16_pack *b_fp16 = (const vkllm_fp16_pack *)input_b;
         float *c_fp32 = (float *)output;
+        vkllm_fp16_pack *c_fp16 = (vkllm_fp16_pack *)output;
 
         for (uint32_t b = 0; b < B_c; ++b)
         {
@@ -92,7 +94,7 @@ static void matmul_op_host(const void *input_a, const void *input_b, void *outpu
                         }
                         // C[b, c, i, j]
                         uint32_t idx_c = b * es_c[0] + c * es_c[1] + i * es_c[2] + j * es_c[3];
-                        c_fp32[idx_c] = sum;
+                        c_fp16[idx_c] = vkllm_fp32_to_fp16(sum);
                     }
                 }
             }
@@ -278,8 +280,9 @@ START_TEST(test_op_matmul)
     uint32_t shapes_c[4] = {B_c, C_c, M, N};
     struct vkllm_tensor *srcs[] = {input_a, input_b};
     struct vkllm_tensor *output;
-    ck_assert_int_eq(vkllm_tensor_new(context, "output", shapes_c, vkllm_dtype_float32, VKLLM_OP_MATMUL, srcs, 2, NULL,
-                                      0, true, &output),
+    float scale = 1.0f;
+    ck_assert_int_eq(vkllm_tensor_new(context, "output", shapes_c, tests[_i].dtype, VKLLM_OP_MATMUL, srcs, 2,
+                                      (uint8_t *)&scale, sizeof(scale), true, &output),
                      VKLLM_ERR_OK);
 
     // Allocate host buffers
@@ -294,8 +297,8 @@ START_TEST(test_op_matmul)
     memset(buf_c_expected->data, 0, buf_c_expected->alloc_n);
 
     // Generate random input data
-    random_tensor(buf_a->data, input_a->shapes, input_a->strides, input_a->dtype, 0, 1.0);
-    random_tensor(buf_b->data, input_b->shapes, input_b->strides, input_b->dtype, 0, 2.0);
+    random_tensor(buf_a->data, input_a->shapes, input_a->strides, input_a->dtype, -1.0, 1.0);
+    random_tensor(buf_b->data, input_b->shapes, input_b->strides, input_b->dtype, -1.0, 1.0);
 
     // Compute expected result on CPU
     matmul_op_host(buf_a->data, buf_b->data, buf_c_expected->data, B_a, C_a, B_b, C_b, M, K, N, input_a->strides,
@@ -324,14 +327,14 @@ START_TEST(test_op_matmul)
              N, vkllm_dtype_s(tests[_i].dtype), BOOL_S(tests[_i].transposed_b), time_cost / 1000);
     // Compare results
     const void *gpu_output = output->data.host;
-    // print_n("gpu_output", gpu_output, 64);
-    // print_n("cpu_output", (const float *)buf_c_expected->data, 64);
+    // print_n_f16("gpu_output", gpu_output, 64);
+    // print_n_f16("cpu_output", (const vkllm_fp16_pack *)buf_c_expected->data, 64);
 
     // Use larger tolerance for float16 due to lower precision
     float tolerance = (tests[_i].dtype == vkllm_dtype_float16) ? 1e-2 : 1e-3;
-    ck_assert_float_le(
-        compare_buf(buf_c_expected->data, gpu_output, output->shapes, output->strides, output->bytes, output->dtype),
-        tolerance);
+    float loss =
+        compare_buf(buf_c_expected->data, gpu_output, output->shapes, output->strides, output->bytes, output->dtype);
+    ck_assert_float_le(loss, tolerance);
 
     // Clean up tensors (but NOT the context!)
     vkllm_tensor_free(context, input_a);
@@ -341,7 +344,7 @@ START_TEST(test_op_matmul)
     vkllm_array_u8_free(buf_b);
     vkllm_array_u8_free(buf_c_expected);
     vkllm_commands_free(context, commands);
-    
+
     // IMPORTANT: Do NOT call vkllm_context_free() here!
     // The context will be freed in the teardown function
 }
@@ -380,7 +383,7 @@ Suite *vkllm_op_matmul_test_suite(void)
     // checked_fixture = runs before/after EACH test (wrong!)
     // unchecked_fixture = runs before/after ALL tests (correct!)
     tcase_add_unchecked_fixture(tcase_f32, setup_global_context, teardown_global_context);
-    
+
     tcase_add_loop_test(tcase_f32, test_op_matmul, 0, _ARRAY_SIZE(tests));
     tcase_set_timeout(tcase_f32, 120.0);
     suite_add_tcase(suite, tcase_f32);

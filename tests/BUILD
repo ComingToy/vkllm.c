@@ -22,7 +22,7 @@ cc_library(
 )
 
 DEPS = [
-    "//src/core:core",
+    "//src:vkllm",
     "//thirdparty/check:check",
     ":vkllm_test_common",
 ]
