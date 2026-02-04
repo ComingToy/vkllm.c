@@ -1,8 +1,8 @@
 #include "vkllm_tensor.h"
-#include "vkllm_ops.h"
 #include "vkllm_context.h"
 #include "vkllm_dtypes.h"
 #include "vkllm_gpu_device.h"
+#include "vkllm_ops.h"
 
 #include "vkllm_common.h"
 #include <string.h>
@@ -192,10 +192,27 @@ vkllm_err_t vkllm_tensor_new_staging(struct vkllm_context *context, struct vkllm
     return VKLLM_ERR_OK;
 }
 
+static bool is_padding(struct vkllm_context *context, vkllm_dtype_t dtype, uint32_t w)
+{
+    struct vkllm_dtype_info dtype_info;
+    _CHECK(vkllm_get_dtype_info(dtype, &dtype_info));
+
+    uint32_t blocks = (w + dtype_info.items_per_block - 1) / dtype_info.items_per_block;
+    uint32_t bytes = blocks * dtype_info.bytes_per_block;
+
+    size_t align = context->device->vk_physical_dev.subgroup_properties.subgroupSize * dtype_info.bytes;
+    size_t align_bytes = (bytes + align - 1) / align * align;
+    size_t unaligned_bytes = dtype_info.bytes * w;
+
+    return align_bytes != unaligned_bytes;
+}
+
 vkllm_err_t vkllm_tensor_reshape(struct vkllm_context *context, struct vkllm_tensor *tensor, const uint32_t *shapes)
 {
     _CHECK_ARGS(context && tensor && shapes);
     _CHECK_ARGS(_MUL4(tensor->shapes) == _MUL4(shapes));
+    _CHECK_ARGS(!is_padding(context, tensor->dtype, tensor->shapes[3]));
+    _CHECK_ARGS(!is_padding(context, tensor->dtype, shapes[3]));
 
     tensor->shapes[0] = shapes[0];
     tensor->shapes[1] = shapes[1];
