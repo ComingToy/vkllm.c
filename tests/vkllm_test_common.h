@@ -96,7 +96,7 @@ static inline uint32_t get_indice(uint32_t b, uint32_t c, uint32_t h, uint32_t w
     } while (0)
 
 static inline float compare_buf(const void *lhs, const void *rhs, uint32_t shapes[4], uint32_t strides[4],
-                                uint32_t bytes, vkllm_dtype_t dtype)
+                                uint32_t bytes, vkllm_dtype_t dtype, const char* name)
 {
 
     // fprintf(stderr, "alpha: %f, bytes: %u, n: %u, en: %zu\n", alpha, bytes, n, bytes / sizeof(float));
@@ -141,10 +141,10 @@ static inline float compare_buf(const void *lhs, const void *rhs, uint32_t shape
                         float v1 = vkllm_fp16_to_fp32(rhs_fp16[i]);
                         err = err + alpha * (v0 - v1) * (v0 - v1);
 
-#if 0
+#if 1
                         if (fabsf(v0 - v1) > 1e-1 || isnan(err))
                         {
-                            log_error("index %u at (%u, %u, %u, %u) err lhs %f rhs %f", i, b, c, h, w, v0, v1);
+                            log_error("%s index %u at (%u, %u, %u, %u) err lhs %f rhs %f", name, i, b, c, h, w, v0, v1);
                             continue;
                         }
 #endif
