@@ -105,6 +105,14 @@ cc_test(
 )
 
 cc_test(
+    name = "vkllm_test_op_copy",
+    srcs = ["vkllm_test_op_copy.c"],
+    deps = DEPS,
+    copts = COPTS,
+    linkopts = LINK_OPTS,
+)
+
+cc_test(
     name = "vkllm_test_hashset",
     srcs = ["vkllm_test_hashset.c"],
     deps = DEPS,
