@@ -231,18 +231,19 @@ START_TEST(test_op_bin)
     uint64_t time_cost = 0;
     ck_assert_int_eq(vkllm_pipeline_query_exec_time(context, output->pipeline, &time_cost), VKLLM_ERR_OK);
 
-    log_info("test %d bin_op %s [%u,%u,%u,%u], dtype_a=%s, dtype_b=%s: avg time cost: %lu micro secs", _i,
-             op_name(op), B, C, H, W, vkllm_dtype_s(tests[_i].dtype_a), vkllm_dtype_s(tests[_i].dtype_b),
-             time_cost / 1000);
+    log_info("test %d bin_op %s [%u,%u,%u,%u], dtype_a=%s, dtype_b=%s: avg time cost: %lu micro secs", _i, op_name(op),
+             B, C, H, W, vkllm_dtype_s(tests[_i].dtype_a), vkllm_dtype_s(tests[_i].dtype_b), time_cost / 1000);
 
     // Compare results
     const void *gpu_output = output->data.host;
 
     // Use larger tolerance for float16 due to lower precision
-    float tolerance = (tests[_i].dtype_a == vkllm_dtype_float16 || tests[_i].dtype_b == vkllm_dtype_float16) ? 1e-2
-                                                                                                                : 1e-4;
-    float error =
-        compare_buf(buf_c_expected->data, gpu_output, output->shapes, output->strides, output->bytes, output->dtype);
+    float tolerance =
+        (tests[_i].dtype_a == vkllm_dtype_float16 || tests[_i].dtype_b == vkllm_dtype_float16) ? 1e-2 : 1e-4;
+    char test_case_name[64];
+    snprintf(test_case_name, sizeof(test_case_name), "test_op_bin_%d", _i);
+    float error = compare_buf(buf_c_expected->data, gpu_output, output->shapes, output->strides, output->bytes,
+                              output->dtype, test_case_name);
     ck_assert_float_le(error, tolerance);
 
     // Clean up tensors (but NOT the context!)

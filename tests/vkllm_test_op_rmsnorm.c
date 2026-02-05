@@ -165,10 +165,13 @@ START_TEST(test_op_rmsnorm)
     const void *gpu_output = output->data.host;
 
     // Compare results (allow slightly larger tolerance for fp16)
+
+    char test_case_name[64];
+    snprintf(test_case_name, sizeof(test_case_name), "test_op_rmsnorm_%d", _i);
     float tolerance = (tests[_i].dtype == vkllm_dtype_float16) ? 1e-2 : 1e-4;
-    ck_assert_float_le(
-        compare_buf(output_host->data, gpu_output, output->shapes, output->strides, output->bytes, output->dtype),
-        tolerance);
+    ck_assert_float_le(compare_buf(output_host->data, gpu_output, output->shapes, output->strides, output->bytes,
+                                   output->dtype, test_case_name),
+                       tolerance);
 
     // Clean up
     vkllm_tensor_free(context, input);

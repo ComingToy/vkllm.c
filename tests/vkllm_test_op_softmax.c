@@ -206,8 +206,10 @@ START_TEST(test_op_softmax)
 
     // Compare results (allow slightly larger tolerance for fp16 and for exp/division operations)
     float tolerance = (tests[_i].dtype == vkllm_dtype_float16) ? 1e-2 : 1e-4;
-    float error =
-        compare_buf(output_host->data, gpu_output, output->shapes, output->strides, output->bytes, output->dtype);
+    char test_case_name[64];
+    snprintf(test_case_name, sizeof(test_case_name), "test_op_softmax_%d", _i);
+    float error = compare_buf(output_host->data, gpu_output, output->shapes, output->strides, output->bytes,
+                              output->dtype, test_case_name);
 
     ck_assert_float_le(error, tolerance);
 
