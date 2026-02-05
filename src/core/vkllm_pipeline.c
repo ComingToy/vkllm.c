@@ -3,6 +3,7 @@
 #include "vkllm_bin_op_shaders.h"
 #include "vkllm_common.h"
 #include "vkllm_context.h"
+#include "vkllm_copy_shaders.h"
 #include "vkllm_dtypes.h"
 #include "vkllm_embedding_shaders.h"
 #include "vkllm_errors.h"
@@ -598,6 +599,21 @@ static vkllm_err_t vkllm_create_softmax_pipelines(struct vkllm_context *context)
     return VKLLM_ERR_OK;
 }
 
+static vkllm_err_t vkllm_create_copy_pipelines(struct vkllm_context *context)
+{
+    _CHECK_ARGS(context);
+
+    struct vkllm_shader_info shader_info = {
+        .binding_count = 2, .push_constant_bytes = sizeof(uint32_t) * 16, .local_x = 512, .local_y = 1, .local_z = 1};
+
+    _CHECK(vkllm_pipeline_new(context, "vkllm_pipeline_f16", shader_info, _vkllm_copy_f16_spv(), _vkllm_copy_f16_size(),
+                              NULL, &context->pipelines.copy.f16));
+
+    _CHECK(vkllm_pipeline_new(context, "vkllm_pipeline_f32", shader_info, _vkllm_copy_f32_spv(), _vkllm_copy_f32_size(),
+                              NULL, &context->pipelines.copy.f32));
+    return VKLLM_ERR_OK;
+}
+
 vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context)
 {
     _CHECK(vkllm_create_all_bin_pipeline(context));
@@ -606,6 +622,7 @@ vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context)
     _CHECK(vkllm_create_matmul_pipelines(context));
     _CHECK(vkllm_create_rope_pipelines(context));
     _CHECK(vkllm_create_softmax_pipelines(context));
+    _CHECK(vkllm_create_copy_pipelines(context));
     return VKLLM_ERR_OK;
 }
 
@@ -646,6 +663,8 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
     vkllm_pipeline_free(context, context->pipelines.softmax.f16f16);
     vkllm_pipeline_free(context, context->pipelines.softmax.f16f32);
     vkllm_pipeline_free(context, context->pipelines.softmax.f32f32);
+    vkllm_pipeline_free(context, context->pipelines.copy.f16);
+    vkllm_pipeline_free(context, context->pipelines.copy.f32);
 }
 #undef vkllm_free_op_pipelines
 #undef _vkllm_free_op_pipeline
