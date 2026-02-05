@@ -8,6 +8,7 @@ extern "C" {
 typedef enum
 {
     VKLLM_OP_NONE = 0,
+    VKLLM_OP_COPY,
     VKLLM_OP_BIN,
     VKLLM_OP_EMBEDDING,
     VKLLM_OP_RMSNORM,
