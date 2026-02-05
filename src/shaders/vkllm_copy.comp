@@ -19,7 +19,7 @@ layout(push_constant) uniform constants
 
 void get_indices(uint tid, out uint b, out uint c, out uint h, out uint w)
 {
-    uint shape3 = shape0.shapes[3] / 2;
+    uint shape3 = shape0.shapes[3];
     uint cn = shape0.shapes[2] * shape3;
     uint bn = shape0.shapes[1] * cn;
     b = tid / bn;

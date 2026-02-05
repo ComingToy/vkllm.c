@@ -14,13 +14,16 @@
 static struct vkllm_context *g_context = NULL;
 
 static void copy_op_host(const void *input, void *output, const uint32_t shapes[4], const uint32_t strides[4],
-                         vkllm_dtype_t dtype)
+                         const uint32_t out_strides[4], vkllm_dtype_t dtype)
 {
     struct vkllm_dtype_info info;
     vkllm_get_dtype_info(dtype, &info);
 
     uint32_t es[4] = {strides[0] / info.bytes, strides[1] / info.bytes, strides[2] / info.bytes,
                       strides[3] / info.bytes};
+
+    uint32_t out_es[4] = {out_strides[0] / info.bytes, out_strides[1] / info.bytes, out_strides[2] / info.bytes,
+                          out_strides[3] / info.bytes};
 
     if (dtype == vkllm_dtype_float16)
     {
@@ -35,7 +38,8 @@ static void copy_op_host(const void *input, void *output, const uint32_t shapes[
                     for (uint32_t w = 0; w < shapes[3]; ++w)
                     {
                         uint32_t idx_in = b * es[0] + c * es[1] + h * es[2] + w * es[3];
-                        output_fp16[idx_in] = input_fp16[idx_in];
+                        uint32_t idx_out = b * out_es[0] + c * out_es[1] + h * out_es[2] + w * out_es[3];
+                        output_fp16[idx_out] = input_fp16[idx_in];
                     }
                 }
             }
@@ -54,7 +58,8 @@ static void copy_op_host(const void *input, void *output, const uint32_t shapes[
                     for (uint32_t w = 0; w < shapes[3]; ++w)
                     {
                         uint32_t idx_in = b * es[0] + c * es[1] + h * es[2] + w * es[3];
-                        output_fp32[idx_in] = input_fp32[idx_in];
+                        uint32_t idx_out = b * out_es[0] + c * out_es[1] + h * out_es[2] + w * out_es[3];
+                        output_fp32[idx_out] = input_fp32[idx_in];
                     }
                 }
             }
@@ -111,7 +116,8 @@ START_TEST(test_op_copy)
 
     random_tensor(buf_input->data, input->shapes, input->strides, input->dtype, 0.0, 1.0);
 
-    copy_op_host(buf_input->data, buf_expected->data, tests[_i].shapes, input->strides, tests[_i].dtype);
+    copy_op_host(buf_input->data, buf_expected->data, tests[_i].shapes, input->strides, output->strides,
+                 tests[_i].dtype);
 
     ck_assert_int_eq(vkllm_commands_begin(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_upload(context, commands, input, buf_input->data, buf_input->alloc_n),
@@ -122,7 +128,7 @@ START_TEST(test_op_copy)
     ck_assert_int_eq(vkllm_commands_end(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_submit(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_wait_exec(context, commands), VKLLM_ERR_OK);
-    ck_assert_int_eq(vkllm_tensor_flush_cache(context, output), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_tensor_invalid_cache(context, output), VKLLM_ERR_OK);
 
     uint64_t time_cost = 0;
     ck_assert_int_eq(vkllm_pipeline_query_exec_time(context, output->pipeline, &time_cost), VKLLM_ERR_OK);
