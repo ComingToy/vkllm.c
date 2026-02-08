@@ -7,21 +7,22 @@
 #include <math.h>
 
 vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, struct vkllm_graph *graph,
-                                               struct vkllm_tensor *input, struct vkllm_tensor *WQ,
-                                               struct vkllm_tensor *WK, struct vkllm_tensor *WV,
-                                               struct vkllm_op_rope_params rope_params, const uint32_t num_head)
+                                               struct vkllm_tensor *input,
+                                               struct vkllm_llama2_self_attn_layer_params params)
 {
-    _CHECK_ARGS(context && graph && input && WQ && WK && WV);
+    _CHECK_ARGS(context && graph && input && params.WQ && params.WK && params.WV);
 
-    uint32_t hidden_dim = WQ->shapes[3];              // hidden_dim from weight matrix
-    uint32_t num_head_times_head_dim = WQ->shapes[2]; // num_head * head_dim
-    uint32_t head_dim = num_head_times_head_dim / num_head;
+    struct vkllm_op_rope_params rope_params = {.base = params.freq_base, .offset = params.offsets};
+
+    uint32_t hidden_dim = params.WQ->shapes[3];              // hidden_dim from weight matrix
+    uint32_t num_head_times_head_dim = params.WQ->shapes[2]; // num_head * head_dim
+    uint32_t head_dim = num_head_times_head_dim / params.num_head;
 
     // Validate weight shapes
-    _CHECK_ARGS(WK->shapes[0] == 1 && WK->shapes[1] == 1);
-    _CHECK_ARGS(WV->shapes[0] == 1 && WV->shapes[1] == 1);
-    _CHECK_ARGS(WK->shapes[2] == num_head_times_head_dim && WK->shapes[3] == hidden_dim);
-    _CHECK_ARGS(WV->shapes[2] == num_head_times_head_dim && WV->shapes[3] == hidden_dim);
+    _CHECK_ARGS(params.WK->shapes[0] == 1 && params.WK->shapes[1] == 1);
+    _CHECK_ARGS(params.WV->shapes[0] == 1 && params.WV->shapes[1] == 1);
+    _CHECK_ARGS(params.WK->shapes[2] == num_head_times_head_dim && params.WK->shapes[3] == hidden_dim);
+    _CHECK_ARGS(params.WV->shapes[2] == num_head_times_head_dim && params.WV->shapes[3] == hidden_dim);
 
     // Get input dimensions
     uint32_t batch = input->shapes[0];
@@ -38,7 +39,7 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     // Step 1: Compute Q = input @ WQ^T
     // Q shape: [batch, 1, seq_len, num_head*head_dim]
     uint32_t Q_shapes[4] = {batch, 1, seq_len, num_head_times_head_dim};
-    struct vkllm_tensor *Q_srcs[] = {input, WQ};
+    struct vkllm_tensor *Q_srcs[] = {input, params.WQ};
     float scale_q = 1.0f;
     err = vkllm_tensor_new(context, "Q", Q_shapes, input->dtype, VKLLM_OP_MATMUL, Q_srcs, 2, &scale_q, sizeof(scale_q),
                            false, &Q);
@@ -48,7 +49,7 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     // Step 2: Compute K = input @ WK^T
     // K shape: [batch, 1, seq_len, num_head*head_dim]
     uint32_t K_shapes[4] = {batch, 1, seq_len, num_head_times_head_dim};
-    struct vkllm_tensor *K_srcs[] = {input, WK};
+    struct vkllm_tensor *K_srcs[] = {input, params.WK};
     float scale_k = 1.0f;
     err = vkllm_tensor_new(context, "K", K_shapes, input->dtype, VKLLM_OP_MATMUL, K_srcs, 2, &scale_k, sizeof(scale_k),
                            false, &K);
@@ -58,7 +59,7 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     // Step 3: Compute V = input @ WV^T
     // V shape: [batch, 1, seq_len, num_head*head_dim]
     uint32_t V_shapes[4] = {batch, 1, seq_len, num_head_times_head_dim};
-    struct vkllm_tensor *V_srcs[] = {input, WV};
+    struct vkllm_tensor *V_srcs[] = {input, params.WV};
     float scale_v = 1.0f;
     err = vkllm_tensor_new(context, "V", V_shapes, input->dtype, VKLLM_OP_MATMUL, V_srcs, 2, &scale_v, sizeof(scale_v),
                            false, &V);
@@ -67,7 +68,7 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
 
     // Step 4: Reshape Q, K, V to split heads
     // First reshape Q from [batch, 1, seq_len, num_head*head_dim] to [batch, seq_len, num_head, head_dim]
-    uint32_t Q_reshaped_shapes[4] = {batch, seq_len, num_head, head_dim};
+    uint32_t Q_reshaped_shapes[4] = {batch, seq_len, params.num_head, head_dim};
     err = vkllm_tensor_reshape(context, Q, Q_reshaped_shapes);
     _CHECK(err);
 
@@ -78,7 +79,7 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     _CHECK(err);
 
     // First reshape K from [batch, 1, seq_len, num_head*head_dim] to [batch, seq_len, num_head, head_dim]
-    uint32_t K_reshaped_shapes[4] = {batch, seq_len, num_head, head_dim};
+    uint32_t K_reshaped_shapes[4] = {batch, seq_len, params.num_head, head_dim};
     err = vkllm_tensor_reshape(context, K, K_reshaped_shapes);
     _CHECK(err);
 
@@ -89,7 +90,7 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     _CHECK(err);
 
     // First reshape V from [batch, 1, seq_len, num_head*head_dim] to [batch, seq_len, num_head, head_dim]
-    uint32_t V_reshaped_shapes[4] = {batch, seq_len, num_head, head_dim};
+    uint32_t V_reshaped_shapes[4] = {batch, seq_len, params.num_head, head_dim};
     err = vkllm_tensor_reshape(context, V, V_reshaped_shapes);
     _CHECK(err);
 
@@ -107,7 +108,7 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
 
     // Step 6: Compute scores = Q @ K^T / sqrt(head_dim)
     // scores shape: [batch, num_head, seq_len, seq_len]
-    uint32_t scores_shapes[4] = {batch, num_head, seq_len, seq_len};
+    uint32_t scores_shapes[4] = {batch, params.num_head, seq_len, seq_len};
     struct vkllm_tensor *scores_srcs[] = {RQ, RK};
     float scale_scores = 1.0f / sqrtf((float)head_dim);
     err = vkllm_tensor_new(context, "scores", scores_shapes, input->dtype, VKLLM_OP_MATMUL, scores_srcs, 2,
@@ -127,7 +128,7 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
 
     // Step 8: Compute output = attn_weights @ V
     // output shape: [batch, num_head, seq_len, head_dim]
-    uint32_t output_shapes[4] = {batch, num_head, seq_len, head_dim};
+    uint32_t output_shapes[4] = {batch, params.num_head, seq_len, head_dim};
     struct vkllm_tensor *output_srcs[] = {attn_weights, V};
     float scale_output = 1.0f;
     err = vkllm_tensor_new(context, "attn_output", output_shapes, input->dtype, VKLLM_OP_MATMUL, output_srcs, 2,
