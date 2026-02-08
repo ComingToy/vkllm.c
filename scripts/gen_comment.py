@@ -79,8 +79,8 @@ index 7654321..2468135 100644
 +++ b/src/utils/emailValidator.js
 @@ -1,5 +1,6 @@
  const validateEmail = (email) => {
--  return /[^@ \t\r\n]+@[^@ \t\r\n]+\.[^@ \t\r\n]+/.test(email);
-+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+-  return /[^@ ]+@[^@ ]+[^@ ]+/.test(email);
++  return /^[^@]+@[^@]+[^@]+$/.test(email);
  };
 ```
 Generated Commit Message:
