@@ -147,14 +147,16 @@ vkllm_err_t vkllm_commands_upload(struct vkllm_context *context, struct vkllm_co
     _CHECK(vkllm_tensor_new_staging(context, tensor, &staging));
 
     memcpy(staging->data.host, data, bytes);
-    tensor->access_flags = VK_ACCESS_HOST_WRITE_BIT;
-    tensor->pipeline_stage = VK_PIPELINE_STAGE_HOST_BIT;
+    staging->access_flags = VK_ACCESS_HOST_WRITE_BIT;
+    staging->pipeline_stage = VK_PIPELINE_STAGE_HOST_BIT;
     vkllm_tensor_flush_cache(context, staging);
 
     vkllm_commands_sync_tensor(context, commands, staging, VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
     VkBufferCopy region = {0, 0, bytes};
     vkCmdCopyBuffer(commands->vk_command_buffer, staging->data.vk_buf, tensor->data.vk_buf, 1, &region);
+    tensor->access_flags = VK_ACCESS_TRANSFER_WRITE_BIT;
+    tensor->pipeline_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 
     struct vkllm_commands_task task = {.func = defer_upload_task, .context = context, .priv = staging};
     vkllm_array_commands_task_append(commands->defer_tasks, task);
