@@ -68,6 +68,7 @@ layout(push_constant) uniform constants
     uint K;
 
     float scale;
+    int act;
 };
 
 // 每个workgroup计算一个C矩阵中的[BM, BN]块
@@ -243,9 +244,12 @@ void main(void)
             uint out_row = blk_x + local_tid_x * TM + tm;
             uint out_col = blk_y + local_tid_y * TN + tn;
             uint off = out_batch_off + out_row * out0_stride;
+            float val = thread_results[tm][tn] * scale;
+            val = act == 1 ? val / (1.0 + exp(-val)) : val;
+
             if (out_row < M && out_col < N)
             {
-                out0[off + out_col] = OUT_DTYPE(thread_results[tm][tn] * scale);
+                out0[off + out_col] = OUT_DTYPE(val);
             }
         }
     }
