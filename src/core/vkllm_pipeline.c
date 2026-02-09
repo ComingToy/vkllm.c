@@ -473,7 +473,7 @@ static vkllm_err_t vkllm_create_matmul_pipelines(struct vkllm_context *context)
 
     struct vkllm_shader_info shader_info = {
         .binding_count = 3,
-        .push_constant_bytes = sizeof(uint32_t) * 14 + sizeof(float),
+        .push_constant_bytes = sizeof(uint32_t) * 14 + sizeof(float) + sizeof(int32_t),
         .local_x = 16,
         .local_y = 16,
         .local_z = 1,
