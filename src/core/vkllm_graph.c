@@ -6,6 +6,7 @@
 #include "vkllm_op_bin.h"
 #include "vkllm_op_copy.h"
 #include "vkllm_op_embedding.h"
+#include "vkllm_op_ffn_up_and_gate.h"
 #include "vkllm_op_matmul.h"
 #include "vkllm_op_rmsnorm.h"
 #include "vkllm_op_rope.h"
@@ -115,6 +116,9 @@ static vkllm_err_t vkllm_graph_init_tensor(struct vkllm_context *context, struct
     case VKLLM_OP_SOFTMAX:
         _CHECK(vkllm_op_softmax_init(context, commands, tensor));
         break;
+    case VKLLM_OP_FFN_UP_AND_GATE:
+        _CHECK(vkllm_op_ffn_up_and_gate_init(context, commands, tensor));
+        break;
     default:
         log_error("Unknown operation type: %d", tensor->op);
         return VKLLM_ERR_ARGS;
@@ -196,6 +200,9 @@ static vkllm_err_t vkllm_graph_run_tensor(struct vkllm_context *context, struct 
     case VKLLM_OP_SOFTMAX:
         _CHECK(vkllm_op_softmax_run(context, commands, tensor));
         break;
+    case VKLLM_OP_FFN_UP_AND_GATE:
+        _CHECK(vkllm_op_ffn_up_and_gate_run(context, commands, tensor));
+        break;
     default:
         log_error("Unknown operation type: %d", tensor->op);
         return VKLLM_ERR_ARGS;
@@ -276,6 +283,9 @@ static vkllm_err_t vkllm_graph_post_run_tensor(struct vkllm_context *context, st
         break;
     case VKLLM_OP_SOFTMAX:
         _CHECK(vkllm_op_softmax_post_run(context, commands, tensor));
+        break;
+    case VKLLM_OP_FFN_UP_AND_GATE:
+        _CHECK(vkllm_op_ffn_up_and_gate_post_run(context, commands, tensor));
         break;
     default:
         log_error("Unknown operation type: %d", tensor->op);

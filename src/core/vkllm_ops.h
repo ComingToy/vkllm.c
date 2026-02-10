@@ -15,6 +15,7 @@ typedef enum
     VKLLM_OP_MATMUL,
     VKLLM_OP_ROPE,
     VKLLM_OP_SOFTMAX,
+    VKLLM_OP_FFN_UP_AND_GATE,
 } vkllm_op_t;
 
 extern const char *vkllm_op_s(const vkllm_op_t op);
