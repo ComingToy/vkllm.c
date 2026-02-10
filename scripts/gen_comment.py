@@ -2,6 +2,7 @@ import requests
 import json
 import subprocess
 import argparse
+import os
 
 prompt_tmpl = """
 ## Role: Git Commit Message Generation Expert
@@ -172,8 +173,26 @@ def main():
     diffs = subprocess.check_output(['git', 'diff', '--cached']).decode('utf-8')
     prompt= prompt_tmpl.replace('{language}', 'English').replace('{diff}', diffs)
 
+    llm_api_token = ''
+    if 'LLM_API_TOKEN' in os.environ:
+        llm_api_token = os.environ['LLM_API_TOKEN']
+
+    llm_url = 'http://localhost:11434/api/chat'
+    if 'LLM_API_URL' in os.environ:
+        llm_url = os.environ['LLM_API_URL']
+    
+    # Create the headers dictionary
+    headers = {
+        'Authorization': f'Bearer {llm_api_token}',
+        'Content-Type': 'application/json' # Often required when sending JSON data
+    }
+
     req = {'model': model, 'messages': [{'role': 'user', 'content': prompt}], 'stream': False}
-    resp = requests.post('http://localhost:11434/api/chat', json=req)
+
+    if llm_api_token:
+        resp = requests.post(llm_url, json=req, headers=headers)
+    else:
+        resp = requests.post(llm_url, json=req)
 
     if not resp.ok:
         print(resp)
@@ -181,6 +200,8 @@ def main():
 
     content = resp.content.decode('utf-8')
     content = json.loads(content)
+    if 'choices' in content:
+        content = content['choices'][0]
     commit_msg = content['message']['content']
     print(commit_msg)
 
