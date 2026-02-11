@@ -11,6 +11,9 @@ struct vkllm_tensor;
 struct vkllm_llama2_self_attn_layer_params
 {
     struct vkllm_tensor *WK, *WQ, *WV;
+    struct vkllm_tensor *norm_weight;
+    float norm_power;
+    float norm_eps;
     float freq_base;
     uint32_t offsets;
     uint32_t num_head;
@@ -19,6 +22,9 @@ struct vkllm_llama2_self_attn_layer_params
 struct vkllm_llama2_ffn_layer_params
 {
     struct vkllm_tensor *WU, *WG, *WD;
+    struct vkllm_tensor *norm_weight;
+    float norm_power;
+    float norm_eps;
 };
 
 extern vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, struct vkllm_graph *graph,

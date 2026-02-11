@@ -88,6 +88,7 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     _CHECK_ARGS(input->shapes[3] == hidden_dim);
 
     vkllm_err_t err = VKLLM_ERR_OK;
+    struct vkllm_tensor *norm = NULL;
     struct vkllm_tensor *Q = NULL, *K = NULL, *V = NULL;
     struct vkllm_tensor *RQ = NULL, *RK = NULL;
     struct vkllm_tensor *scores = NULL, *attn_weights = NULL, *output = NULL;
