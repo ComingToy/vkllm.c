@@ -12,7 +12,7 @@ vkllm_err_t vkllm_llama2_build_ffn_layer(struct vkllm_context *context, struct v
                                          struct vkllm_tensor *input, struct vkllm_llama2_ffn_layer_params params)
 {
     _CHECK_ARGS(context && graph && input && params.WD && params.WG && params.WU);
-    struct vkllm_tensor *up = NULL, *gate = NULL, *down = NULL, *gate_mul = NULL;
+    struct vkllm_tensor *norm = NULL, *up = NULL, *gate = NULL, *down = NULL, *gate_mul = NULL;
     vkllm_err_t err = VKLLM_ERR_OK;
 
     uint32_t batch = input->shapes[0];
@@ -20,17 +20,23 @@ vkllm_err_t vkllm_llama2_build_ffn_layer(struct vkllm_context *context, struct v
     uint32_t seq_len = input->shapes[2];
     uint32_t up_dim = params.WU->shapes[3];
 
-    struct vkllm_tensor *up_srcs[] = {input, params.WU};
+    struct vkllm_tensor *norm_srcs[] = {input, params.norm_weight};
+    struct vkllm_op_rmsnorm_params norm_params = {.power = params.norm_power, .eps = params.norm_eps};
+    _CHECK(vkllm_tensor_new(context, "ffn_norm", input->shapes, input->dtype, VKLLM_OP_RMSNORM, norm_srcs, 2,
+                            &norm_params, sizeof(norm_params), false, &norm));
+
+    struct vkllm_tensor *up_srcs[] = {norm, params.WU};
     uint32_t ffn_up_shapes[] = {batch, channel, seq_len, up_dim};
     struct vkllm_op_matmul_params up_matmul_params = {.scale = 1.0, .act = 0};
 
-    _CHECK(vkllm_tensor_new(context, "ffn_up", ffn_up_shapes, input->dtype, VKLLM_OP_MATMUL, up_srcs, 2,
-                            &up_matmul_params, sizeof(up_matmul_params), false, &up));
+    _CHECK_JUMP(vkllm_tensor_new(context, "ffn_up", ffn_up_shapes, norm->dtype, VKLLM_OP_MATMUL, up_srcs, 2,
+                                 &up_matmul_params, sizeof(up_matmul_params), false, &up),
+                err, fail_free_norm);
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, up), err, fail_free_up);
 
-    struct vkllm_tensor *gate_srcs[] = {input, params.WG};
+    struct vkllm_tensor *gate_srcs[] = {norm, params.WG};
     struct vkllm_op_matmul_params gate_matmul_params = {.scale = 1.0, .act = 1};
-    _CHECK_JUMP(vkllm_tensor_new(context, "ffn_gate", ffn_up_shapes, input->dtype, VKLLM_OP_MATMUL, gate_srcs, 2,
+    _CHECK_JUMP(vkllm_tensor_new(context, "ffn_gate", ffn_up_shapes, norm->dtype, VKLLM_OP_MATMUL, gate_srcs, 2,
                                  &gate_matmul_params, sizeof(gate_matmul_params), false, &gate),
                 err, fail_free_up);
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, gate), err, fail_free_gate);
@@ -60,6 +66,8 @@ fail_free_gate:
     vkllm_tensor_free(context, gate);
 fail_free_up:
     vkllm_tensor_free(context, up);
+fail_free_norm:
+    vkllm_tensor_free(context, norm);
     return err;
 }
 
