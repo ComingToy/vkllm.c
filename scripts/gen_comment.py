@@ -63,7 +63,7 @@ Your output  (do not include the ``` symbols):
 """
 
 user_prompt_tmpl = """
-## Initialization: Please read the **git diff code changes** described by the user below and generate a **Commit Message** that meets the specifications for the user:
+## Initialization: Please read the **git diff code changes** described by the user below and generate a **Commit Message** that meets the specifications for the user(do not include the ``` symbols):
 ```git diff changes
 {diff}
 ```
