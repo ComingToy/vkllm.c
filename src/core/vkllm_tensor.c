@@ -57,6 +57,7 @@ static vkllm_err_t vkllm_create_vk_buffer(struct vkllm_tensor *tensor)
     }
 
     tensor->data.host = tensor->data.mapped ? tensor->data.alloc_info.pMappedData : NULL;
+    tensor->data.is_ref = false;
     return VKLLM_ERR_OK;
 }
 
@@ -142,7 +143,10 @@ err_create_vk_buf:
 
 void vkllm_tensor_free(struct vkllm_context *context, struct vkllm_tensor *tensor)
 {
-    vmaDestroyBuffer(tensor->device->vma_allocator, tensor->data.vk_buf, tensor->data.allocation);
+    if (!tensor->data.is_ref)
+    {
+        vmaDestroyBuffer(tensor->device->vma_allocator, tensor->data.vk_buf, tensor->data.allocation);
+    }
     free(tensor);
     context->stats.tensor_alloc_counts -= 1;
 }
@@ -244,5 +248,45 @@ vkllm_err_t vkllm_tensor_permute(struct vkllm_context *context, struct vkllm_ten
     tensor->strides[2] = strides[axis[2]];
     tensor->strides[3] = strides[axis[3]];
 
+    return VKLLM_ERR_OK;
+}
+
+vkllm_err_t vkllm_tensor_copy_ref(struct vkllm_context *context, struct vkllm_tensor *tensor, struct vkllm_tensor **p)
+{
+    _CHECK_ARGS(context && tensor && p);
+
+    *p = (struct vkllm_tensor *)malloc(sizeof(struct vkllm_tensor));
+    struct vkllm_tensor *t = *p;
+
+    t->name = tensor->name;
+    t->dtype = tensor->dtype;
+    for (uint32_t i = 0; i < 4; ++i)
+    {
+        t->shapes[i] = tensor->shapes[i];
+        t->strides[i] = tensor->strides[i];
+    }
+    t->bytes = tensor->bytes;
+
+    t->device = tensor->device;
+
+    t->data.allocation = tensor->data.allocation;
+    t->data.alloc_info = tensor->data.alloc_info;
+    t->data.vk_buf = tensor->data.vk_buf;
+    t->data.host = tensor->data.host;
+    t->data.mapped = tensor->data.mapped;
+    t->data.is_ref = true;
+
+    t->access_flags = tensor->access_flags;
+    t->pipeline_stage = tensor->pipeline_stage;
+
+    t->op = VKLLM_OP_REF;
+    t->pipeline = NULL;
+    t->srcs[0] = tensor;
+    for (uint32_t i = 1; i < VKLLM_MAX_SRCS; ++i)
+    {
+        t->srcs[i] = NULL;
+    }
+
+    context->stats.tensor_alloc_counts += 1;
     return VKLLM_ERR_OK;
 }

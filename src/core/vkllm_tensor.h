@@ -32,6 +32,7 @@ struct vkllm_tensor
         VkBuffer vk_buf;
         void *host;
         bool mapped; // host_buf is mapped
+        bool is_ref;
     } data;
 
     VkAccessFlagBits access_flags;
@@ -56,6 +57,8 @@ extern vkllm_err_t vkllm_tensor_reshape(struct vkllm_context *context, struct vk
                                         const uint32_t *shapes);
 extern vkllm_err_t vkllm_tensor_permute(struct vkllm_context *context, struct vkllm_tensor *tensor,
                                         const uint32_t *axis);
+extern vkllm_err_t vkllm_tensor_copy_ref(struct vkllm_context *context, struct vkllm_tensor *tensor,
+                                         struct vkllm_tensor **p);
 #ifdef __cplusplus
 }
 #endif
