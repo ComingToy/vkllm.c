@@ -119,6 +119,9 @@ static vkllm_err_t vkllm_graph_init_tensor(struct vkllm_context *context, struct
     case VKLLM_OP_FFN_UP_AND_GATE:
         _CHECK(vkllm_op_ffn_up_and_gate_init(context, commands, tensor));
         break;
+    case VKLLM_OP_REF:
+        // Reference tensor, srcs already recursively initialized above
+        break;
     default:
         log_error("Unknown operation type: %d", tensor->op);
         return VKLLM_ERR_ARGS;
@@ -203,6 +206,9 @@ static vkllm_err_t vkllm_graph_run_tensor(struct vkllm_context *context, struct 
     case VKLLM_OP_FFN_UP_AND_GATE:
         _CHECK(vkllm_op_ffn_up_and_gate_run(context, commands, tensor));
         break;
+    case VKLLM_OP_REF:
+        // Reference tensor, srcs already recursively executed above
+        break;
     default:
         log_error("Unknown operation type: %d", tensor->op);
         return VKLLM_ERR_ARGS;
@@ -286,6 +292,9 @@ static vkllm_err_t vkllm_graph_post_run_tensor(struct vkllm_context *context, st
         break;
     case VKLLM_OP_FFN_UP_AND_GATE:
         _CHECK(vkllm_op_ffn_up_and_gate_post_run(context, commands, tensor));
+        break;
+    case VKLLM_OP_REF:
+        // Reference tensor, srcs already recursively post-run above
         break;
     default:
         log_error("Unknown operation type: %d", tensor->op);
