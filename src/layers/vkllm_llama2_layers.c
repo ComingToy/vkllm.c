@@ -139,37 +139,43 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     // Step 4: Reshape Q, K, V to split heads
     // First reshape Q from [batch, 1, seq_len, num_head*head_dim] to [batch, seq_len, num_head, head_dim]
     uint32_t Q_reshaped_shapes[4] = {batch, seq_len, params.num_head, head_dim};
-    _CHECK_JUMP(vkllm_tensor_reshape(context, Q, Q_reshaped_shapes), err, fail_free_V);
+    struct vkllm_tensor *Q_ref = NULL;
+    _CHECK_JUMP(vkllm_tensor_copy_ref(context, Q, &Q_ref), err, fail_free_V);
+    _CHECK_JUMP(vkllm_tensor_reshape(context, Q_ref, Q_reshaped_shapes), err, fail_free_Q_ref);
 
     // Then permute Q to [batch, num_head, seq_len, head_dim]
     uint32_t Q_permute_axis[4] = {0, 2, 1,
                                   3}; // (batch, seq_len, num_head, head_dim) -> (batch, num_head, seq_len, head_dim)
-    _CHECK_JUMP(vkllm_tensor_permute(context, Q, Q_permute_axis), err, fail_free_V);
+    _CHECK_JUMP(vkllm_tensor_permute(context, Q_ref, Q_permute_axis), err, fail_free_Q_ref);
 
     // First reshape K from [batch, 1, seq_len, num_head*head_dim] to [batch, seq_len, num_head, head_dim]
     uint32_t K_reshaped_shapes[4] = {batch, seq_len, params.num_head, head_dim};
-    _CHECK_JUMP(vkllm_tensor_reshape(context, K, K_reshaped_shapes), err, fail_free_V);
+    struct vkllm_tensor *K_ref = NULL;
+    _CHECK_JUMP(vkllm_tensor_copy_ref(context, K, &K_ref), err, fail_free_Q_ref);
+    _CHECK_JUMP(vkllm_tensor_reshape(context, K_ref, K_reshaped_shapes), err, fail_free_K_ref);
 
     // Then permute K to [batch, num_head, seq_len, head_dim]
     uint32_t K_permute_axis[4] = {0, 2, 1,
                                   3}; // (batch, seq_len, num_head, head_dim) -> (batch, num_head, seq_len, head_dim)
-    _CHECK_JUMP(vkllm_tensor_permute(context, K, K_permute_axis), err, fail_free_V);
+    _CHECK_JUMP(vkllm_tensor_permute(context, K_ref, K_permute_axis), err, fail_free_K_ref);
 
     // First reshape V from [batch, 1, seq_len, num_head*head_dim] to [batch, seq_len, num_head, head_dim]
     uint32_t V_reshaped_shapes[4] = {batch, seq_len, params.num_head, head_dim};
-    _CHECK_JUMP(vkllm_tensor_reshape(context, V, V_reshaped_shapes), err, fail_free_V);
+    struct vkllm_tensor *V_ref = NULL;
+    _CHECK_JUMP(vkllm_tensor_copy_ref(context, V, &V_ref), err, fail_free_K_ref);
+    _CHECK_JUMP(vkllm_tensor_reshape(context, V_ref, V_reshaped_shapes), err, fail_free_V_ref);
 
     // Then permute V to [batch, num_head, seq_len, head_dim]
     uint32_t V_permute_axis[4] = {0, 2, 1,
                                   3}; // (batch, seq_len, num_head, head_dim) -> (batch, num_head, seq_len, head_dim)
-    _CHECK_JUMP(vkllm_tensor_permute(context, V, V_permute_axis), err, fail_free_V);
+    _CHECK_JUMP(vkllm_tensor_permute(context, V_ref, V_permute_axis), err, fail_free_V_ref);
 
-    _CHECK_JUMP(vkllm_tensor_new(context, "RQ", Q->shapes, Q->dtype, VKLLM_OP_ROPE, &Q, 1, &rope_params,
+    _CHECK_JUMP(vkllm_tensor_new(context, "RQ", Q_ref->shapes, Q_ref->dtype, VKLLM_OP_ROPE, &Q_ref, 1, &rope_params,
                                  sizeof(rope_params), false, &RQ),
-                err, fail_free_V);
+                err, fail_free_V_ref);
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, RQ), err, fail_free_RQ);
 
-    _CHECK_JUMP(vkllm_tensor_new(context, "RK", K->shapes, K->dtype, VKLLM_OP_ROPE, &K, 1, &rope_params,
+    _CHECK_JUMP(vkllm_tensor_new(context, "RK", K_ref->shapes, K_ref->dtype, VKLLM_OP_ROPE, &K_ref, 1, &rope_params,
                                  sizeof(rope_params), false, &RK),
                 err, fail_free_RQ);
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, RK), err, fail_free_RK);
@@ -197,7 +203,7 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     // Step 8: Compute output = attn_weights @ V
     // output shape: [batch, num_head, seq_len, head_dim]
     uint32_t output_shapes[4] = {batch, params.num_head, seq_len, head_dim};
-    struct vkllm_tensor *output_srcs[] = {attn_weights, V};
+    struct vkllm_tensor *output_srcs[] = {attn_weights, V_ref};
     matmul_params.scale = 1.0f;
     _CHECK_JUMP(vkllm_tensor_new(context, "attn_output", output_shapes, input->dtype, VKLLM_OP_MATMUL, output_srcs, 2,
                                  &matmul_params, sizeof(matmul_params), false, &output),
@@ -208,22 +214,27 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     // First permute output from [batch, num_head, seq_len, head_dim] to [batch, seq_len, num_head, head_dim]
     uint32_t output_permute_axis[4] = {
         0, 2, 1, 3}; // (batch, num_head, seq_len, head_dim) -> (batch, seq_len, num_head, head_dim)
-    _CHECK_JUMP(vkllm_tensor_permute(context, output, output_permute_axis), err, fail_free_attn_output);
+    struct vkllm_tensor *output_ref = NULL;
+    _CHECK_JUMP(vkllm_tensor_copy_ref(context, output, &output_ref), err, fail_free_attn_output);
+    _CHECK_JUMP(vkllm_tensor_permute(context, output_ref, output_permute_axis), err, fail_free_output_ref);
 
     struct vkllm_tensor *concated_heads = NULL;
-    _CHECK_JUMP(vkllm_tensor_new(context, "concated_heads", output->shapes, output->dtype, VKLLM_OP_COPY, &output, 1,
-                                 NULL, 0, false, &concated_heads),
+    struct vkllm_tensor *concated_heads_ref = NULL;
+    _CHECK_JUMP(vkllm_tensor_new(context, "concated_heads", output_ref->shapes, output_ref->dtype, VKLLM_OP_COPY,
+                                 &output_ref, 1, NULL, 0, false, &concated_heads),
                 err, fail_free_cocnated_heads);
+    _CHECK_JUMP(vkllm_tensor_copy_ref(context, concated_heads, &concated_heads_ref), err, fail_free_cocnated_heads);
 
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, concated_heads), err, fail_free_cocnated_heads);
 
     // Then reshape to [batch, 1, seq_len, num_head*head_dim]
     uint32_t concated_heads_shapes[4] = {batch, 1, seq_len, num_head_times_head_dim};
-    _CHECK_JUMP(vkllm_tensor_reshape(context, concated_heads, concated_heads_shapes), err, fail_free_cocnated_heads);
+    _CHECK_JUMP(vkllm_tensor_reshape(context, concated_heads_ref, concated_heads_shapes), err,
+                fail_free_concated_heads_ref);
 
     struct vkllm_tensor *final_output = NULL;
     uint32_t final_output_shapes[] = {batch, 1, seq_len, hidden_dim};
-    struct vkllm_tensor *final_output_srcs[] = {concated_heads, params.WO};
+    struct vkllm_tensor *final_output_srcs[] = {concated_heads_ref, params.WO};
     struct vkllm_op_matmul_params final_output_params = {.scale = 1.0, .act = 0};
     _CHECK_JUMP(vkllm_tensor_new(context, "final_output", final_output_shapes, concated_heads->dtype, VKLLM_OP_MATMUL,
                                  final_output_srcs, 2, &final_output_params, sizeof(final_output_params), false,
@@ -245,8 +256,12 @@ fail_free_output_add:
     vkllm_tensor_free(context, final_output_add);
 fail_free_final_output:
     vkllm_tensor_free(context, final_output);
+fail_free_concated_heads_ref:
+    vkllm_tensor_free(context, concated_heads_ref);
 fail_free_cocnated_heads:
     vkllm_tensor_free(context, concated_heads);
+fail_free_output_ref:
+    vkllm_tensor_free(context, output_ref);
 fail_free_attn_output:
     vkllm_tensor_free(context, output);
 fail_free_attn_weights:
@@ -257,6 +272,12 @@ fail_free_RK:
     vkllm_tensor_free(context, RK);
 fail_free_RQ:
     vkllm_tensor_free(context, RQ);
+fail_free_V_ref:
+    vkllm_tensor_free(context, V_ref);
+fail_free_K_ref:
+    vkllm_tensor_free(context, K_ref);
+fail_free_Q_ref:
+    vkllm_tensor_free(context, Q_ref);
 fail_free_V:
     vkllm_tensor_free(context, V);
 fail_free_K:
