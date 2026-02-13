@@ -298,3 +298,15 @@ fail_free_norm:
     vkllm_tensor_free(context, norm);
     return err;
 }
+
+vkllm_err_t vkllm_llama2_build_transformer_block(struct vkllm_context *context, struct vkllm_graph *graph,
+                                                 struct vkllm_tensor *input,
+                                                 struct vkllm_llama2_transformer_block_params params)
+{
+    _CHECK_ARGS(context && graph && input);
+
+    _CHECK(vkllm_llama2_build_self_attn_layer(context, graph, input, params.attn));
+    _CHECK(vkllm_llama2_build_ffn_layer(context, graph, input, params.ffn));
+
+    return VKLLM_ERR_OK;
+}
