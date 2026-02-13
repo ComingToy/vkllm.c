@@ -56,8 +56,18 @@ vkllm_err_t vkllm_llama2_build_ffn_layer(struct vkllm_context *context, struct v
                 err, fail_free_down);
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, down), err, fail_free_down);
 
+    struct vkllm_tensor *output_srcs[] = {input, down};
+    int32_t add_op = 0;
+    struct vkllm_tensor *output;
+    _CHECK_JUMP(vkllm_tensor_new(context, "ffn_add", input->shapes, input->dtype, VKLLM_OP_BIN, output_srcs, 2, &add_op,
+                                 sizeof(add_op), false, &output),
+                err, fail_free_down);
+    _CHECK_JUMP(vkllm_graph_add_node(context, graph, output), err, fail_free_output);
+
     return VKLLM_ERR_OK;
 
+fail_free_output:
+    vkllm_tensor_free(context, output);
 fail_free_down:
     vkllm_tensor_free(context, down);
 fail_free_gate_mul:
