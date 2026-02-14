@@ -160,33 +160,70 @@ void main(void)
         uint a_col = k * BK + ld_a_y;
         uint smem_a_idx = a_batch_off + a_row * in0_stride + a_col;
 
+        smem_a[ld_a_x][ld_a_y / 4] = SMEM_DTYPE(0.0);
         if (a_row < M)
         {
-            smem_a[ld_a_x][ld_a_y / 4] = SMEM_DTYPE(LOAD_DTYPE(in0[smem_a_idx]), LOAD_DTYPE(in0[smem_a_idx + 1]),
-                                                    LOAD_DTYPE(in0[smem_a_idx + 2]), LOAD_DTYPE(in0[smem_a_idx + 3]));
-        }
-        else
-        {
-            smem_a[ld_a_x][ld_a_y / 4] = SMEM_DTYPE(0.0);
+            if (a_col + 3 < K)
+            {
+                smem_a[ld_a_x][ld_a_y / 4] =
+                    SMEM_DTYPE(LOAD_DTYPE(in0[smem_a_idx]), LOAD_DTYPE(in0[smem_a_idx + 1]),
+                               LOAD_DTYPE(in0[smem_a_idx + 2]), LOAD_DTYPE(in0[smem_a_idx + 3]));
+            }
+            else if (a_col + 2 < K)
+            {
+                smem_a[ld_a_x][ld_a_y / 4] = SMEM_DTYPE(LOAD_DTYPE(in0[smem_a_idx]), LOAD_DTYPE(in0[smem_a_idx + 1]),
+                                                        LOAD_DTYPE(in0[smem_a_idx + 2]), LOAD_DTYPE(0));
+            }
+            else if (a_col + 1 < K)
+            {
+                smem_a[ld_a_x][ld_a_y / 4] = SMEM_DTYPE(LOAD_DTYPE(in0[smem_a_idx]), LOAD_DTYPE(in0[smem_a_idx + 1]),
+                                                        LOAD_DTYPE(0), LOAD_DTYPE(0));
+            }
+            else if (a_col < K)
+            {
+                smem_a[ld_a_x][ld_a_y / 4] =
+                    SMEM_DTYPE(LOAD_DTYPE(in0[smem_a_idx]), LOAD_DTYPE(0), LOAD_DTYPE(0), LOAD_DTYPE(0));
+            }
         }
 
         uint b_row = blk_y + ld_b_x;
         uint b_col = a_col;
         uint smem_b_idx = b_batch_off + b_row * in1_stride + b_col;
 
+        smem_b[ld_b_x][ld_b_y / load_n_per_thread] = SMEM_DTYPE(0.0);
         if (b_row < N)
         {
-            smem_b[ld_b_x][ld_b_y / load_n_per_thread] =
-                SMEM_DTYPE(LOAD_DTYPE(in1[smem_b_idx]), LOAD_DTYPE(in1[smem_b_idx + 1]),
-                           LOAD_DTYPE(in1[smem_b_idx + 2]), LOAD_DTYPE(in1[smem_b_idx + 3]));
-        }
-        else
-        {
-            smem_b[ld_b_x][ld_b_y / load_n_per_thread] = SMEM_DTYPE(0.0);
+            if (b_col + 3 < K)
+            {
+                smem_b[ld_b_x][ld_b_y / load_n_per_thread] =
+                    SMEM_DTYPE(LOAD_DTYPE(in1[smem_b_idx]), LOAD_DTYPE(in1[smem_b_idx + 1]),
+                               LOAD_DTYPE(in1[smem_b_idx + 2]), LOAD_DTYPE(in1[smem_b_idx + 3]));
+            }
+            else if (b_col + 2 < K)
+            {
+                smem_b[ld_b_x][ld_b_y / load_n_per_thread] =
+                    SMEM_DTYPE(LOAD_DTYPE(in1[smem_b_idx]), LOAD_DTYPE(in1[smem_b_idx + 1]),
+                               LOAD_DTYPE(in1[smem_b_idx + 2]), LOAD_DTYPE(0));
+            }
+            else if (b_col + 1 < K)
+            {
+                smem_b[ld_b_x][ld_b_y / load_n_per_thread] = SMEM_DTYPE(
+                    LOAD_DTYPE(in1[smem_b_idx]), LOAD_DTYPE(in1[smem_b_idx + 1]), LOAD_DTYPE(0), LOAD_DTYPE(0));
+            }
+            else if (b_col < K)
+            {
+                smem_b[ld_b_x][ld_b_y / load_n_per_thread] =
+                    SMEM_DTYPE(LOAD_DTYPE(in1[smem_b_idx]), LOAD_DTYPE(0), LOAD_DTYPE(0), LOAD_DTYPE(0));
+            }
         }
 
         memoryBarrierShared();
         barrier();
+
+        // 检查当前线程是否在有效的矩阵范围内
+        uint out_row_start = blk_x + local_tid_x * TM;
+        uint out_col_start = blk_y + local_tid_y * TN;
+        bool is_thread_valid = (out_row_start < M) && (out_col_start < N);
 
         // 每个线程使用smem中的[TM, BK]和smem_b中的[BK, TN]个元素计算得到[TM, TN]个结果;
 
@@ -238,3 +275,4 @@ void main(void)
         }
     }
 }
+
