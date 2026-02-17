@@ -1,0 +1,86 @@
+#version 450 core
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#include "vkllm_shader_header.comp.h"
+
+
+#ifdef _SUPPORT_FLOAT16_ARITHMETIC
+#extension GL_EXT_shader_subgroup_extended_types_float16 : require 
+#endif
+
+layout(binding = 0) readonly buffer In0
+{
+    DTYPE in0[];
+};
+
+layout(binding = 1) writeonly buffer Out0
+{
+    DTYPE out0[];
+};
+
+layout(push_constant) uniform constants
+{
+    ShapeConstant shape;
+    int seq_mask;
+    uint offsets;
+};
+
+void get_indices(uint tid, out uint b, out uint c, out uint h, out uint w)
+{
+    uint shape3 = gl_SubgroupSize;
+    uint cn = shape.shapes[2] * shape3;
+    uint bn = shape.shapes[1] * cn;
+    b = tid / bn;
+    uint b_offset = b * bn;
+
+    c = (tid - b_offset) / cn;
+    uint c_offset = c * cn;
+
+    h = (tid - b_offset - c_offset) / shape3;
+    w = tid - b_offset - c_offset - h * shape3;
+}
+
+void main()
+{
+    uint tid = get_thread_id();
+    uint b = 0, c = 0, h = 0, w = 0;
+    get_indices(tid, b, c, h, w);
+
+    if (b >= shape.shapes[0] || c >= shape.shapes[1] || h >= shape.shapes[2])
+    {
+        return;
+    }
+
+    uint row_base = b * shape.strides[0] + c * shape.strides[1] * h * shape.strides[2];
+    LOAD_DTYPE local_max = LOAD_DTYPE(in0[row_base]);
+
+    const uint W = shape.shapes[3];
+    for (uint i = gl_SubgroupInvocationID; i < W; i += gl_SubgroupInvocationID)
+    {
+        local_max = max(local_max, LOAD_DTYPE(in0[row_base + i]));
+    }
+
+    LOAD_DTYPE glb_max = subgroupMax(local_max);
+
+    LOAD_DTYPE local_sum = LOAD_DTYPE(0);
+    for (uint i = gl_SubgroupInvocationID; i < W; i += gl_SubgroupInvocationID)
+    {
+        if (seq_mask > 0 && i > h + offsets)
+        {
+            continue;
+        }
+
+        local_sum += exp(LOAD_DTYPE(in0[row_base + i]) - glb_max);
+    }
+
+    LOAD_DTYPE glb_sum = subgroupAdd(local_sum);
+
+    for (uint i = gl_SubgroupInvocationID; i < W; i += gl_SubgroupInvocationID)
+    {
+        if (seq_mask > 0 && i > h + offsets)
+        {
+            out0[row_base + i] = DTYPE(0);
+        }else{
+            out0[row_base + i] = DTYPE(exp(LOAD_DTYPE(in0[row_base + i]) - glb_max)/glb_sum);
+        }
+    }
+}
