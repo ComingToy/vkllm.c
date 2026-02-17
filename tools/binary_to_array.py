@@ -5,7 +5,7 @@ import jinja2
 header_tmpl = """
 #ifndef {{ header_guard }}
 #define {{ header_guard }}
-#include <cstddef>
+#include <stddef.h>
 #include <stdint.h>
 {% for spv_name in spv_names %}
 extern const uint8_t* __get_{{ spv_name }}_code();
@@ -15,7 +15,7 @@ extern size_t __get_{{ spv_name }}_size();
 """
 
 source_tmpl = """
-#include <cstddef>
+#include <stddef.h>
 #include <stdint.h>
 {% for spv_name, binary in frags %}
 static uint8_t __{{ spv_name }}_code[] = { {{ binary }} };

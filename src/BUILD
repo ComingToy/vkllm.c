@@ -7,6 +7,7 @@ cc_library(
         "vkllm_dtypes.c",
         "vkllm_tensor.c",
         "vkllm_commands.c",
+        "vkllm_pipeline.c",
     ],
     hdrs = [
         "vkllm_gpu_device.h",
@@ -17,9 +18,10 @@ cc_library(
         "vkllm_dtypes.inc",
         "vkllm_dtypes.h",
         "vkllm_common.h",
+        "vkllm_ops.h",
         "vkllm_tensor.h",
         "vkllm_commands.h",
-        "vkllm_ops.h",
+        "vkllm_pipeline.h",
         "vkllm_array.h",
     ],
     deps = [
@@ -29,6 +31,24 @@ cc_library(
     ],
     copts = [
         "-std=c11"
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "ops",
+    srcs = [
+        "vkllm_op_vector_add.c",
+    ],
+    hdrs = [
+        "vkllm_op_vector_add.h",
+    ],
+    deps = [
+        "//src:core",
+        "//src/shaders:vkllm_shaders",
+    ],
+    copts = [
+        "-std=c11",
     ],
     visibility = ["//visibility:public"],
 )

@@ -76,5 +76,5 @@
 // configs
 
 #define VKLLM_MAX_PHY_DEVS 16
-#define VKLLM_MAX_SRCS 4
+#define VKLLM_MAX_SRCS 8
 #endif

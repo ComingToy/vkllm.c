@@ -1,0 +1,34 @@
+#version 450 core
+
+layout(local_size_x_id = 253, local_size_y_id = 254, local_size_z_id = 255) in;
+
+layout(push_constant) uniform constants
+{
+    uint N;
+};
+
+layout(binding = 0) readonly buffer Input0
+{
+    float input0[];
+};
+
+layout(binding = 1) readonly buffer Input1
+{
+    float input1[];
+};
+
+layout(binding = 2) writeonly buffer Output0
+{
+    float output0[];
+};
+
+void main(void)
+{
+    uint tid = gl_GlobalInvocationID.z;
+    if (tid >= N)
+    {
+        return;
+    }
+
+    output0[tid] = input0[tid] + input1[tid];
+}

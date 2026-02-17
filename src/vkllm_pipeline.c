@@ -12,6 +12,7 @@ vkllm_err_t vkllm_shader_constants_new(struct vkllm_shader_constants **constants
     _CHECK_JUMP(vkllm_array_u8_new(&p->data, init_bytes), err, fail_data);
     _CHECK_JUMP(vkllm_array_u32_new(&p->offsets, init_bytes), err, fail_offsets);
     _CHECK_JUMP(vkllm_array_u32_new(&p->sizes, init_bytes), err, fail_sizes);
+    p->bytes = 0;
 
     return VKLLM_ERR_OK;
 
@@ -33,6 +34,7 @@ vkllm_err_t _vkllm_shader_constants_append(struct vkllm_shader_constants *consta
     }
     _CHECK(vkllm_array_u32_append(constants->offsets, offset));
     _CHECK(vkllm_array_u32_append(constants->sizes, bytes));
+    constants->bytes += bytes;
     return VKLLM_ERR_OK;
 }
 
@@ -218,7 +220,7 @@ vkllm_err_t vkllm_pipeline_update_bindings(struct vkllm_context *context, struct
 {
     VkDescriptorBufferInfo *buffer_infos = NULL;
     _NEW_N_AND_CHECK(buffer_infos, VkDescriptorBufferInfo, bindings->used_n);
-    if (bindings->used_n != indices->used_n)
+    if (indices && (bindings->used_n != indices->used_n))
     {
         log_error("input bindings.size != indices.size");
         return VKLLM_ERR_ARGS;
@@ -244,7 +246,7 @@ vkllm_err_t vkllm_pipeline_update_bindings(struct vkllm_context *context, struct
         VkWriteDescriptorSet writer = {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                                        .pNext = NULL,
                                        .dstSet = pipeline->vk_desc_set,
-                                       .dstBinding = indices->data[i],
+                                       .dstBinding = indices ? indices->data[i] : i,
                                        .dstArrayElement = 0,
                                        .descriptorCount = 1,
                                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -258,4 +260,14 @@ vkllm_err_t vkllm_pipeline_update_bindings(struct vkllm_context *context, struct
     free(buffer_infos);
     free(writers);
     return VKLLM_ERR_OK;
+}
+
+void vkllm_pipeline_free(struct vkllm_context *context, struct vkllm_pipeline *pipeline)
+{
+    vkDestroyPipeline(pipeline->device->vk_dev, pipeline->vk_pipeline, NULL);
+    vkDestroyShaderModule(pipeline->device->vk_dev, pipeline->vk_shader_module, NULL);
+    vkDestroyPipelineLayout(pipeline->device->vk_dev, pipeline->vk_pipeline_layout, NULL);
+    vkDestroyDescriptorSetLayout(pipeline->device->vk_dev, pipeline->vk_desc_set_layout, NULL);
+    vkDestroyDescriptorPool(pipeline->device->vk_dev, pipeline->vk_desc_pool, NULL);
+    free(pipeline);
 }
