@@ -38,16 +38,16 @@ static vkllm_err_t vkllm_create_command_buffer(struct vkllm_commands *commands)
 
 static vkllm_err_t vkllm_commands_init_queue(struct vkllm_context *context, struct vkllm_commands *commands)
 {
-    _CHECK(vkllm_gpu_device_require_queue(context, commands->device, VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT,
+    _CHECK(vkllm_gpu_device_require_queue(context, VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT,
                                           &commands->vk_queue_type));
     vkGetDeviceQueue(commands->device->vk_dev, commands->vk_queue_type, 0, &commands->vk_queue);
 
     return VKLLM_ERR_OK;
 }
 
-vkllm_err_t vkllm_commands_new(struct vkllm_context *context, struct vkllm_gpu_device *device,
-                               struct vkllm_commands **commands)
+vkllm_err_t vkllm_commands_new(struct vkllm_context *context, struct vkllm_commands **commands)
 {
+    struct vkllm_gpu_device *device = context->device;
     if (!context || !device || !commands)
     {
         log_error("input error. context is NULL: %s, device is NULL: %s, commands is NULL: %s", BOOL_S(context),

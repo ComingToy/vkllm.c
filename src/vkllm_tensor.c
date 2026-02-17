@@ -53,10 +53,9 @@ static vkllm_err_t vkllm_create_vk_buffer(struct vkllm_tensor *tensor)
     return VKLLM_ERR_OK;
 }
 
-vkllm_err_t vkllm_tensor_new(struct vkllm_context *context, struct vkllm_gpu_device *device, const char *name,
-                             const uint32_t *shapes, vkllm_dtype_t dtype, vkllm_op_t op, struct vkllm_tensor **srcs,
-                             const uint32_t n_srcs, const uint8_t *params, size_t params_bytes, bool mapped,
-                             struct vkllm_tensor **p)
+vkllm_err_t vkllm_tensor_new(struct vkllm_context *context, const char *name, const uint32_t *shapes,
+                             vkllm_dtype_t dtype, vkllm_op_t op, struct vkllm_tensor **srcs, const uint32_t n_srcs,
+                             const uint8_t *params, size_t params_bytes, bool mapped, struct vkllm_tensor **p)
 {
     if (!shapes)
     {
@@ -73,6 +72,7 @@ vkllm_err_t vkllm_tensor_new(struct vkllm_context *context, struct vkllm_gpu_dev
         }
     }
 
+    struct vkllm_gpu_device *device = context->device;
     *p = (struct vkllm_tensor *)malloc(sizeof(struct vkllm_tensor) + params_bytes);
 
     struct vkllm_tensor *t = *p;
@@ -175,7 +175,7 @@ vkllm_err_t vkllm_tensor_new_staging(struct vkllm_context *context, struct vkllm
                                      struct vkllm_tensor **staging)
 {
     _CHECK_ARGS(context && tensor && staging);
-    _CHECK(vkllm_tensor_new(context, tensor->device, "", tensor->shapes, tensor->dtype, tensor->op, tensor->srcs, 4,
-                            NULL, 0, true, staging));
+    _CHECK(vkllm_tensor_new(context, "", tensor->shapes, tensor->dtype, tensor->op, tensor->srcs, 4, NULL, 0, true,
+                            staging));
     return VKLLM_ERR_OK;
 }

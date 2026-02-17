@@ -1,4 +1,5 @@
 #include "vkllm_gpu_device.h"
+#include "vkllm_context.h"
 
 #include <log.h>
 #include <stdlib.h>
@@ -9,7 +10,7 @@
 
 #define __VKLLM_DEBUG__ 1
 
-static int create_instance(struct vkllm_context *context, struct vkllm_gpu_device *pdev)
+static int create_instance(struct vkllm_gpu_device *pdev)
 {
     VkResult ret = vkEnumerateInstanceVersion(&pdev->api_version);
     if (ret != VK_SUCCESS)
@@ -63,9 +64,10 @@ static int create_instance(struct vkllm_context *context, struct vkllm_gpu_devic
     return VKLLM_ERR_OK;
 }
 
-static vkllm_err_t init_physical_device(struct vkllm_context *context, struct vkllm_gpu_device *pdev)
+static vkllm_err_t init_physical_device(struct vkllm_context *context)
 {
     uint32_t ndev = 0;
+    struct vkllm_gpu_device *pdev = context->device;
     // FIXME: alloc dynamic
     VkPhysicalDevice physical_devices[VKLLM_MAX_PHY_DEVS] = {};
     VkResult ret = vkEnumeratePhysicalDevices(pdev->vk_instance, &ndev, NULL);
@@ -182,8 +184,9 @@ static vkllm_err_t init_physical_device(struct vkllm_context *context, struct vk
     return VKLLM_ERR_OK;
 }
 
-static vkllm_err_t init_logical_device(struct vkllm_context *context, struct vkllm_gpu_device *pdev)
+static vkllm_err_t init_logical_device(struct vkllm_context *context)
 {
+    struct vkllm_gpu_device *pdev = context->device;
     uint32_t n_queue = pdev->vk_physical_dev.n_queue_family_properties;
     VkDeviceQueueCreateInfo *dev_queue_create_infos = NULL;
     _NEW_N_AND_CHECK(dev_queue_create_infos, VkDeviceQueueCreateInfo, n_queue);
@@ -270,8 +273,9 @@ static vkllm_err_t init_logical_device(struct vkllm_context *context, struct vkl
     return VKLLM_ERR_VULKAN;
 }
 
-static vkllm_err_t init_vma_allocator(struct vkllm_context *context, struct vkllm_gpu_device *pdev)
+static vkllm_err_t init_vma_allocator(struct vkllm_context *context)
 {
+    struct vkllm_gpu_device *pdev = context->device;
     VmaAllocatorCreateInfo vma_create_info = {.flags = 0,
                                               .physicalDevice = pdev->vk_physical_dev.dev,
                                               .device = pdev->vk_dev,
@@ -294,17 +298,17 @@ static vkllm_err_t init_vma_allocator(struct vkllm_context *context, struct vkll
     return VKLLM_ERR_VULKAN;
 }
 
-static vkllm_err_t init_gpu_device(struct vkllm_context *context, struct vkllm_gpu_device *pdev)
+static vkllm_err_t init_gpu_device(struct vkllm_context *context)
 {
-    _CHECK(init_physical_device(context, pdev));
-    _CHECK(init_logical_device(context, pdev));
-    _CHECK(init_vma_allocator(context, pdev));
+    _CHECK(init_physical_device(context));
+    _CHECK(init_logical_device(context));
+    _CHECK(init_vma_allocator(context));
     return VKLLM_ERR_OK;
 }
 
-vkllm_err_t vkllm_gpu_device_require_queue(struct vkllm_context *context, struct vkllm_gpu_device *device,
-                                           VkQueueFlagBits flags, uint32_t *type)
+vkllm_err_t vkllm_gpu_device_require_queue(struct vkllm_context *context, VkQueueFlagBits flags, uint32_t *type)
 {
+    struct vkllm_gpu_device *device = context->device;
     for (uint32_t i = 0; i < device->vk_physical_dev.n_queue_family_properties; ++i)
     {
         VkQueueFamilyProperties property = device->vk_physical_dev.queue_family_properties[i];
@@ -318,20 +322,20 @@ vkllm_err_t vkllm_gpu_device_require_queue(struct vkllm_context *context, struct
     return VKLLM_ERR_ARGS;
 }
 
-vkllm_err_t vkllm_gpu_device_new(struct vkllm_context *context, uint32_t id, struct vkllm_gpu_device **ppdev)
+vkllm_err_t vkllm_gpu_device_new(struct vkllm_context *context, uint32_t id)
 {
-    _NEW_AND_CHECK(*ppdev, struct vkllm_gpu_device);
+    _NEW_AND_CHECK(context->device, struct vkllm_gpu_device);
 
-    struct vkllm_gpu_device *pdev = *ppdev;
+    struct vkllm_gpu_device *pdev = context->device;
 
-    vkllm_err_t ret = create_instance(context, pdev);
+    vkllm_err_t ret = create_instance(pdev);
     if (ret != VKLLM_ERR_OK)
     {
         goto err_create_instance;
     }
 
     pdev->vk_physical_dev.id = id;
-    ret = init_gpu_device(context, pdev);
+    ret = init_gpu_device(context);
     if (ret != VKLLM_ERR_OK)
     {
         goto err_init_gpu_dev;
@@ -346,12 +350,14 @@ err_create_instance:
     return ret;
 }
 
-void vkllm_gpu_device_free(struct vkllm_context *context, struct vkllm_gpu_device *pdev)
+void vkllm_gpu_device_free(struct vkllm_context *context)
 {
+    struct vkllm_gpu_device *pdev = context->device;
     vmaDestroyAllocator(pdev->vma_allocator);
     vkDestroyDevice(pdev->vk_dev, NULL);
     vkDestroyInstance(pdev->vk_instance, NULL);
     free(pdev->vk_physical_dev.ext_properties);
     free(pdev->vk_physical_dev.queue_family_properties);
     free(pdev);
+    context->device = NULL;
 }

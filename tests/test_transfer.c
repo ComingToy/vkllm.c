@@ -27,22 +27,15 @@ float float_mse(const float *a, const float *b, const size_t n)
 
 int main(int argc, const char *argv[])
 {
-    struct vkllm_gpu_device *device;
     struct vkllm_context *context;
-    vkllm_err_t err = vkllm_context_new(&context);
-    if (err != VKLLM_ERR_OK)
-    {
-        return -1;
-    }
-
-    err = vkllm_gpu_device_new(context, 0, &device);
+    vkllm_err_t err = vkllm_context_new(0, &context);
     if (err != VKLLM_ERR_OK)
     {
         return -1;
     }
 
     struct vkllm_commands *commands;
-    err = vkllm_commands_new(context, device, &commands);
+    err = vkllm_commands_new(context, &commands);
     if (err != VKLLM_ERR_OK)
     {
         return -1;
@@ -52,7 +45,7 @@ int main(int argc, const char *argv[])
     float buf1[65536] = {.0};
     struct vkllm_tensor *tensor;
     uint32_t shapes[] = {1, 1, 1, 65536};
-    vkllm_tensor_new(context, device, "t0", shapes, vkllm_float32, VKLLM_OP_ADD, NULL, 0, NULL, 0, false, &tensor);
+    vkllm_tensor_new(context, "t0", shapes, vkllm_float32, VKLLM_OP_ADD, NULL, 0, NULL, 0, false, &tensor);
 
     random_buf(buf, 65536);
 
@@ -70,7 +63,6 @@ int main(int argc, const char *argv[])
 
     vkllm_tensor_free(context, tensor);
     vkllm_commands_free(context, commands);
-    vkllm_gpu_device_free(context, device);
     vkllm_context_free(context);
     return 0;
 }

@@ -27,8 +27,7 @@ struct vkllm_commands
     struct vkllm_array_commands_task *defer_tasks;
 };
 
-extern vkllm_err_t vkllm_commands_new(struct vkllm_context *context, struct vkllm_gpu_device *device,
-                                      struct vkllm_commands **commands);
+extern vkllm_err_t vkllm_commands_new(struct vkllm_context *context, struct vkllm_commands **commands);
 extern void vkllm_commands_free(struct vkllm_context *context, struct vkllm_commands *commands);
 extern vkllm_err_t vkllm_commands_begin(struct vkllm_context *context, struct vkllm_commands *commands);
 extern vkllm_err_t vkllm_commands_end(struct vkllm_context *context, struct vkllm_commands *commands);

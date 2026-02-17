@@ -1,5 +1,6 @@
 #include "src/vkllm_commands.h"
 #include "src/vkllm_common.h"
+#include "src/vkllm_context.h"
 #include "src/vkllm_op_vector_add.h"
 #include "src/vkllm_tensor.h"
 #include <stdio.h>
@@ -12,7 +13,7 @@ static void random_buf(float *a, const size_t n)
     }
 }
 
-static void print_vec(const char* name, const float *a, const size_t n)
+static void print_vec(const char *name, const float *a, const size_t n)
 {
     fprintf(stderr, "%s: ", name);
     for (size_t i = 0; i < n; ++i)
@@ -24,22 +25,15 @@ static void print_vec(const char* name, const float *a, const size_t n)
 
 int main(void)
 {
-    struct vkllm_gpu_device *device;
     struct vkllm_context *context;
-    vkllm_err_t err = vkllm_context_new(&context);
-    if (err != VKLLM_ERR_OK)
-    {
-        return -1;
-    }
-
-    err = vkllm_gpu_device_new(context, 0, &device);
+    vkllm_err_t err = vkllm_context_new(0, &context);
     if (err != VKLLM_ERR_OK)
     {
         return -1;
     }
 
     struct vkllm_commands *commands;
-    err = vkllm_commands_new(context, device, &commands);
+    err = vkllm_commands_new(context, &commands);
     if (err != VKLLM_ERR_OK)
     {
         return -1;
@@ -52,11 +46,11 @@ int main(void)
 
     uint32_t shapes[] = {1, 1, 1, 128};
     struct vkllm_tensor *in0, *in1, *out0;
-    vkllm_tensor_new(context, device, "in0", shapes, vkllm_float32, VKLLM_OP_ADD, NULL, 0, NULL, 0, false, &in0);
-    vkllm_tensor_new(context, device, "in1", shapes, vkllm_float32, VKLLM_OP_ADD, NULL, 0, NULL, 0, false, &in1);
+    vkllm_tensor_new(context, "in0", shapes, vkllm_float32, VKLLM_OP_NONE, NULL, 0, NULL, 0, false, &in0);
+    vkllm_tensor_new(context, "in1", shapes, vkllm_float32, VKLLM_OP_NONE, NULL, 0, NULL, 0, false, &in1);
 
     struct vkllm_tensor *srcs[] = {in0, in1};
-    vkllm_tensor_new(context, device, "out0", shapes, vkllm_float32, VKLLM_OP_ADD, srcs, 2, NULL, 0, true, &out0);
+    vkllm_tensor_new(context, "out0", shapes, vkllm_float32, VKLLM_OP_ADD, srcs, 2, NULL, 0, true, &out0);
 
     print_vec("in0: ", buf, 128);
     print_vec("in1: ", buf1, 128);
@@ -72,5 +66,11 @@ int main(void)
 
     const float *p = out0->data.host;
     print_vec("vec add out: ", p, 128);
+
+    vkllm_tensor_free(context, in0);
+    vkllm_tensor_free(context, in1);
+    vkllm_tensor_free(context, out0);
+    vkllm_commands_free(context, commands);
+    vkllm_context_free(context);
     return 0;
 }

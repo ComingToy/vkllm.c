@@ -70,14 +70,14 @@ static vkllm_err_t vkllm_pipeline_init_desc_set_pool(struct vkllm_pipeline *p)
     return VKLLM_ERR_OK;
 }
 
-static vkllm_err_t vkllm_pipeline_create_layout(struct vkllm_pipeline *pipieline)
+static vkllm_err_t vkllm_pipeline_create_layout(struct vkllm_pipeline *pipeline)
 {
 
     vkllm_err_t ret = VKLLM_ERR_OK;
     VkDescriptorSetLayoutBinding *bindings;
-    _NEW_N_AND_CHECK(bindings, VkDescriptorSetLayoutBinding, pipieline->shader_info.binding_count);
+    _NEW_N_AND_CHECK(bindings, VkDescriptorSetLayoutBinding, pipeline->shader_info.binding_count);
 
-    for (uint32_t i = 0; i < pipieline->shader_info.binding_count; ++i)
+    for (uint32_t i = 0; i < pipeline->shader_info.binding_count; ++i)
     {
         VkDescriptorSetLayoutBinding binding = {.binding = i,
                                                 .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -91,28 +91,28 @@ static vkllm_err_t vkllm_pipeline_create_layout(struct vkllm_pipeline *pipieline
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
         .pNext = NULL,
         .flags = 0,
-        .bindingCount = pipieline->shader_info.binding_count,
+        .bindingCount = pipeline->shader_info.binding_count,
         .pBindings = bindings};
 
-    _CHECK_VK_JUMP(vkCreateDescriptorSetLayout(pipieline->device->vk_dev, &desc_set_layout_create_Info, NULL,
-                                               &pipieline->vk_desc_set_layout),
+    _CHECK_VK_JUMP(vkCreateDescriptorSetLayout(pipeline->device->vk_dev, &desc_set_layout_create_Info, NULL,
+                                               &pipeline->vk_desc_set_layout),
                    ret, fail);
 
     VkPushConstantRange range = {
-        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT, .offset = 0, .size = pipieline->shader_info.push_constant_bytes};
+        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT, .offset = 0, .size = pipeline->shader_info.push_constant_bytes};
 
     VkPipelineLayoutCreateInfo layout_create_info = {.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
                                                      .pNext = NULL,
                                                      .flags = 0,
                                                      .setLayoutCount = 1,
-                                                     .pSetLayouts = &pipieline->vk_desc_set_layout,
+                                                     .pSetLayouts = &pipeline->vk_desc_set_layout,
                                                      .pushConstantRangeCount =
-                                                         pipieline->shader_info.push_constant_bytes > 0 ? 1u : 0u,
+                                                         pipeline->shader_info.push_constant_bytes > 0 ? 1u : 0u,
                                                      .pPushConstantRanges = &range};
 
     _CHECK_VK_JUMP(
-        vkCreatePipelineLayout(pipieline->device->vk_dev, &layout_create_info, NULL, &pipieline->vk_pipeline_layout),
-        ret, fail);
+        vkCreatePipelineLayout(pipeline->device->vk_dev, &layout_create_info, NULL, &pipeline->vk_pipeline_layout), ret,
+        fail);
 
     return VKLLM_ERR_OK;
 fail:
@@ -133,10 +133,11 @@ vkllm_err_t vkllm_pipeline_create_shader_module(struct vkllm_pipeline *pipeline,
     return VKLLM_ERR_OK;
 }
 
-vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, struct vkllm_gpu_device *device,
-                               struct vkllm_shader_info shader_info, const uint8_t *spv, const size_t spv_size,
-                               struct vkllm_shader_constants *specializations, struct vkllm_pipeline **pipeline)
+vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, struct vkllm_shader_info shader_info, const uint8_t *spv,
+                               const size_t spv_size, struct vkllm_shader_constants *specializations,
+                               struct vkllm_pipeline **pipeline)
 {
+    struct vkllm_gpu_device *device = context->device;
     _CHECK_ARGS(context && device && spv && specializations && pipeline);
 
     const VkPhysicalDeviceLimits *limits = &device->vk_physical_dev.properties.limits;
