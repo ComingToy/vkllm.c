@@ -24,7 +24,7 @@
 #endif
 
 #ifndef LOAD_DTYPE
-#define LOAD_DTYPE 
+#define LOAD_DTYPE
 #endif
 
 layout(binding = 0) readonly buffer in0_type
@@ -47,6 +47,10 @@ layout(push_constant) uniform constants
     uint in0_stride;
     uint in1_stride;
     uint out0_stride;
+    uint in0_bstride;
+    uint in1_bstride;
+    uint out0_bstride;
+
     uint M; // in0.shape = [M, K], in1.shape = [N, K], out0.shape = [M, N]
     uint N;
     uint K;
@@ -84,6 +88,11 @@ void main(void)
     uint local_tid_y = gl_LocalInvocationID.y;
     uint tid = local_tid_x * gl_WorkGroupSize.y + local_tid_y;
 
+    uint batch_id = gl_GlobalInvocationID.z;
+    uint a_batch_off = batch_id * in0_bstride;
+    uint b_batch_off = batch_id * in1_bstride;
+    uint out_batch_off = batch_id * out0_bstride;
+
     uint blk_tid = tid * load_n_per_thread;
     uint ld_a_x = blk_tid / BK; // tid * 4 / BK
     uint ld_a_y = blk_tid % BK;
@@ -109,7 +118,7 @@ void main(void)
         // Load data from global memory to shared memory
         uint a_row = blk_x + ld_a_x;
         uint a_col = k * BK + ld_a_y;
-        uint smem_a_idx = a_row * in0_stride + a_col;
+        uint smem_a_idx = a_batch_off + a_row * in0_stride + a_col;
 
         if (a_row < M)
         {
@@ -123,7 +132,7 @@ void main(void)
 
         uint b_row = blk_y + ld_b_x;
         uint b_col = a_col;
-        uint smem_b_idx = b_row * in1_stride + b_col;
+        uint smem_b_idx = b_batch_off + b_row * in1_stride + b_col;
 
         if (b_row < N)
         {
@@ -179,9 +188,10 @@ void main(void)
         {
             uint out_row = out_row_off + tm;
             uint out_col = out_col_off + tn;
+            uint off = out_batch_off + out_row * out0_stride;
             if (out_row < M && out_col < N)
             {
-                out0[out_row * out0_stride + out_col] = thread_results[tm][tn];
+                out0[off + out_col] = thread_results[tm][tn];
             }
         }
     }
