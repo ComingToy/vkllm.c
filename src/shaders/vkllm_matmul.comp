@@ -3,18 +3,43 @@
 
 #include "vkllm_shader_header.comp.h"
 
+#ifndef IN0_DTYPE
+#define IN0_DTYPE float
+#endif
+
+#ifndef IN1_DTYPE
+#define IN1_DTYPE float
+#endif
+
+#ifndef OUT_DTYPE
+#define OUT_DTYPE float
+#endif
+
+#ifndef SMEM_DTYPE
+#define SMEM_DTYPE vec4
+#endif
+
+#ifndef ACC_DTYPE
+#define ACC_DTYPE OUT_DTYPE
+#endif
+
+#ifndef LOAD_DTYPE
+#define LOAD_DTYPE 
+#endif
+
 layout(binding = 0) readonly buffer in0_type
-{ float in0[];
+{
+    IN0_DTYPE in0[];
 };
 
 layout(binding = 1) readonly buffer in1_type
 {
-    float in1[];
+    IN1_DTYPE in1[];
 };
 
 layout(binding = 2) writeonly buffer out0_type
 {
-    float out0[];
+    OUT_DTYPE out0[];
 };
 
 layout(push_constant) uniform constants
@@ -40,8 +65,9 @@ layout(push_constant) uniform constants
 #define TN 8
 
 #define SMEM_BK (BK / 4)
-shared vec4 smem_a[BM][SMEM_BK + 1];
-shared vec4 smem_b[BN][SMEM_BK + 1];
+
+shared SMEM_DTYPE smem_a[BM][SMEM_BK + 1];
+shared SMEM_DTYPE smem_b[BN][SMEM_BK + 1];
 
 #define load_n_per_thread 4
 
@@ -65,7 +91,7 @@ void main(void)
     uint ld_b_x = ld_a_x;
     uint ld_b_y = ld_a_y;
 
-    float thread_results[TM][TN]; // FIXME: clean
+    ACC_DTYPE thread_results[TM][TN]; // FIXME: clean
 
     [[unroll]] for (uint i = 0; i < TM; ++i)
     {
@@ -87,12 +113,12 @@ void main(void)
 
         if (a_row < M)
         {
-            smem_a[ld_a_x][ld_a_y / 4] =
-                vec4(in0[smem_a_idx], in0[smem_a_idx + 1], in0[smem_a_idx + 2], in0[smem_a_idx + 3]);
+            smem_a[ld_a_x][ld_a_y / 4] = SMEM_DTYPE(LOAD_DTYPE(in0[smem_a_idx]), LOAD_DTYPE(in0[smem_a_idx + 1]),
+                                                    LOAD_DTYPE(in0[smem_a_idx + 2]), LOAD_DTYPE(in0[smem_a_idx + 3]));
         }
         else
         {
-            smem_a[ld_a_x][ld_a_y / 4] = vec4(0.0);
+            smem_a[ld_a_x][ld_a_y / 4] = SMEM_DTYPE(0.0);
         }
 
         uint b_row = blk_y + ld_b_x;
@@ -102,11 +128,12 @@ void main(void)
         if (b_row < N)
         {
             smem_b[ld_b_x][ld_b_y / load_n_per_thread] =
-                vec4(in1[smem_b_idx], in1[smem_b_idx + 1], in1[smem_b_idx + 2], in1[smem_b_idx + 3]);
+                SMEM_DTYPE(LOAD_DTYPE(in1[smem_b_idx]), LOAD_DTYPE(in1[smem_b_idx + 1]),
+                           LOAD_DTYPE(in1[smem_b_idx + 2]), LOAD_DTYPE(in1[smem_b_idx + 3]));
         }
         else
         {
-            smem_b[ld_b_x][ld_b_y / load_n_per_thread] = vec4(0.0);
+            smem_b[ld_b_x][ld_b_y / load_n_per_thread] = SMEM_DTYPE(0.0);
         }
 
         memoryBarrierShared();
@@ -119,7 +146,7 @@ void main(void)
 
             [[unroll]] for (uint tr = 0; tr < 2; ++tr)
             {
-                vec4 cache_a[TM / 2];
+                SMEM_DTYPE cache_a[TM / 2];
                 uint smem_b_off = local_tid_y * TN;
                 uint R = tr * TM / 2;
                 uint smem_a_off = local_tid_x * TM + R;
@@ -133,8 +160,7 @@ void main(void)
                 {
                     [[unroll]] for (uint c = 0; c < TN; ++c)
                     {
-
-                        thread_results[R + r][c] += dot(cache_a[r], smem_b[smem_b_off + c][tk]);
+                        thread_results[R + r][c] += ACC_DTYPE(dot(cache_a[r], smem_b[smem_b_off + c][tk]));
                     }
                 }
             }

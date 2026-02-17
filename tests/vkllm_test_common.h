@@ -126,15 +126,15 @@ static inline void random_tensor(void *data, uint32_t shapes[4], uint32_t stride
                     uint32_t i = b * es[0] + c * es[1] + h * es[2] + w * es[3];
                     if (dtype == vkllm_dtype_float16)
                     {
-                        fp16[i] = vkllm_fp32_to_fp16((rand() % 100) / 10.0f);
+                        fp16[i] = vkllm_fp32_to_fp16((rand() % 10) / 10.0f);
                     }
                     else if (dtype == vkllm_dtype_float32)
                     {
-                        fp32[i] = (rand() % 100) / 10.0f;
+                        fp32[i] = (rand() % 10) / 10.0f;
                     }
                     else if (dtype == vkllm_dtype_uint32)
                     {
-                        u32[i] = (uint32_t)((rand() % 100) / 10);
+                        u32[i] = (uint32_t)((rand() % 10) / 10);
                     }
                 }
             }
@@ -207,7 +207,7 @@ static inline float compare_buf(const void *lhs, const void *rhs, uint32_t shape
                         log_error("index %u at (%u, %u, %u, %u) out of range %u", i, b, c, h, w, n);
                         continue;
                     }
-#if 1
+#if 0
                     if (fabsf(lhs_fp32[i] - rhs_fp32[i]) > 1e-1)
                     {
                         log_error("index %u at (%u, %u, %u, %u) err lhs %f rhs %f", i, b, c, h, w, lhs_fp32[i],

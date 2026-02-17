@@ -14,44 +14,73 @@
 // Matrix multiplication: C = A * B
 // A: [M, K], B: [K, N], C: [M, N]
 // Using 4D tensor format: [1, 1, M, K/N]
-static void matmul_op_host(const void *input_a, const void *input_b, void *output, 
-                           uint32_t M, uint32_t K, uint32_t N,
+static void matmul_op_host(const void *input_a, const void *input_b, void *output, uint32_t M, uint32_t K, uint32_t N,
                            const uint32_t strides_a[4], const uint32_t strides_b[4], const uint32_t strides_c[4],
                            vkllm_dtype_t dtype)
 {
-    const float *a_fp32 = (const float *)input_a;
-    const float *b_fp32 = (const float *)input_b;
-    float *c_fp32 = (float *)output;
-
     struct vkllm_dtype_info info;
     vkllm_get_dtype_info(dtype, &info);
-    
+
     // Convert byte strides to element strides
-    uint32_t es_a[4] = {strides_a[0] / info.bytes, strides_a[1] / info.bytes, 
-                        strides_a[2] / info.bytes, strides_a[3] / info.bytes};
-    uint32_t es_b[4] = {strides_b[0] / info.bytes, strides_b[1] / info.bytes, 
-                        strides_b[2] / info.bytes, strides_b[3] / info.bytes};
-    uint32_t es_c[4] = {strides_c[0] / info.bytes, strides_c[1] / info.bytes, 
-                        strides_c[2] / info.bytes, strides_c[3] / info.bytes};
+    uint32_t es_a[4] = {strides_a[0] / info.bytes, strides_a[1] / info.bytes, strides_a[2] / info.bytes,
+                        strides_a[3] / info.bytes};
+    uint32_t es_b[4] = {strides_b[0] / info.bytes, strides_b[1] / info.bytes, strides_b[2] / info.bytes,
+                        strides_b[3] / info.bytes};
+    uint32_t es_c[4] = {strides_c[0] / 4, strides_c[1] / 4, strides_c[2] / 4, strides_c[3] / 4};
 
     // C[i][j] = sum(A[i][k] * B[k][j]) for k in [0, K)
     // A shape: [1, 1, M, K], B shape: [1, 1, N, K], C shape: [1, 1, M, N]
-    for (uint32_t i = 0; i < M; ++i)
+    if (dtype == vkllm_dtype_float16)
     {
-        for (uint32_t j = 0; j < N; ++j)
+        const vkllm_fp16_pack *a_fp16 = (const vkllm_fp16_pack *)input_a;
+        const vkllm_fp16_pack *b_fp16 = (const vkllm_fp16_pack *)input_b;
+        float *c_fp32 = (float *)output;
+
+        for (uint32_t i = 0; i < M; ++i)
         {
-            float sum = 0.0f;
-            for (uint32_t k = 0; k < K; ++k)
+            for (uint32_t j = 0; j < N; ++j)
             {
-                // A[0, 0, i, k]
-                uint32_t idx_a = 0 * es_a[0] + 0 * es_a[1] + i * es_a[2] + k * es_a[3];
-                // B[0, 0, j, k]  
-                uint32_t idx_b = 0 * es_b[0] + 0 * es_b[1] + j * es_b[2] + k * es_b[3];
-                sum += a_fp32[idx_a] * b_fp32[idx_b];
+                float sum = 0.0f;
+                for (uint32_t k = 0; k < K; ++k)
+                {
+                    // A[0, 0, i, k]
+                    uint32_t idx_a = 0 * es_a[0] + 0 * es_a[1] + i * es_a[2] + k * es_a[3];
+                    // B[0, 0, j, k]
+                    uint32_t idx_b = 0 * es_b[0] + 0 * es_b[1] + j * es_b[2] + k * es_b[3];
+                    // Convert fp16 to fp32 for computation
+                    float a_val = vkllm_fp16_to_fp32(a_fp16[idx_a]);
+                    float b_val = vkllm_fp16_to_fp32(b_fp16[idx_b]);
+                    sum += a_val * b_val;
+                }
+                // C[0, 0, i, j]
+                uint32_t idx_c = 0 * es_c[0] + 0 * es_c[1] + i * es_c[2] + j * es_c[3];
+                c_fp32[idx_c] = sum;
             }
-            // C[0, 0, i, j]
-            uint32_t idx_c = 0 * es_c[0] + 0 * es_c[1] + i * es_c[2] + j * es_c[3];
-            c_fp32[idx_c] = sum;
+        }
+    }
+    else // float32
+    {
+        const float *a_fp32 = (const float *)input_a;
+        const float *b_fp32 = (const float *)input_b;
+        float *c_fp32 = (float *)output;
+
+        for (uint32_t i = 0; i < M; ++i)
+        {
+            for (uint32_t j = 0; j < N; ++j)
+            {
+                float sum = 0.0f;
+                for (uint32_t k = 0; k < K; ++k)
+                {
+                    // A[0, 0, i, k]
+                    uint32_t idx_a = 0 * es_a[0] + 0 * es_a[1] + i * es_a[2] + k * es_a[3];
+                    // B[0, 0, j, k]
+                    uint32_t idx_b = 0 * es_b[0] + 0 * es_b[1] + j * es_b[2] + k * es_b[3];
+                    sum += a_fp32[idx_a] * b_fp32[idx_b];
+                }
+                // C[0, 0, i, j]
+                uint32_t idx_c = 0 * es_c[0] + 0 * es_c[1] + i * es_c[2] + j * es_c[3];
+                c_fp32[idx_c] = sum;
+            }
         }
     }
 }
@@ -63,11 +92,9 @@ static struct
     uint32_t N;
     vkllm_dtype_t dtype;
 } tests[] = {
-    // Larger matrices
-    {512, 1024, 2048, vkllm_dtype_float32},
-    {333, 1259, 365, vkllm_dtype_float32},
+    {512, 1024, 2048, vkllm_dtype_float16},   {333, 1259, 365, vkllm_dtype_float16},
+    {512, 1024, 2048, vkllm_dtype_float32},   {333, 1259, 365, vkllm_dtype_float32},
     {2048, 1024, 10240, vkllm_dtype_float32},
-    // {512, 1024, 2048, vkllm_dtype_float32},
 };
 
 START_TEST(test_op_matmul)
@@ -122,8 +149,8 @@ START_TEST(test_op_matmul)
     random_tensor(buf_b->data, input_b->shapes, input_b->strides, input_b->dtype);
 
     // Compute expected result on CPU
-    matmul_op_host(buf_a->data, buf_b->data, buf_c_expected->data, M, K, N, 
-                   input_a->strides, input_b->strides, output->strides, tests[_i].dtype);
+    matmul_op_host(buf_a->data, buf_b->data, buf_c_expected->data, M, K, N, input_a->strides, input_b->strides,
+                   output->strides, tests[_i].dtype);
 
     // Execute on GPU
 
@@ -155,7 +182,8 @@ START_TEST(test_op_matmul)
     // print_n("gpu_output", gpu_output, 64);
     // print_n("cpu_output", (const float *)buf_c_expected->data, 64);
 
-    float tolerance = 1e-3; // Slightly larger tolerance for matmul due to accumulation errors
+    // Use larger tolerance for float16 due to lower precision
+    float tolerance = (tests[_i].dtype == vkllm_dtype_float16) ? 1e-2 : 1e-3;
     ck_assert_float_le(
         compare_buf(buf_c_expected->data, gpu_output, output->shapes, output->strides, output->bytes, output->dtype),
         tolerance);
@@ -177,7 +205,7 @@ Suite *vkllm_op_matmul_test_suite(void)
     Suite *suite = NULL;
     TCase *tcase_f32 = NULL;
     suite = suite_create("vkllm_op_matmul");
-    tcase_f32 = tcase_create("vkllm_op_matmul_f32");
+    tcase_f32 = tcase_create("vkllm_op_matmul");
 
     tcase_add_loop_test(tcase_f32, test_op_matmul, 0, _ARRAY_SIZE(tests));
     tcase_set_timeout(tcase_f32, 120.0);

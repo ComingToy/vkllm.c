@@ -147,7 +147,37 @@ static vkllm_err_t vkllm_tensor_get_pipeline(struct vkllm_context *context, stru
     }
     else if (tensor->op == VKLLM_OP_MATMUL)
     {
-        tensor->pipeline = context->pipelines.matmul.f32f32f32;
+        if (tensor->dtype != vkllm_dtype_float32)
+        {
+            log_error("tensor %s op = %s, dtype = %s, pipeline not found.", tensor->name, vkllm_op_s(tensor->op),
+                      vkllm_dtype_s(tensor->dtype));
+            return VKLLM_ERR_PIPELINE_NOT_FOUND;
+        }
+
+        if (tensor->srcs[0]->dtype == vkllm_dtype_float16 && tensor->srcs[0]->dtype == vkllm_dtype_float16)
+        {
+            if (!context->device->support_16bit_storage)
+            {
+                log_error("matmul pipeline: fp16 type inputs is unsupported.");
+                return VKLLM_ERR_PIPELINE_NOT_FOUND;
+            }
+
+            if (context->device->support_fp16_arithmetic)
+            {
+                tensor->pipeline = context->pipelines.matmul.f16f16f32;
+            }
+            else
+            {
+                tensor->pipeline = context->pipelines.matmul.f16f32f32;
+            }
+        }
+        else if (tensor->srcs[0]->dtype == vkllm_dtype_float32 && tensor->srcs[0]->dtype == vkllm_dtype_float32)
+        {
+            tensor->pipeline = context->pipelines.matmul.f32f32f32;
+        }
+        else
+        {
+        }
     }
     else
     {
