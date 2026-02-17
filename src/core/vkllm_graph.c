@@ -315,3 +315,20 @@ vkllm_err_t vkllm_graph_post_run(struct vkllm_context *context, struct vkllm_gra
 
     return err;
 }
+
+vkllm_err_t vkllm_graph_free(struct vkllm_context *context, struct vkllm_graph *graph)
+{
+    _CHECK_ARGS(context && graph);
+
+    for (size_t i = 0; i < graph->nodes->used_n; i++)
+    {
+        vkllm_tensor_free(context, graph->nodes->data[i]);
+    }
+
+    vkllm_array_tensor_free(graph->nodes);
+    vkllm_array_tensor_free(graph->input_nodes);
+    vkllm_commands_free(context, graph->commands);
+    free(graph);
+
+    return VKLLM_ERR_OK;
+}
