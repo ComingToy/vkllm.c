@@ -46,4 +46,7 @@ extern vkllm_err_t vkllm_models_llama2_load_weights(struct vkllm_context *contex
 extern vkllm_err_t vkllm_models_llama2_free_weights(struct vkllm_context *context,
                                                     struct vkllm_models_llama2_weights *model);
 
+extern vkllm_err_t vkllm_models_llama2_build_layers(struct vkllm_context *context,
+                                                    struct vkllm_models_llama2_weights *model);
+
 #endif

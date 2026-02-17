@@ -289,3 +289,12 @@ vkllm_err_t vkllm_models_llama2_free_weights(struct vkllm_context *context, stru
 
     return VKLLM_ERR_OK;
 }
+
+vkllm_err_t vkllm_models_llama2_build_layers(struct vkllm_context *context, struct vkllm_models_llama2_weights *model)
+{
+	// build input layer
+	
+	// build transformer blocks
+	
+	// build output layer
+}
