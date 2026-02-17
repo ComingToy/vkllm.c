@@ -112,20 +112,23 @@ static vkllm_err_t init_physical_device(struct vkllm_context *context, struct vk
 
     vkGetPhysicalDeviceProperties(vk_physical_dev, &pdev->vk_physical_dev.properties);
 
-    pdev->vk_physical_dev.subgroup_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
-    pdev->vk_physical_dev.subgroup_properties.pNext = NULL;
-
     pdev->vk_physical_dev.feat_shader_fp16_int8.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES;
-    pdev->vk_physical_dev.feat_shader_fp16_int8.pNext = &pdev->vk_physical_dev.subgroup_properties;
+    pdev->vk_physical_dev.feat_shader_fp16_int8.pNext = NULL;
 
     pdev->vk_physical_dev.feat_16bit_storage.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES;
     pdev->vk_physical_dev.feat_16bit_storage.pNext = &pdev->vk_physical_dev.feat_shader_fp16_int8;
 
     pdev->vk_physical_dev.feat_8bit_storage.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES;
     pdev->vk_physical_dev.feat_8bit_storage.pNext = &pdev->vk_physical_dev.feat_16bit_storage;
+    pdev->vk_physical_dev.features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    pdev->vk_physical_dev.features2.pNext = &pdev->vk_physical_dev.feat_8bit_storage;
+    vkGetPhysicalDeviceFeatures2(pdev->vk_physical_dev.dev, &pdev->vk_physical_dev.features2);
+
+    pdev->vk_physical_dev.subgroup_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
+    pdev->vk_physical_dev.subgroup_properties.pNext = NULL;
 
     pdev->vk_physical_dev.properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-    pdev->vk_physical_dev.properties2.pNext = &pdev->vk_physical_dev.feat_16bit_storage;
+    pdev->vk_physical_dev.properties2.pNext = &pdev->vk_physical_dev.subgroup_properties;
 
     vkGetPhysicalDeviceProperties2(pdev->vk_physical_dev.dev, &pdev->vk_physical_dev.properties2);
 

@@ -93,6 +93,11 @@ void vkllm_commands_sync_tensor(struct vkllm_context *context, struct vkllm_comm
                                 struct vkllm_tensor *tensor, VkAccessFlagBits dst_access,
                                 VkPipelineStageFlagBits dst_stage)
 {
+    if (tensor->access_flags == 0 || tensor->pipeline_stage == 0)
+    {
+        return;
+    }
+
     VkBufferMemoryBarrier barrier = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
         .pNext = NULL,
