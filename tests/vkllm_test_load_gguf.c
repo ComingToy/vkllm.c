@@ -1,3 +1,4 @@
+#include "src/core/vkllm_common.h"
 #include "src/core/vkllm_context.h"
 #include "src/core/vkllm_errors.h"
 #include "src/models/vkllm_models_llama2.h"
@@ -26,6 +27,8 @@ int main(const int argc, const char *argv[])
         log_error("failed at loading weights: %s", vkllm_err_s(err));
         goto cleanup;
     }
+
+    _CHECK_JUMP(vkllm_models_llama2_free_weights(context, &model), err, cleanup);
 
 cleanup:
     vkllm_context_free(context);
