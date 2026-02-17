@@ -382,17 +382,12 @@ static vkllm_err_t vkllm_create_embedding_pipeline(struct vkllm_context *context
                               _vkllm_embedding_comp_##_tag##_size(), NULL,                                             \
                               &context->pipelines.embedding.pipeline_##_tag))
 
-    if (context->device->support_fp16_arithmetic)
+    if (context->device->support_16bit_storage)
     {
         _CREATE_EMBEDDING_PIPELINE(f16f16f16);
         _CREATE_EMBEDDING_PIPELINE(f16f16f32);
+        _CREATE_EMBEDDING_PIPELINE(f16f32f32);
     }
-    else
-    {
-        context->pipelines.embedding.pipeline_f16f16f32 = NULL;
-        context->pipelines.embedding.pipeline_f16f16f16 = NULL;
-    }
-    _CREATE_EMBEDDING_PIPELINE(f16f32f32);
     _CREATE_EMBEDDING_PIPELINE(f32f32f32);
 #undef _CREATE_EMBEDDING_PIPELINE
     return VKLLM_ERR_OK;
