@@ -17,7 +17,6 @@ def _glsl_shader(ctx):
     toolchain = ctx.toolchains['//vulkan_rules:toolchain_type']
     output_spvs = []
 
-
     shaders = ctx.files.shaders
 
     includes = {}
@@ -25,9 +24,8 @@ def _glsl_shader(ctx):
         includes[header.dirname] = 1
 
     for shader in shaders:
-        spv_name = shader.basename + '.spv'
+        spv_name = shader.basename + ctx.attr.suffix
         spv_file = ctx.actions.declare_file(spv_name)
-        print('genereate spv file: %s' % spv_name)
         
         args = ctx.actions.args()
         for d, _ in includes.items():
@@ -49,8 +47,7 @@ def _glsl_shader(ctx):
 
     output_header = ctx.actions.declare_file(ctx.label.name + '.h')
     output_cpp = ctx.actions.declare_file(ctx.label.name + '.c')
-    print('genereate cpp files: %s' % output_cpp.path)
-    args = [output_cpp.path, output_header.path, ctx.attr.suffix] + [f.path for f in output_spvs]
+    args = [output_cpp.path, output_header.path] + [f.path for f in output_spvs]
     outputs = [output_cpp, output_header]
     ctx.actions.run(inputs=output_spvs, outputs=outputs, arguments=args, executable=ctx.executable.tool)
 
@@ -66,8 +63,8 @@ def _cc_shader_library(ctx):
 
     for dep in ctx.attr.deps:
         infos = dep[GlslInfo]
-        cpp_files += infos.srcs.to_list()
-        hdr_files += infos.hdrs.to_list()
+        cpp_files += list(infos.srcs.to_list())
+        hdr_files += list(infos.hdrs.to_list())
 
     obj_files = []
     cc_toolchain = find_cpp_toolchain(ctx)
@@ -164,7 +161,7 @@ def _cc_shader_library(ctx):
         arguments = [args],
         env = env,
         inputs = depset(
-            direct = [obj_file],
+            direct = obj_files,
             transitive = [
                 cc_toolchain.all_files,
             ],

@@ -35,14 +35,13 @@ if __name__ == "__main__":
     names = []
     cpp_name = sys.argv[1]
     header_name = sys.argv[2]
-    suffix = sys.argv[3]
     header = path.basename(header_name)
     header_guard = f'__{header}__'.upper().replace('.', '_')
 
     spv_names = []
-    for spv in sys.argv[4:]:
+    for spv in sys.argv[3:]:
         name = path.basename(spv).replace('.', '_')
-        name = f'{name}{suffix}'
+        name = f'{name}'
         spv_names.append(name)
 
     tmpl = jinja2.Template(header_tmpl)
@@ -51,7 +50,7 @@ if __name__ == "__main__":
         fout.write(header_code)
 
     frags = []
-    for src, name in zip(sys.argv[4:], spv_names):
+    for src, name in zip(sys.argv[3:], spv_names):
         frags.append((name, generate_array(src)))
 
     tmpl = jinja2.Template(source_tmpl)
