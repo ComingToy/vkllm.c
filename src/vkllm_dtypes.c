@@ -14,19 +14,19 @@ const char *vkllm_dtype_s(vkllm_dtype_t dtype)
 vkllm_err_t vkllm_get_dtype_info(vkllm_dtype_t dtype, struct vkllm_dtype_info *info)
 {
     info->dtype = dtype;
-    if (dtype == vkllm_float32)
+    if (dtype == vkllm_dtype_float32)
     {
         info->bytes = sizeof(float);
         info->items_per_block = 1;
         info->bytes_per_block = info->bytes * info->items_per_block;
     }
-    else if (dtype == vkllm_float16)
+    else if (dtype == vkllm_dtype_float16)
     {
         info->bytes = sizeof(uint16_t);
         info->items_per_block = 1;
         info->bytes_per_block = info->bytes * info->items_per_block;
     }
-    else if (dtype == vkllm_int8)
+    else if (dtype == vkllm_dtype_int8)
     {
         info->bytes = sizeof(int8_t);
         info->items_per_block = 1;

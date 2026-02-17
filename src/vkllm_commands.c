@@ -1,6 +1,7 @@
 #include "vkllm_commands.h"
 #include "log.h"
 #include "vkllm_common.h"
+#include "vkllm_context.h"
 #include "vkllm_gpu_device.h"
 #include "vkllm_pipeline.h"
 #include "vkllm_tensor.h"

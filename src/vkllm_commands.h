@@ -2,11 +2,13 @@
 #define __VKLLM_COMMANDS_H__
 
 #include "vkllm_array.h"
-#include "vkllm_gpu_device.h"
-#include "vkllm_pipeline.h"
-#include "vkllm_tensor.h"
 #include <vulkan/vulkan.h>
 
+struct vkllm_gpu_device;
+struct vkllm_tensor;
+struct vkllm_context;
+struct vkllm_pipeline;
+struct vkllm_shader_constants;
 struct vkllm_commands_task
 {
     vkllm_err_t (*func)(void *);

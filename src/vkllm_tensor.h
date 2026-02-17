@@ -4,12 +4,13 @@
 
 #include "vk_mem_alloc.h"
 #include "vkllm_common.h"
-#include "vkllm_context.h"
 #include "vkllm_dtypes.h"
-#include "vkllm_gpu_device.h"
 #include "vkllm_ops.h"
 #include <stdbool.h>
 
+struct vkllm_context;
+struct vkllm_pipeline;
+struct vkllm_gpu_device;
 struct vkllm_tensor
 {
     const char *name;
@@ -32,6 +33,7 @@ struct vkllm_tensor
     VkPipelineStageFlagBits pipeline_stage;
 
     vkllm_op_t op;
+    struct vkllm_pipeline *pipeline;
     struct vkllm_tensor *srcs[VKLLM_MAX_SRCS];
     uint8_t params[];
 };
