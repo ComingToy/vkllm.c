@@ -8,8 +8,8 @@ header_tmpl = """
 #include <stddef.h>
 #include <stdint.h>
 {% for spv_name in spv_names %}
-extern const uint8_t* __get_{{ spv_name }}_code();
-extern size_t __get_{{ spv_name }}_size();
+extern const uint8_t* _{{ spv_name }}_spv();
+extern size_t _{{ spv_name }}_size();
 {% endfor %}
 #endif
 """
@@ -18,13 +18,13 @@ source_tmpl = """
 #include <stddef.h>
 #include <stdint.h>
 {% for spv_name, binary in frags %}
-static uint8_t __{{ spv_name }}_code[] = { {{ binary }} };
-const uint8_t* __get_{{ spv_name }}_code() { return __{{ spv_name }}_code; }
-size_t __get_{{ spv_name }}_size() { return sizeof(__{{ spv_name }}_code); }
+static uint8_t __{{ spv_name }}[] = { {{ binary }} };
+const uint8_t* _{{ spv_name }}_spv() { return __{{ spv_name }}; }
+size_t _{{ spv_name }}_size() { return sizeof(__{{ spv_name }}); }
 {% endfor %}
 """
 
-def generate_array(src, name):
+def generate_array(src):
     bins = b''
     with open(src, 'rb') as fin:
         for b in fin.read():
@@ -35,12 +35,14 @@ if __name__ == "__main__":
     names = []
     cpp_name = sys.argv[1]
     header_name = sys.argv[2]
+    suffix = sys.argv[3]
     header = path.basename(header_name)
     header_guard = f'__{header}__'.upper().replace('.', '_')
 
     spv_names = []
-    for spv in sys.argv[3:]:
+    for spv in sys.argv[4:]:
         name = path.basename(spv).replace('.', '_')
+        name = f'{name}{suffix}'
         spv_names.append(name)
 
     tmpl = jinja2.Template(header_tmpl)
@@ -49,8 +51,8 @@ if __name__ == "__main__":
         fout.write(header_code)
 
     frags = []
-    for src, name in zip(sys.argv[3:], spv_names):
-        frags.append((name, generate_array(src, name)))
+    for src, name in zip(sys.argv[4:], spv_names):
+        frags.append((name, generate_array(src)))
 
     tmpl = jinja2.Template(source_tmpl)
     cpp_code = tmpl.render(frags=frags).replace("b'", '').replace("'", '')

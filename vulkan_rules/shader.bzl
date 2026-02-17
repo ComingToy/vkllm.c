@@ -50,7 +50,7 @@ def _glsl_shader(ctx):
     output_header = ctx.actions.declare_file(ctx.label.name + '.h')
     output_cpp = ctx.actions.declare_file(ctx.label.name + '.c')
     print('genereate cpp files: %s' % output_cpp.path)
-    args = [output_cpp.path, output_header.path] + [f.path for f in output_spvs]
+    args = [output_cpp.path, output_header.path, ctx.attr.suffix] + [f.path for f in output_spvs]
     outputs = [output_cpp, output_header]
     ctx.actions.run(inputs=output_spvs, outputs=outputs, arguments=args, executable=ctx.executable.tool)
 
@@ -184,6 +184,7 @@ glsl_shader = rule(
         'shaders': attr.label_list(allow_files=['.comp']),
         'hdrs': attr.label_list(allow_files=['.h']),
         'extra_args': attr.string_list(allow_empty=False),
+        'suffix': attr.string(default=''),
         'tool': attr.label(executable=True, cfg='exec', allow_files=True),
     },
     toolchains = ['//vulkan_rules:toolchain_type'],
