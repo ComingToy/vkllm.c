@@ -297,7 +297,8 @@ static vkllm_err_t init_gpu_device(struct vkllm_context *context, struct vkllm_g
     return VKLLM_ERR_OK;
 }
 
-vkllm_err_t vkllm_gpu_device_require_queue(struct vkllm_gpu_device *device, VkQueueFlagBits flags, uint32_t *type)
+vkllm_err_t vkllm_gpu_device_require_queue(struct vkllm_context *context, struct vkllm_gpu_device *device,
+                                           VkQueueFlagBits flags, uint32_t *type)
 {
     for (uint32_t i = 0; i < device->vk_physical_dev.n_queue_family_properties; ++i)
     {
