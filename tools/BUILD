@@ -6,6 +6,6 @@ py_binary(
     visibility = ["//visibility:public"],
     deps = select({
         '@platforms//os:macos': ["@pypi_macos//jinja2"],
-        '@platforms//os:linux': ["@pipy//jinja2"]
+        '@platforms//os:linux': ["@pypi//jinja2"]
     })
 )
