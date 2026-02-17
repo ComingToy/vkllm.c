@@ -97,9 +97,9 @@ static vkllm_err_t vkllm_tensor_get_pipeline(struct vkllm_context *context, stru
     }
     else if (tensor->op == VKLLM_OP_ADD)
     {
-        for (uint32_t i = 0; i < context->pipelines.vec_add->used_n; ++i)
+        for (uint32_t i = 0; i < context->pipelines.add->used_n; ++i)
         {
-            struct vkllm_pipeline_desc *desc = &context->pipelines.vec_add->data[i];
+            struct vkllm_pipeline_desc *desc = &context->pipelines.add->data[i];
             if (vkllm_tensor_match_desc(desc, tensor))
             {
                 tensor->pipeline = desc->pipeline;

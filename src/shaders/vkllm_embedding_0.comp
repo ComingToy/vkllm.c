@@ -1,0 +1,71 @@
+#version 450 core
+#include "vkllm_shader_header.comp.h"
+
+layout(push_constant) uniform constants
+{
+    ShapeConstant indices_shape;
+    ShapeConstant params_shape;
+	ShapeConstant output_shape;
+    uint UNK_TOK;
+};
+
+layout(binding = 0) readonly buffer Indices
+{
+    uint indices[];
+};
+
+layout(binding = 1) readonly buffer Params
+{
+    float params[];
+};
+
+layout(binding = 2) writeonly buffer Out
+{
+    float output0[];
+};
+
+void get_indices(uint tid, in out uint b, out uint c, out uint h, out uint w)
+{
+    uint cn = indices_shape.shapes[2] * indices_shape.shapes[3];
+    uint bn = indices_shape.shapes[1] * cn;
+    b = tid / bn;
+    uint b_offset = b * bn;
+
+    c = (tid - b_offset) / cn;
+    uint c_offset = c * cn;
+
+    h = (tid - b_offset - c_offset) / indices_shape.shapes[3];
+    w = tid - b_offset - c_offset - h * indices_shape.shapes[3];
+}
+
+void main(void)
+{
+    uint tid = get_thread_id();
+    uint tid_b, tid_c, tid_h, tid_w;
+    get_indices(tid, tid_b, tid_c, tid_h, tid_w);
+
+    if (tid_b >= indices_shape.shapes[0] || tid_c >= indices_shape.shapes[1] || tid_h >= indices_shape.shapes[2] ||
+        tid_w >= indices_shape.shapes[3])
+    {
+        return;
+    }
+
+    uint off = tid_b * indices_shape.strides[0] + tid_c * indices_shape.strides[1] +
+               tid_h * indices_shape.strides[2] * tid_w * indices_shape.strides[3];
+    off = off / 4;
+
+    uint tok = UNK_TOK;
+    if (off < indices_shape.shapes[0] * indices_shape.shapes[1] * indices_shape.shapes[2] * indices_shape.shapes[3])
+    {
+        tok = indices[off];
+    }
+
+    uint dim = params_shape.shapes[3];
+	uint out_off = tid_c * output_shape.strides[0] + tid_h * output_shape.strides[1] + tid_w * output_shape.strides[2];
+
+    for (uint w = 0; w < dim; ++w)
+    {
+        uint params_off = (tok * params_shape.strides[2]) / 4;
+		output0[out_off + w] = params[params_off + w];
+    }
+}

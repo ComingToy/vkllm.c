@@ -26,7 +26,8 @@ struct vkllm_context
     struct vkllm_gpu_device *device;
     struct
     {
-        struct vkllm_array_pipeline_desc *vec_add;
+        struct vkllm_array_pipeline_desc *add;
+        struct vkllm_array_pipeline_desc *embedding;
     } pipelines;
 };
 
