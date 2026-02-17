@@ -50,5 +50,5 @@ register_toolchains('//vulkan_rules:glsl_macos_toolchain')
 vkllm_thirdparty_deps = use_extension("//:extensions.bzl", "vkllm_thirdparty_deps")
 use_repo(
     vkllm_thirdparty_deps,
-    "zlog",
+    "log.c",
 )

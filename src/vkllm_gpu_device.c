@@ -1,5 +1,6 @@
 #include "vkllm_gpu_device.h"
 
+#include <log.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -10,8 +11,7 @@ static int create_instance(struct vkllm_context* context,
                            struct vkllm_gpu_device* pdev) {
     VkResult ret = vkEnumerateInstanceVersion(&pdev->api_version);
     if (ret != VK_SUCCESS) {
-        zlog_error(context->zlog_c,
-                   "call vkEnumerateInstanceVersion failed: %d", (int)ret);
+        log_error("call vkEnumerateInstanceVersion failed: %d", (int)ret);
         return VKLLM_ERR_VULKAN;
     }
 
@@ -48,8 +48,7 @@ static int create_instance(struct vkllm_context* context,
 
     ret = vkCreateInstance(&instance_create_info, NULL, &pdev->instance);
     if (ret != VK_SUCCESS) {
-        zlog_error(context->zlog_c, "create vulkan instance failed: %d",
-                   (int)ret);
+        log_error("create vulkan instance failed: %d", (int)ret);
         return VKLLM_ERR_VULKAN;
     }
 
@@ -61,18 +60,18 @@ static vkllm_err_t init_physical_device(struct vkllm_context* context,
     uint32_t ndev = 0;
     // FIXME: alloc dynamic
     VkPhysicalDevice physical_devices[VKLLM_MAX_PHY_DEVS] = {};
-    VkResult ret =
-        vkEnumeratePhysicalDevices(pdev->instance, &ndev, physical_devices);
+    VkResult ret = vkEnumeratePhysicalDevices(pdev->instance, &ndev, NULL);
 
     if (ret != VK_SUCCESS) {
-        zlog_error(context->zlog_c, "vkEnumeratePhysicalDevices failed: %d",
-                   (int)ret);
+        log_error("vkEnumeratePhysicalDevices failed: %d", (int)ret);
         return VKLLM_ERR_VULKAN;
     }
 
+    ret = vkEnumeratePhysicalDevices(pdev->instance, &ndev, physical_devices);
+
     if (ndev <= pdev->vk_physical_dev.id) {
-        zlog_error(context->zlog_c, "target device id %u not found.",
-                   (unsigned int)pdev->vk_physical_dev.id);
+        log_error("target device id %u not found.",
+                  (unsigned int)pdev->vk_physical_dev.id);
         return VKLLM_ERR_DEV_NOT_FOUND;
     }
 
@@ -87,8 +86,7 @@ static vkllm_err_t init_physical_device(struct vkllm_context* context,
         vk_physical_dev, NULL, &pdev->vk_physical_dev.n_ext_properties, NULL);
 
     if (ret != VK_SUCCESS) {
-        zlog_error(context->zlog_c,
-                   "vkEnumerateDeviceExtensionProperties failed: %d", (int)ret);
+        log_error("vkEnumerateDeviceExtensionProperties failed: %d", (int)ret);
         return VKLLM_ERR_VULKAN;
     }
 
@@ -117,16 +115,72 @@ static vkllm_err_t init_physical_device(struct vkllm_context* context,
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
     pdev->vk_physical_dev.subgroup_properties.pNext = NULL;
 
+    pdev->vk_physical_dev.feat_shader_fp16_int8.sType =
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES;
+    pdev->vk_physical_dev.feat_shader_fp16_int8.pNext =
+        &pdev->vk_physical_dev.subgroup_properties;
+
+    pdev->vk_physical_dev.feat_16bit_storage.sType =
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES;
+    pdev->vk_physical_dev.feat_16bit_storage.pNext =
+        &pdev->vk_physical_dev.feat_shader_fp16_int8;
+
+    pdev->vk_physical_dev.feat_8bit_storage.sType =
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES;
+    pdev->vk_physical_dev.feat_8bit_storage.pNext =
+        &pdev->vk_physical_dev.feat_16bit_storage;
+
     pdev->vk_physical_dev.properties2.sType =
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
     pdev->vk_physical_dev.properties2.pNext =
-        &pdev->vk_physical_dev.subgroup_properties;
+        &pdev->vk_physical_dev.feat_16bit_storage;
 
     vkGetPhysicalDeviceProperties2(pdev->vk_physical_dev.dev,
                                    &pdev->vk_physical_dev.properties2);
 
-    zlog_info(context->zlog_c, "physical device subgroup size = %u",
-              pdev->vk_physical_dev.subgroup_properties.subgroupSize);
+    log_info("physical device subgroup size = %u",
+             pdev->vk_physical_dev.subgroup_properties.subgroupSize);
+
+    uint32_t n_exts = pdev->vk_physical_dev.n_ext_properties;
+    for (uint32_t i = 0; i < n_exts; ++i) {
+        const char* ext_name =
+            pdev->vk_physical_dev.ext_properties->extensionName;
+        if (!strcmp(ext_name,
+                    VK_KHR_DESCRIPTOR_UPDATE_TEMPLATE_EXTENSION_NAME)) {
+            pdev->support_descriptor_templ_update = true;
+        } else if (!strcmp(ext_name, VK_KHR_16BIT_STORAGE_EXTENSION_NAME)) {
+            pdev->support_16bit_storage = true;
+        } else if (!strcmp(ext_name, VK_KHR_8BIT_STORAGE_EXTENSION_NAME)) {
+            pdev->support_8bit_storage = true;
+        } else if (!strcmp(ext_name,
+                           VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME)) {
+            pdev->support_fp16_arithmetic = true;
+            pdev->support_int8_arithmetic = true;
+        }
+    }
+
+    if (pdev->support_16bit_storage) {
+        pdev->support_16bit_storage =
+            pdev->vk_physical_dev.feat_16bit_storage.storageBuffer16BitAccess &&
+            pdev->vk_physical_dev.feat_16bit_storage.storagePushConstant16;
+    }
+
+    if (pdev->support_8bit_storage) {
+        pdev->support_8bit_storage =
+            pdev->vk_physical_dev.feat_8bit_storage.storageBuffer8BitAccess &&
+            pdev->vk_physical_dev.feat_8bit_storage.storagePushConstant8;
+    }
+
+    if (pdev->support_fp16_arithmetic) {
+        pdev->support_fp16_arithmetic =
+            pdev->vk_physical_dev.feat_shader_fp16_int8.shaderFloat16;
+    }
+
+    if (pdev->support_int8_arithmetic) {
+        pdev->support_int8_arithmetic =
+            pdev->vk_physical_dev.feat_shader_fp16_int8.shaderInt8;
+    }
+
     return VKLLM_ERR_OK;
 }
 
@@ -166,33 +220,29 @@ static vkllm_err_t init_logical_device(struct vkllm_context* context,
         dev_queue_create_infos[i] = queue_create_info;
     }
 
-    uint32_t n_exts = pdev->vk_physical_dev.n_ext_properties;
     const char** dev_exts = NULL;
-    _NEW_N_AND_CHECK(dev_exts, const char*, n_exts);
-    for (uint32_t i = 0, k = 0; i < n_exts; ++i) {
-        const char* ext_name =
-            pdev->vk_physical_dev.ext_properties->extensionName;
-        if (!strcmp(ext_name,
-                    VK_KHR_DESCRIPTOR_UPDATE_TEMPLATE_EXTENSION_NAME)) {
-            dev_exts[k++] = ext_name;
-            pdev->support_descriptor_templ_update = true;
-        } else if (!strcmp(ext_name, VK_KHR_16BIT_STORAGE_EXTENSION_NAME)) {
-            dev_exts[k++] = ext_name;
-            pdev->support_16bit_storage = true;
-        } else if (!strcmp(ext_name, VK_KHR_8BIT_STORAGE_EXTENSION_NAME)) {
-            dev_exts[k++] = ext_name;
-            pdev->support_8bit_storage = true;
-        } else if (!strcmp(ext_name,
-                           VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME)) {
-            dev_exts[k++] = ext_name;
-            pdev->support_fp16_arithmetic = true;
-            pdev->support_int8_arithmetic = true;
-        }
+    _NEW_N_AND_CHECK(dev_exts, const char*,
+                     pdev->vk_physical_dev.n_ext_properties);
+    uint32_t i_ext = 0;
+#if __APPLE__
+    dev_exts[i_ext++] = "VK_KHR_portability_subset";
+#endif
+
+    if (pdev->support_descriptor_templ_update) {
+        dev_exts[i_ext++] = VK_KHR_DESCRIPTOR_UPDATE_TEMPLATE_EXTENSION_NAME;
     }
 
-    VkPhysicalDeviceShaderFloat16Int8Features feat_fp16_int8 = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES,
-        .pNext = NULL};
+    if (pdev->support_16bit_storage) {
+        dev_exts[i_ext++] = VK_KHR_16BIT_STORAGE_EXTENSION_NAME;
+    }
+
+    if (pdev->support_8bit_storage) {
+        dev_exts[i_ext++] = VK_KHR_8BIT_STORAGE_EXTENSION_NAME;
+    }
+
+    if (pdev->support_fp16_arithmetic || pdev->support_int8_arithmetic) {
+        dev_exts[i_ext++] = VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME;
+    }
 
     VkDeviceCreateInfo dev_create_info = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -200,19 +250,34 @@ static vkllm_err_t init_logical_device(struct vkllm_context* context,
         .flags = 0,
         .queueCreateInfoCount = n_queue,
         .pQueueCreateInfos = dev_queue_create_infos,
+        .enabledExtensionCount = i_ext,
+        .ppEnabledExtensionNames = dev_exts,
     };
+
+    VkResult ret = vkCreateDevice(pdev->vk_physical_dev.dev, &dev_create_info,
+                                  NULL, &pdev->vk_dev);
+
+    free(dev_queue_create_infos);
+    free(priorities);
+    free(dev_exts);
+
+    if (ret == VK_SUCCESS) {
+        return VKLLM_ERR_OK;
+    }
+
+    log_error("vkCreateDevice failed: %d", (int)ret);
+    return VKLLM_ERR_VULKAN;
 }
 
 static vkllm_err_t init_gpu_device(struct vkllm_context* context,
                                    struct vkllm_gpu_device* pdev) {
     _CHECK(init_physical_device(context, pdev));
     _CHECK(init_logical_device(context, pdev));
-
     return VKLLM_ERR_OK;
 }
 
-vkllm_err_t new_gpu_device(struct vkllm_context* context, uint32_t id,
-                           struct vkllm_gpu_device** ppdev) {
+vkllm_err_t vkllm_new_gpu_device(struct vkllm_context* context, uint32_t id,
+                                 struct vkllm_gpu_device** ppdev) {
     _NEW_AND_CHECK(*ppdev, struct vkllm_gpu_device);
 
     struct vkllm_gpu_device* pdev = *ppdev;

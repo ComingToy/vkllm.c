@@ -1,15 +1,14 @@
 #ifndef __VKLLM_CONTEXT_H__
 #define __VKLLM_CONTEXT_H__
 
-#include <zlog.h>
+#include <log.h>
 
 #include "vkllm_errors.h"
 
 struct vkllm_context {
-    zlog_category_t* zlog_c;
+    const char* appname;
 };
 
-extern vkllm_err_t new_vkllm_context(zlog_category_t* zlog_c,
-				     struct vkllm_context** context);
+extern vkllm_err_t vkllm_new_context(struct vkllm_context** context);
 
 #endif
