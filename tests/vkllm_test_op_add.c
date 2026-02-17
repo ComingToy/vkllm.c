@@ -36,11 +36,12 @@ static struct
     uint32_t shapes[4];
     vkllm_dtype_t dtype;
 } tests[] = {
-    {{3, 4, 5, 99}, vkllm_dtype_float32},     {{3, 4, 5, 256}, vkllm_dtype_float32},
-    {{13, 54, 42, 128}, vkllm_dtype_float32}, {{51, 33, 90, 31}, vkllm_dtype_float32},
+    {{3, 4, 5, 99}, vkllm_dtype_float32},      {{3, 4, 5, 256}, vkllm_dtype_float32},
+    {{13, 54, 42, 128}, vkllm_dtype_float32},  {{51, 33, 90, 31}, vkllm_dtype_float32},
+    {{10, 10, 10, 1024}, vkllm_dtype_float32}, {{10, 10, 10, 1013}, vkllm_dtype_float32},
 
-    {{3, 4, 5, 99}, vkllm_dtype_float16},     {{3, 4, 5, 256}, vkllm_dtype_float16},
-    {{13, 54, 42, 128}, vkllm_dtype_float16}, {{51, 33, 90, 31}, vkllm_dtype_float16},
+    {{3, 4, 5, 99}, vkllm_dtype_float16},      {{3, 4, 5, 256}, vkllm_dtype_float16},
+    {{13, 54, 42, 128}, vkllm_dtype_float16},  {{51, 33, 90, 31}, vkllm_dtype_float16},
 };
 
 START_TEST(test_op_add)
@@ -125,8 +126,8 @@ Suite *vkllm_op_add_test_suite(void)
     tcase_f32 = tcase_create("vkllm_op_add_f32");
     tcase_f16 = tcase_create("vkllm_op_add_f16");
 
-    tcase_add_loop_test(tcase_f32, test_op_add, 0, 4);
-    tcase_add_loop_test(tcase_f16, test_op_add, 4, 8);
+    tcase_add_loop_test(tcase_f32, test_op_add, 0, 6);
+    tcase_add_loop_test(tcase_f16, test_op_add, 6, 10);
     tcase_set_timeout(tcase_f32, 60.0);
     tcase_set_timeout(tcase_f16, 60.0);
     suite_add_tcase(suite, tcase_f32);

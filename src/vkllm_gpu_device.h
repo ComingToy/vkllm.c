@@ -50,6 +50,9 @@ struct vkllm_gpu_device
 
 extern vkllm_err_t vkllm_gpu_device_new(struct vkllm_context *context, uint32_t id);
 extern vkllm_err_t vkllm_gpu_device_require_queue(struct vkllm_context *context, VkQueueFlagBits flags, uint32_t *type);
+extern vkllm_err_t compute_group_counts(struct vkllm_context *context, const uint32_t N, const uint32_t local_x,
+                                        const uint32_t local_y, const uint32_t local_z, uint32_t *group_x,
+                                        uint32_t *group_y, uint32_t *group_z);
 extern void vkllm_gpu_device_free(struct vkllm_context *context);
 
 #ifdef __cplusplus

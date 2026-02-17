@@ -1,9 +1,10 @@
 #include "vkllm_op_add.h"
-#include "src/vkllm_array.h"
-#include "src/vkllm_commands.h"
-#include "src/vkllm_dtypes.h"
-#include "src/vkllm_pipeline.h"
+#include "vkllm_array.h"
+#include "vkllm_commands.h"
 #include "vkllm_common.h"
+#include "vkllm_dtypes.h"
+#include "vkllm_gpu_device.h"
+#include "vkllm_pipeline.h"
 
 vkllm_err_t vkllm_op_add(struct vkllm_context *context, struct vkllm_commands *commands, struct vkllm_tensor *tensor)
 {
@@ -40,8 +41,23 @@ vkllm_err_t vkllm_op_add(struct vkllm_context *context, struct vkllm_commands *c
 
     uint32_t N = _MUL4(tensor->shapes);
     uint32_t group_x = (N + pipeline->shader_info.local_x - 1) / pipeline->shader_info.local_x;
-    uint32_t group_y = 1;
-    uint32_t group_z = 1;
+    uint32_t group_y = 1, group_z = 1;
+
+    VkPhysicalDeviceLimits *limits = &context->device->vk_physical_dev.properties.limits;
+    if (group_x > limits->maxComputeWorkGroupCount[0])
+    {
+        log_info("group_x %u > %u, ajust to max\n", group_x, limits->maxComputeWorkGroupCount[0]);
+        group_x = limits->maxComputeWorkGroupCount[0];
+        N = N - group_x * pipeline->shader_info.local_x;
+        group_y = (N + pipeline->shader_info.local_y - 1) / pipeline->shader_info.local_y;
+        if (group_y > limits->maxComputeWorkGroupCount[1])
+        {
+            log_info("group_y %u > %u, ajust to max\n", group_y, limits->maxComputeWorkGroupCount[1]);
+            group_y = limits->maxComputeWorkGroupCount[1];
+            N = N - group_y * pipeline->shader_info.local_y;
+            group_z = (N + pipeline->shader_info.local_z - 1) / pipeline->shader_info.local_z;
+        }
+    }
 
     _CHECK_JUMP(
         vkllm_commands_pipeline(context, commands, pipeline, bindings, NULL, constants, group_x, group_y, group_z), err,
