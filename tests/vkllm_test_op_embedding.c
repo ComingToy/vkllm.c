@@ -130,8 +130,8 @@ START_TEST(test_embedding_op_f32)
 
     memset(out0_host->data, 0, out0_host->alloc_n);
 
-    random_tensor(indices_host->data, indices->shapes, indices->strides, indices->dtype);
-    random_tensor(params_host->data, params->shapes, params->strides, params->dtype);
+    random_tensor(indices_host->data, indices->shapes, indices->strides, indices->dtype, 0, 1.0);
+    random_tensor(params_host->data, params->shapes, params->strides, params->dtype, 0, 1.0);
 
     ck_assert_int_eq(vkllm_commands_begin(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_upload(context, commands, indices, indices_host->data, indices_host->alloc_n),
@@ -203,8 +203,8 @@ START_TEST(test_embedding_op_f16)
 
     memset(out0_host->data, 0, out0_host->alloc_n);
 
-    random_tensor(indices_host->data, indices->shapes, indices->strides, indices->dtype);
-    random_tensor(params_host->data, params->shapes, params->strides, params->dtype);
+    random_tensor(indices_host->data, indices->shapes, indices->strides, indices->dtype, -1.0, 1.0);
+    random_tensor(params_host->data, params->shapes, params->strides, params->dtype, -1.0, 1.0);
 
     ck_assert_int_eq(vkllm_commands_begin(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_upload(context, commands, indices, indices_host->data, indices_host->alloc_n),

@@ -10,6 +10,8 @@ vkllm_err_t vkllm_context_new(uint32_t dev, struct vkllm_context **context)
 
     struct vkllm_context *p = *context;
     p->appname = "vkllm";
+	p->stats.tensor_alloc_counts = 0;
+	p->stats.tensor_free_counts = 0;
 
     _CHECK(vkllm_gpu_device_new(p, dev));
     _CHECK(vkllm_create_all_pipelines(p));

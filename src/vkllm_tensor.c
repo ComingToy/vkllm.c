@@ -131,6 +131,7 @@ vkllm_err_t vkllm_tensor_new(struct vkllm_context *context, const char *name, co
     }
 
     t->pipeline = NULL;
+    context->stats.tensor_alloc_counts += 1;
     return VKLLM_ERR_OK;
 
 err_calc_strides:
@@ -143,6 +144,7 @@ void vkllm_tensor_free(struct vkllm_context *context, struct vkllm_tensor *tenso
 {
     vmaDestroyBuffer(tensor->device->vma_allocator, tensor->data.vk_buf, tensor->data.allocation);
     free(tensor);
+    context->stats.tensor_alloc_counts -= 1;
 }
 
 vkllm_err_t vkllm_tensor_flush_cache(struct vkllm_context *context, struct vkllm_tensor *tensor)

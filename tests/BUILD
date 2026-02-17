@@ -95,3 +95,11 @@ cc_test(
     copts = COPTS,
     linkopts = LINK_OPTS,
 )
+
+cc_test(
+    name = "vkllm_test_op_bin",
+    srcs = ["vkllm_test_op_bin.c"],
+    deps = DEPS,
+    copts = COPTS,
+    linkopts = LINK_OPTS,
+)
