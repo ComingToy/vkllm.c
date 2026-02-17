@@ -257,7 +257,7 @@ vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, const char *name, 
                                                         .stage = shader_stage_create_info,
                                                         .layout = p->vk_pipeline_layout,
                                                         .basePipelineHandle = VK_NULL_HANDLE,
-                                                        0};
+                                                        .basePipelineIndex = -1};
 
     VkResult vkresult =
         vkCreateComputePipelines(p->device->vk_dev, VK_NULL_HANDLE, 1, &pipeline_create_info, NULL, &p->vk_pipeline);
