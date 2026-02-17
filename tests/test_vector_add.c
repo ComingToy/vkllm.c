@@ -88,7 +88,7 @@ int main(void)
     _CHECK(vkllm_tensor_invalid_cache(context, out0));
 
     const float *p = out0->data.host;
-    print_vec("vec add out: ", p, n);
+    // print_vec("vec add out: ", p, n);
     log_info("add mse = %f", compare_buf(buf2, p, n));
 
     vkllm_tensor_free(context, in0);
