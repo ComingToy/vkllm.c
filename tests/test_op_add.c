@@ -6,7 +6,6 @@
 #include "src/vkllm_op_add.h"
 #include "src/vkllm_tensor.h"
 #include <stdio.h>
-#include <xlocale/_stdio.h>
 
 static void random_buf(float *a, const size_t n)
 {
@@ -105,6 +104,7 @@ START_TEST(test_op_add_f32)
 
     random_buf(buf->data, n);
     random_buf(buf1->data, n);
+
     add_buf(buf->data, buf1->data, buf2->data, n);
 
     struct vkllm_array_f32 *buf3;
