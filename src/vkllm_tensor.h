@@ -52,6 +52,10 @@ extern vkllm_err_t vkllm_tensor_invalid_cache(struct vkllm_context *context, str
 extern vkllm_err_t vkllm_tensor_flush_cache(struct vkllm_context *context, struct vkllm_tensor *tensor);
 extern vkllm_err_t vkllm_tensor_new_staging(struct vkllm_context *context, struct vkllm_tensor *tensor,
                                             struct vkllm_tensor **staging);
+extern vkllm_err_t vkllm_tensor_reshape(struct vkllm_context *context, struct vkllm_tensor *tensor,
+                                        const uint32_t *shapes);
+extern vkllm_err_t vkllm_tensor_permute(struct vkllm_context *context, struct vkllm_tensor *tensor,
+                                        const uint32_t *axis);
 #ifdef __cplusplus
 }
 #endif
