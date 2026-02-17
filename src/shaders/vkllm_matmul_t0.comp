@@ -44,6 +44,12 @@ layout(binding = 2) writeonly buffer out0_type
 
 layout(constant_id = 0) const int a_boardcast_type = 0;
 layout(constant_id = 1) const int b_boardcast_type = 0;
+layout(constant_id = 2) const uint BM = 128;
+layout(constant_id = 3) const uint BN = 128;
+layout(constant_id = 4) const uint BK = 8;
+layout(constant_id = 5) const uint TM = 8;
+layout(constant_id = 6) const uint TN = 8;
+layout(constant_id = 7) const uint load_n_per_thread = 4;
 
 layout(push_constant) uniform constants
 {
@@ -72,17 +78,10 @@ layout(push_constant) uniform constants
 // 每个thread计算一个 [TM, TN]块
 // 也就是一个workgroup中包含 BM / TM * BN/TN个线程, work group size设置成(16, 16)
 
-#define BM 128
-#define BN 128
-#define BK 8
-#define TM 8
-#define TN 8
-
 #define SMEM_BK (BK / 4)
+
 shared SMEM_DTYPE smem_a[BM][SMEM_BK + 1];
 shared SMEM_DTYPE smem_b[BN][SMEM_BK + 1];
-
-#define load_n_per_thread 4
 
 #define BOARDCAST_AXIS0 0
 #define BOARDCAST_AXIS1 1
