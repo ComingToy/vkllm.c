@@ -171,14 +171,15 @@ static inline uint32_t get_indice(uint32_t b, uint32_t c, uint32_t h, uint32_t w
 static inline float compare_buf(const void *lhs, const void *rhs, uint32_t shapes[4], uint32_t strides[4],
                                 uint32_t bytes, vkllm_dtype_t dtype)
 {
-    uint32_t n = _MUL4(shapes);
-    float alpha = 1.0 / n;
-    float err = .0;
 
     // fprintf(stderr, "alpha: %f, bytes: %u, n: %u, en: %zu\n", alpha, bytes, n, bytes / sizeof(float));
 
     struct vkllm_dtype_info info;
     vkllm_get_dtype_info(dtype, &info);
+
+    uint32_t n = bytes / info.bytes;
+    float alpha = 1.0 / _MUL4(shapes);
+    float err = .0;
 
     uint32_t es[4] = {strides[0] / info.bytes, strides[1] / info.bytes, strides[2] / info.bytes,
                       strides[3] / info.bytes};
@@ -206,8 +207,8 @@ static inline float compare_buf(const void *lhs, const void *rhs, uint32_t shape
                         log_error("index %u at (%u, %u, %u, %u) out of range %u", i, b, c, h, w, n);
                         continue;
                     }
-#if 0
-                    if (fabsf(lhs_fp32[i] - rhs_fp32[i]) > 1e-2)
+#if 1
+                    if (fabsf(lhs_fp32[i] - rhs_fp32[i]) > 1e-1)
                     {
                         log_error("index %u at (%u, %u, %u, %u) err lhs %f rhs %f", i, b, c, h, w, lhs_fp32[i],
                                   rhs_fp32[i]);
