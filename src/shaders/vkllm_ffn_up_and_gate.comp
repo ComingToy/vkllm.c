@@ -1,0 +1,140 @@
+#version 450 core
+#include "vkllm_shader_header.comp.h"
+
+layout(binding = 0) readonly buffer in0_type
+{
+    float in_x[];
+};
+
+layout(binding = 1) readonly buffer in1_type
+{
+    float in_w_up[];
+};
+
+layout(binding = 2) readonly buffer in2_type
+{
+    float in_w_gate[];
+};
+
+layout(binding = 3) writeonly buffer out0_type
+{
+    float out0[];
+};
+
+layout(push_constant) uniform constants
+{
+    ShapeConstant shape_x;
+    ShapeConstant shape_w_up;
+    ShapeConstant shape_w_gate;
+    ShapeConstant shape_out0;
+};
+
+layout(constant_id = 0) const uint BM = 128;
+layout(constant_id = 1) const uint BN = 128;
+layout(constant_id = 2) const uint BK = 8;
+layout(constant_id = 3) const uint TM = 8;
+layout(constant_id = 4) const uint TN = 8;
+layout(constant_id = 5) const uint load_n_per_thread = 4;
+
+#define SMEM_BK (BK / 4)
+shared vec4 smem_in[BM][SMEM_BK + 1];
+shared vec4 smem_up[BN][SMEM_BK + 1];
+shared vec4 smem_gate[BN][SMEM_BK + 1];
+
+void main(void)
+{
+    uint blk_id_x = gl_WorkGroupID.x;
+    uint blk_id_y = gl_WorkGroupID.y;
+    uint glb_tid_z = gl_GlobalInvocationID.z;
+    uint batch_id = glb_tid_z / shape_x.shapes[1];
+    uint channel_id = glb_tid_z % shape_x.shapes[1];
+    uint in_batch_off = batch_id * shape_x.strides[0] + channel_id * shape_x.strides[1];
+
+    uint local_tid_x = gl_LocalInvocationID.x;
+    uint local_tid_y = gl_LocalInvocationID.y;
+    uint local_tid = local_tid_x * gl_WorkGroupSize.y + local_tid_y;
+    uint blk_load_tid = local_tid * load_n_per_thread;
+    uint blk_load_x = blk_load_tid / BK;
+    uint blk_load_y = blk_load_tid % BK;
+
+    float thread_results_up[TM][TN];
+    float thread_results_gate[TM][TN];
+
+    uint K = shape_x.shapes[3];
+    uint blk_ld_x_offset = blk_id_x * BM;
+    uint blk_ld_y_offset = blk_id_y * BN;
+
+    for (uint k = 0; k < (K + BK - 1) / BK; k += 1)
+    {
+        uint in_blk_ld_x = blk_ld_x_offset + blk_load_x;
+        uint in_blk_ld_y = k * BK + blk_load_y;
+        uint in_idx = in_batch_off + in_blk_ld_x * shape_x.strides[2] + in_blk_ld_y * shape_x.strides[3];
+
+        if (in_blk_ld_x < shape_x.shapes[2])
+        {
+            smem_in[blk_load_x][blk_load_y / 4] =
+                vec4(in_x[in_idx], in_x[in_idx + 1], in_x[in_idx + 2], in_x[in_idx + 3]);
+        }
+        else
+        {
+            smem_in[blk_load_x][blk_load_y / 4] = vec4(.0);
+        }
+
+        uint in_w_blk_ld_x = blk_ld_y_offset + blk_load_x;
+        uint in_w_blk_ld_y = k * BK + blk_load_y;
+        uint in_w_idx = in_w_blk_ld_x * shape_w_up.strides[2] + in_w_blk_ld_y * shape_w_up.strides[3];
+
+        if (in_w_blk_ld_x < shape_w_up.shapes[2])
+        {
+            smem_up[blk_load_x][blk_load_y / 4] =
+                vec4(in_w_up[in_w_idx], in_w_up[in_w_idx + 1], in_w_up[in_w_idx + 2], in_w_up[in_w_idx + 3]);
+            smem_gate[blk_load_x][blk_load_y / 4] =
+                vec4(in_w_gate[in_w_idx], in_w_gate[in_w_idx + 1], in_w_gate[in_w_idx + 2], in_w_gate[in_w_idx + 3]);
+        }
+        else
+        {
+            smem_up[blk_load_x][blk_load_y / 4] = vec4(0);
+            smem_gate[blk_load_x][blk_load_y / 4] = vec4(0);
+        }
+
+        memoryBarrierShared();
+        barrier();
+
+        for (uint tk = 0; tk < SMEM_BK; ++tk)
+        {
+            for (uint r = 0; r < TM; ++r)
+            {
+                uint smem_in_off = local_tid_x * TM;
+                for (uint c = 0; c < TN; ++c)
+                {
+                    uint smem_w_off = local_tid_y * TN;
+                    thread_results_up[r][c] += dot(smem_in[smem_in_off + r][tk], smem_up[smem_w_off + c][tk]);
+                    thread_results_gate[r][c] += dot(smem_in[smem_in_off + r][tk], smem_gate[smem_w_off + c][tk]);
+                }
+            }
+        }
+
+        memoryBarrierShared();
+        barrier();
+    }
+
+    uint out_row_off = blk_ld_x_offset + local_tid_x * TM;
+    uint out_col_off = blk_ld_y_offset + local_tid_y * TN;
+
+    for (uint tm = 0; tm < TM; ++tm)
+    {
+        for (uint tn = 0; tn < TN; ++tn)
+        {
+            uint out_row = out_row_off + tm;
+            uint out_col = out_col_off + tn;
+            uint glb_off = in_batch_off + out_row * shape_out0.strides[2] + out_col * shape_out0.strides[3];
+            float gate_val = thread_results_gate[tm][tn];
+            float val = thread_results_up[tm][tn] * gate_val / (1.0 + exp(-gate_val));
+
+            if (out_row < shape_out0.shapes[2] && out_col < shape_out0.shapes[3])
+            {
+                out0[glb_off] = val;
+            }
+        }
+    }
+}
