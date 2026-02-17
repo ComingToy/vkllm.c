@@ -126,9 +126,10 @@ START_TEST(test_op_rmsnorm)
 
     // Create output tensor
     struct vkllm_tensor *srcs[] = {input, weight};
+    struct vkllm_op_rmsnorm_params rmsnorm_params = {2.0f, 1e-6f};
     struct vkllm_tensor *output;
     ck_assert_int_eq(vkllm_tensor_new(context, "output", tests[_i].shapes, tests[_i].dtype, VKLLM_OP_RMSNORM, srcs, 2,
-                                      NULL, 0, true, &output),
+                                      &rmsnorm_params, sizeof(rmsnorm_params), true, &output),
                      VKLLM_ERR_OK);
 
     // Allocate host buffers

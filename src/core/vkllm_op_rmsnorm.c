@@ -1,11 +1,11 @@
 #include "vkllm_op_rmsnorm.h"
 #include "vkllm_array.h"
-#include "vkllm_common.h"
-#include "vkllm_dtypes.h"
-#include "vkllm_pipeline.h"
 #include "vkllm_commands.h"
+#include "vkllm_common.h"
 #include "vkllm_context.h"
+#include "vkllm_dtypes.h"
 #include "vkllm_gpu_device.h"
+#include "vkllm_pipeline.h"
 #include "vkllm_tensor.h"
 
 static vkllm_err_t vkllm_op_rmsnorm_get_pipeline(struct vkllm_context *context, struct vkllm_tensor *tensor,
@@ -93,12 +93,10 @@ vkllm_err_t vkllm_op_rmsnorm_run(struct vkllm_context *context, struct vkllm_com
     vkllm_shader_constants_append_n(constants, in1->shapes, 4);
     vkllm_shader_constants_append_n(constants, in1_strides, 4);
 
-    // Default RMS norm parameters: power=2.0, eps=1e-6
-    float power = 2.0f;
-    float eps = 1e-6f;
+    struct vkllm_op_rmsnorm_params *params = (struct vkllm_op_rmsnorm_params *)tensor->params;
 
-    vkllm_shader_constants_append(constants, power);
-    vkllm_shader_constants_append(constants, eps);
+    vkllm_shader_constants_append(constants, params->power);
+    vkllm_shader_constants_append(constants, params->eps);
 
     struct vkllm_array_ptr *bindings = NULL;
     _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 3), err, free_constants_out);
