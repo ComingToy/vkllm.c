@@ -467,7 +467,7 @@ static vkllm_err_t vkllm_create_matmul_pipelines(struct vkllm_context *context)
 
     struct vkllm_shader_info shader_info = {
         .binding_count = 3,
-        .push_constant_bytes = sizeof(uint32_t) * 14,
+        .push_constant_bytes = sizeof(uint32_t) * 14 + sizeof(float),
         .local_x = 16,
         .local_y = 16,
         .local_z = 1,
@@ -479,8 +479,8 @@ static vkllm_err_t vkllm_create_matmul_pipelines(struct vkllm_context *context)
         {
             for (uint32_t t = 0; t < 2; ++t)
             {
-                context->pipelines.matmul.f16f16f32[a][b][t] = NULL;
-                context->pipelines.matmul.f16f32f32[a][b][t] = NULL;
+                context->pipelines.matmul.f16f16f16[a][b][t] = NULL;
+                context->pipelines.matmul.f16f32f16[a][b][t] = NULL;
                 context->pipelines.matmul.f32f32f32[a][b][t] = NULL;
             }
         }
@@ -513,10 +513,10 @@ static vkllm_err_t vkllm_create_matmul_pipelines(struct vkllm_context *context)
             _CREATE_MATMUL_PIPELINE(f32f32f32);
             if (context->device->support_16bit_storage)
             {
-                _CREATE_MATMUL_PIPELINE(f16f32f32);
+                _CREATE_MATMUL_PIPELINE(f16f32f16);
                 if (context->device->support_fp16_arithmetic)
                 {
-                    _CREATE_MATMUL_PIPELINE(f16f16f32);
+                    _CREATE_MATMUL_PIPELINE(f16f16f16);
                 }
             }
         }
@@ -627,8 +627,8 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
             for (uint32_t t = 0; t < 2; ++t)
             {
                 vkllm_pipeline_free(context, context->pipelines.matmul.f32f32f32[a][b][t]);
-                vkllm_pipeline_free(context, context->pipelines.matmul.f16f32f32[a][b][t]);
-                vkllm_pipeline_free(context, context->pipelines.matmul.f16f16f32[a][b][t]);
+                vkllm_pipeline_free(context, context->pipelines.matmul.f16f16f16[a][b][t]);
+                vkllm_pipeline_free(context, context->pipelines.matmul.f16f32f16[a][b][t]);
             }
         }
     }

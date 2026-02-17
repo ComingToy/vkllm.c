@@ -57,19 +57,18 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
     _CHECK_ARGS(context && tensor && pipeline);
     *pipeline = NULL;
 
-    if (tensor->dtype != vkllm_dtype_float32)
-    {
-        log_error("tensor %s op = %s, dtype = %s, pipeline not found.", tensor->name, vkllm_op_s(tensor->op),
-                  vkllm_dtype_s(tensor->dtype));
-        return VKLLM_ERR_PIPELINE_NOT_FOUND;
-    }
-
     int tranposed_b = (int)is_transposed_b(tensor);
     int a_boardcast_type = boardcast_type(tensor->srcs[0], tensor->srcs[1]);
     int b_boardcast_type = boardcast_type(tensor->srcs[1], tensor->srcs[0]);
 
-    if (tensor->srcs[0]->dtype == vkllm_dtype_float16 && tensor->srcs[0]->dtype == vkllm_dtype_float16)
+    if (tensor->srcs[0]->dtype == vkllm_dtype_float16 && tensor->srcs[1]->dtype == vkllm_dtype_float16)
     {
+        if (tensor->dtype != vkllm_dtype_float16)
+        {
+            log_error("input dtype = fp16 and output dtype != fp16");
+            return VKLLM_ERR_PIPELINE_NOT_FOUND;
+        }
+
         if (!context->device->support_16bit_storage)
         {
             log_error("matmul pipeline: fp16 type inputs is unsupported.");
@@ -78,11 +77,11 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
 
         if (context->device->support_fp16_arithmetic)
         {
-            *pipeline = context->pipelines.matmul.f16f16f32[a_boardcast_type][b_boardcast_type][tranposed_b];
+            *pipeline = context->pipelines.matmul.f16f16f16[a_boardcast_type][b_boardcast_type][tranposed_b];
         }
         else
         {
-            *pipeline = context->pipelines.matmul.f16f32f32[a_boardcast_type][b_boardcast_type][tranposed_b];
+            *pipeline = context->pipelines.matmul.f16f32f16[a_boardcast_type][b_boardcast_type][tranposed_b];
         }
     }
     else if (tensor->srcs[0]->dtype == vkllm_dtype_float32 && tensor->srcs[0]->dtype == vkllm_dtype_float32)
@@ -167,8 +166,10 @@ vkllm_err_t vkllm_op_matmul_run(struct vkllm_context *context, struct vkllm_comm
     uint32_t in1_cstride = in1->strides[1] / in1_dtype_info.bytes;
     uint32_t out0_cstride = tensor->strides[1] / dtype_info.bytes;
 
+    const float scale = *(const float *)tensor->params;
+
     struct vkllm_shader_constants *constants = NULL;
-    _CHECK(vkllm_shader_constants_new(&constants, 24));
+    _CHECK(vkllm_shader_constants_new(&constants, 64));
     vkllm_shader_constants_append(constants, in0_stride);
     vkllm_shader_constants_append(constants, in1_stride);
     vkllm_shader_constants_append(constants, out0_stride);
@@ -183,6 +184,7 @@ vkllm_err_t vkllm_op_matmul_run(struct vkllm_context *context, struct vkllm_comm
     vkllm_shader_constants_append(constants, M);
     vkllm_shader_constants_append(constants, N);
     vkllm_shader_constants_append(constants, K);
+    vkllm_shader_constants_append(constants, scale);
 
     struct vkllm_array_ptr *bindings = NULL;
     _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 3), err, free_constants_out);

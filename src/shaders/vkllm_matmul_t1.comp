@@ -19,10 +19,6 @@
 #define SMEM_DTYPE vec4
 #endif
 
-#ifndef ACC_DTYPE
-#define ACC_DTYPE OUT_DTYPE
-#endif
-
 #ifndef LOAD_DTYPE
 #define LOAD_DTYPE
 #endif
@@ -76,6 +72,8 @@ layout(push_constant) uniform constants
     uint M; // in0.shape = [M, K], in1.shape = [N, K], out0.shape = [M, N]
     uint N;
     uint K;
+
+    float scale;
 };
 
 // 每个workgroup计算一个C矩阵中的[BM, BN]块
@@ -142,7 +140,7 @@ void main(void)
     uint ld_b_x = ld_a_x;
     uint ld_b_y = ld_a_y;
 
-    ACC_DTYPE thread_results[TM][TN]; // FIXME: clean
+    float thread_results[TM][TN]; // FIXME: clean
 
     [[unroll]] for (uint i = 0; i < TM; ++i)
     {
@@ -211,7 +209,7 @@ void main(void)
                 {
                     [[unroll]] for (uint c = 0; c < TN; ++c)
                     {
-                        thread_results[R + r][c] += ACC_DTYPE(dot(cache_a[r], smem_b[smem_b_off + c][tk]));
+                        thread_results[R + r][c] += float(dot(cache_a[r], smem_b[smem_b_off + c][tk]));
                     }
                 }
             }
@@ -233,7 +231,7 @@ void main(void)
             uint off = out_batch_off + out_row * out0_stride;
             if (out_row < M && out_col < N)
             {
-                out0[off + out_col] = thread_results[tm][tn];
+                out0[off + out_col] = OUT_DTYPE(thread_results[tm][tn] * scale);
             }
         }
     }
