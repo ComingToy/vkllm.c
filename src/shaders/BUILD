@@ -58,14 +58,10 @@ glsl_shader(
     extra_args = COMMON_ARGS,
     tool = "//tools:binary_to_array",
     macros = [
-        "-D_SUPPORT_16BIT_STORAGE -DIN0_DTYPE=float16_t -DIN1_DTYPE=float16_t -DLOAD_DTYPE=float -DOUT_DTYPE=float",
-        "-D_SUPPORT_16BIT_STORAGE -DIN0_DTYPE=float16_t -DIN1_DTYPE=float16_t -DLOAD_DTYPE=float -DOUT_DTYPE=float16_t",
-        "-DIN0_DTYPE=float -DIN1_DTYPE=float -DLOAD_DTYPE=float -DOUT_DTYPE=float",
+        "-D_SUPPORT_16BIT_STORAGE -DIN0_DTYPE=float16_t -DIN1_DTYPE=float -DLOAD_DTYPE=float -DOUT_DTYPE=float16_t",
     ],
     suffixes = [
-        "_f16f32f32",
         "_f16f32f16",
-        "_f32f32f32",
     ],
 )
 

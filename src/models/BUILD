@@ -1,5 +1,5 @@
 cc_library(
-    name = "vkllm_llama2_layers",
+    name = "vkllm_llama2_models",
     srcs = [
         "vkllm_llama2_layers.c",
     ],

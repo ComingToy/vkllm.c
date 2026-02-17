@@ -35,9 +35,7 @@ struct vkllm_context
 
         struct
         {
-            struct vkllm_pipeline *f16f32f32;
             struct vkllm_pipeline *f16f32f16;
-            struct vkllm_pipeline *f32f32f32;
         } rmsnorm;
 
         struct

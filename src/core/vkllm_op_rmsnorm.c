@@ -16,18 +16,8 @@ static vkllm_err_t vkllm_op_rmsnorm_get_pipeline(struct vkllm_context *context, 
 
     *pipeline = NULL;
 
-    if (tensor->dtype == vkllm_dtype_float32 && tensor->srcs[0]->dtype == vkllm_dtype_float32 &&
+    if (tensor->dtype == vkllm_dtype_float16 && tensor->srcs[0]->dtype == vkllm_dtype_float16 &&
         tensor->srcs[1]->dtype == vkllm_dtype_float32)
-    {
-        *pipeline = context->pipelines.rmsnorm.f32f32f32;
-    }
-    else if (tensor->dtype == vkllm_dtype_float32 && tensor->srcs[0]->dtype == vkllm_dtype_float16 &&
-             tensor->srcs[1]->dtype == vkllm_dtype_float16)
-    {
-        *pipeline = context->pipelines.rmsnorm.f16f32f32;
-    }
-    else if (tensor->dtype == vkllm_dtype_float16 && tensor->srcs[0]->dtype == vkllm_dtype_float16 &&
-             tensor->srcs[1]->dtype == vkllm_dtype_float16)
     {
         *pipeline = context->pipelines.rmsnorm.f16f32f16;
     }

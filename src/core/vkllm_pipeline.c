@@ -452,18 +452,13 @@ static vkllm_err_t vkllm_create_rmsnorm_pipeline(struct vkllm_context *context)
         .local_z = 1,
     };
 
-    context->pipelines.rmsnorm.f16f32f32 = NULL;
+    context->pipelines.rmsnorm.f16f32f16 = NULL;
 
     if (context->device->support_16bit_storage)
     {
-        _CHECK(vkllm_pipeline_new(context, "pipeline_rmsnorm_f16f32f32", shader_info, _vkllm_rmsnorm_f16f32f32_spv(),
-                                  _vkllm_rmsnorm_f16f32f32_size(), NULL, &context->pipelines.rmsnorm.f16f32f32));
         _CHECK(vkllm_pipeline_new(context, "pipeline_rmsnorm_f16f32f16", shader_info, _vkllm_rmsnorm_f16f32f16_spv(),
                                   _vkllm_rmsnorm_f16f32f16_size(), NULL, &context->pipelines.rmsnorm.f16f32f16));
     }
-
-    _CHECK(vkllm_pipeline_new(context, "pipeline_rmsnorm_f32f32f32", shader_info, _vkllm_rmsnorm_f32f32f32_spv(),
-                              _vkllm_rmsnorm_f32f32f32_size(), NULL, &context->pipelines.rmsnorm.f32f32f32));
 
     return VKLLM_ERR_OK;
 }
@@ -672,9 +667,7 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
     vkllm_pipeline_free(context, context->pipelines.embedding.f16);
     vkllm_pipeline_free(context, context->pipelines.embedding.f32);
 
-    vkllm_pipeline_free(context, context->pipelines.rmsnorm.f16f32f32);
     vkllm_pipeline_free(context, context->pipelines.rmsnorm.f16f32f16);
-    vkllm_pipeline_free(context, context->pipelines.rmsnorm.f32f32f32);
 
     for (uint32_t a = 0; a < 4; ++a)
     {

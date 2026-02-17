@@ -12,11 +12,16 @@
 // RMSNorm formula: y = x * w / sqrt(mean(x^2) + eps)
 // where mean is computed over the last dimension (W)
 static void rmsnorm_op_host(const void *input, const void *weight, void *output, const uint32_t shapes[4],
-                            const uint32_t strides[4], const uint32_t weight_strides[4], vkllm_dtype_t dtype)
+                            const uint32_t strides[4], const uint32_t weight_strides[4], vkllm_dtype_t input_dtype,
+                            vkllm_dtype_t weight_dtype, vkllm_dtype_t output_dtype)
 {
-    struct vkllm_dtype_info info;
-    vkllm_get_dtype_info(dtype, &info);
-    uint32_t dsize = info.bytes;
+    struct vkllm_dtype_info input_info, weight_info, output_info;
+    vkllm_get_dtype_info(input_dtype, &input_info);
+    vkllm_get_dtype_info(weight_dtype, &weight_info);
+    vkllm_get_dtype_info(output_dtype, &output_info);
+    uint32_t input_dsize = input_info.bytes;
+    uint32_t weight_dsize = weight_info.bytes;
+    uint32_t output_dsize = output_info.bytes;
 
     const float *input_fp32 = (const float *)input;
     const float *weight_fp32 = (const float *)weight;
@@ -28,9 +33,10 @@ static void rmsnorm_op_host(const void *input, const void *weight, void *output,
 
     float eps = 1e-6f;
 
-    uint32_t in_es[4] = {strides[0] / dsize, strides[1] / dsize, strides[2] / dsize, strides[3] / dsize};
-    uint32_t w_es[4] = {weight_strides[0] / dsize, weight_strides[1] / dsize, weight_strides[2] / dsize,
-                        weight_strides[3] / dsize};
+    uint32_t in_es[4] = {strides[0] / input_dsize, strides[1] / input_dsize, strides[2] / input_dsize,
+                         strides[3] / input_dsize};
+    uint32_t w_es[4] = {weight_strides[0] / weight_dsize, weight_strides[1] / weight_dsize,
+                        weight_strides[2] / weight_dsize, weight_strides[3] / weight_dsize};
 
     for (uint32_t b = 0; b < shapes[0]; ++b)
     {
@@ -44,11 +50,11 @@ static void rmsnorm_op_host(const void *input, const void *weight, void *output,
                 {
                     uint32_t idx = b * in_es[0] + c * in_es[1] + h * in_es[2] + w * in_es[3];
                     float val = 0.0f;
-                    if (dtype == vkllm_dtype_float32)
+                    if (input_dtype == vkllm_dtype_float32)
                     {
                         val = input_fp32[idx];
                     }
-                    else if (dtype == vkllm_dtype_float16)
+                    else if (input_dtype == vkllm_dtype_float16)
                     {
                         val = vkllm_fp16_to_fp32(input_fp16[idx]);
                     }
@@ -67,16 +73,30 @@ static void rmsnorm_op_host(const void *input, const void *weight, void *output,
                     float val = 0.0f;
                     float weight_val = 0.0f;
 
-                    if (dtype == vkllm_dtype_float32)
+                    if (input_dtype == vkllm_dtype_float32)
                     {
                         val = input_fp32[idx];
-                        weight_val = weight_fp32[w_idx];
-                        output_fp32[idx] = (val / rms) * weight_val;
                     }
-                    else if (dtype == vkllm_dtype_float16)
+                    else if (input_dtype == vkllm_dtype_float16)
                     {
                         val = vkllm_fp16_to_fp32(input_fp16[idx]);
+                    }
+
+                    if (weight_dtype == vkllm_dtype_float32)
+                    {
+                        weight_val = weight_fp32[w_idx];
+                    }
+                    else if (weight_dtype == vkllm_dtype_float16)
+                    {
                         weight_val = vkllm_fp16_to_fp32(weight_fp16[w_idx]);
+                    }
+
+                    if (output_dtype == vkllm_dtype_float32)
+                    {
+                        output_fp32[idx] = (val / rms) * weight_val;
+                    }
+                    else if (output_dtype == vkllm_dtype_float16)
+                    {
                         output_fp16[idx] = vkllm_fp32_to_fp16((val / rms) * weight_val);
                     }
                 }
@@ -90,15 +110,11 @@ static struct
     uint32_t shapes[4];
     vkllm_dtype_t dtype;
 } tests[] = {
-    // Float32 tests
-    {{1, 1, 10, 128}, vkllm_dtype_float32},
-    {{2, 1, 5, 256}, vkllm_dtype_float32},
-    {{1, 2, 8, 512}, vkllm_dtype_float32},
-    {{3, 4, 6, 64}, vkllm_dtype_float32},
     // Float16 tests
     {{1, 1, 10, 128}, vkllm_dtype_float16},
     {{2, 1, 5, 256}, vkllm_dtype_float16},
     {{1, 2, 8, 512}, vkllm_dtype_float16},
+    {{3, 4, 6, 64}, vkllm_dtype_float16},
 };
 
 START_TEST(test_op_rmsnorm)
@@ -118,10 +134,11 @@ START_TEST(test_op_rmsnorm)
                      VKLLM_ERR_OK);
 
     // Create weight tensor (shape: 1, 1, 1, W)
+    // Weight tensor must be float32 for f16f32f16 shader
     uint32_t weight_shapes[4] = {1, 1, 1, tests[_i].shapes[3]};
     struct vkllm_tensor *weight;
-    ck_assert_int_eq(vkllm_tensor_new(context, "weight", weight_shapes, tests[_i].dtype, VKLLM_OP_NONE, NULL, 0, NULL,
-                                      0, false, &weight),
+    ck_assert_int_eq(vkllm_tensor_new(context, "weight", weight_shapes, vkllm_dtype_float32, VKLLM_OP_NONE, NULL, 0,
+                                      NULL, 0, false, &weight),
                      VKLLM_ERR_OK);
 
     // Create output tensor
@@ -161,7 +178,7 @@ START_TEST(test_op_rmsnorm)
 
     // Compute expected result on CPU
     rmsnorm_op_host(input_host->data, weight_host->data, output_host->data, input->shapes, input->strides,
-                    weight->strides, input->dtype);
+                    weight->strides, input->dtype, weight->dtype, output->dtype);
 
     const void *gpu_output = output->data.host;
 
@@ -189,16 +206,12 @@ END_TEST;
 Suite *vkllm_op_rmsnorm_test_suite(void)
 {
     Suite *suite = NULL;
-    TCase *tcase_f32 = NULL, *tcase_f16 = NULL;
+    TCase *tcase_f16 = NULL;
     suite = suite_create("vkllm_op_rmsnorm");
-    tcase_f32 = tcase_create("vkllm_op_rmsnorm_f32");
     tcase_f16 = tcase_create("vkllm_op_rmsnorm_f16");
 
-    tcase_add_loop_test(tcase_f32, test_op_rmsnorm, 0, 4);
-    tcase_add_loop_test(tcase_f16, test_op_rmsnorm, 4, 7);
-    tcase_set_timeout(tcase_f32, 60.0);
+    tcase_add_loop_test(tcase_f16, test_op_rmsnorm, 0, 4);
     tcase_set_timeout(tcase_f16, 60.0);
-    suite_add_tcase(suite, tcase_f32);
     suite_add_tcase(suite, tcase_f16);
     return suite;
 }
