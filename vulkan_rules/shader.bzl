@@ -48,7 +48,7 @@ def _glsl_shader(ctx):
         output_spvs.append(spv_file)
 
     output_header = ctx.actions.declare_file(ctx.label.name + '.h')
-    output_cpp = ctx.actions.declare_file(ctx.label.name + '.cpp')
+    output_cpp = ctx.actions.declare_file(ctx.label.name + '.c')
     print('genereate cpp files: %s' % output_cpp.path)
     args = [output_cpp.path, output_header.path] + [f.path for f in output_spvs]
     outputs = [output_cpp, output_header]
