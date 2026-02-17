@@ -39,20 +39,18 @@ static int create_instance(struct vkllm_gpu_device *pdev)
 #endif
     };
 
-    VkInstanceCreateInfo instance_create_info = {
-        .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        .pNext = NULL,
+    VkInstanceCreateInfo instance_create_info = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+                                                 .pNext = NULL,
 #if __APPLE__
-        .flags = VK_KHR_portability_enumeration,
+                                                 .flags = VK_KHR_portability_enumeration,
 #else
-        .flags = 0,
+                                                 .flags = 0,
 #endif
-        .pApplicationInfo = &app_info,
-        .enabledLayerCount = sizeof(enable_layers) / sizeof(const char *),
-        .ppEnabledLayerNames = enable_layers,
-        .enabledExtensionCount = sizeof(exts) / sizeof(const char *),
-        .ppEnabledExtensionNames = exts
-    };
+                                                 .pApplicationInfo = &app_info,
+                                                 .enabledLayerCount = sizeof(enable_layers) / sizeof(const char *),
+                                                 .ppEnabledLayerNames = enable_layers,
+                                                 .enabledExtensionCount = sizeof(exts) / sizeof(const char *),
+                                                 .ppEnabledExtensionNames = exts};
 
     ret = vkCreateInstance(&instance_create_info, NULL, &pdev->vk_instance);
     if (ret != VK_SUCCESS)
@@ -92,16 +90,14 @@ static vkllm_err_t init_physical_device(struct vkllm_context *context)
 
     vkGetPhysicalDeviceFeatures(vk_physical_dev, &pdev->vk_physical_dev.features);
 
-    ret = vkEnumerateDeviceExtensionProperties(vk_physical_dev, NULL, &pdev->vk_physical_dev.n_ext_properties, NULL);
-
-    if (ret != VK_SUCCESS)
-    {
-        log_error("vkEnumerateDeviceExtensionProperties failed: %d", (int)ret);
-        return VKLLM_ERR_VULKAN;
-    }
+    _CHECK_VK(
+        vkEnumerateDeviceExtensionProperties(vk_physical_dev, NULL, &pdev->vk_physical_dev.n_ext_properties, NULL));
 
     _NEW_N_AND_CHECK(pdev->vk_physical_dev.ext_properties, VkExtensionProperties,
                      pdev->vk_physical_dev.n_ext_properties);
+
+    _CHECK_VK(vkEnumerateDeviceExtensionProperties(vk_physical_dev, NULL, &pdev->vk_physical_dev.n_ext_properties,
+                                                   pdev->vk_physical_dev.ext_properties));
 
     vkGetPhysicalDeviceMemoryProperties(vk_physical_dev, &pdev->vk_physical_dev.mem_properties);
     vkGetPhysicalDeviceQueueFamilyProperties(vk_physical_dev, &pdev->vk_physical_dev.n_queue_family_properties, NULL);
@@ -248,12 +244,13 @@ static vkllm_err_t init_logical_device(struct vkllm_context *context)
 
     VkDeviceCreateInfo dev_create_info = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pNext = NULL,
+        .pNext = &pdev->vk_physical_dev.feat_8bit_storage,
         .flags = 0,
         .queueCreateInfoCount = n_queue,
         .pQueueCreateInfos = dev_queue_create_infos,
         .enabledExtensionCount = i_ext,
         .ppEnabledExtensionNames = dev_exts,
+        .pEnabledFeatures = &pdev->vk_physical_dev.features,
     };
 
     VkResult ret = vkCreateDevice(pdev->vk_physical_dev.dev, &dev_create_info, NULL, &pdev->vk_dev);
