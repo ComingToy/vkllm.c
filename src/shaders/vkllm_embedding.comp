@@ -1,6 +1,6 @@
 #version 450 core
 #ifdef _SUPPORT_16BIT_STORAGE
-#extension GL_EXT_shader_16bit_storage: require
+#extension GL_EXT_shader_16bit_storage : require
 #endif
 
 #include "vkllm_shader_header.comp.h"
@@ -9,18 +9,18 @@ layout(push_constant) uniform constants
 {
     ShapeConstant indices_shape;
     ShapeConstant params_shape;
-	ShapeConstant output_shape;
+    ShapeConstant output_shape;
     uint UNK_TOK;
 };
 
 layout(binding = 0) readonly buffer Indices
 {
-    IN_DTYPE params[];
+    uint indices[];
 };
 
 layout(binding = 1) readonly buffer Params
 {
-    uint indices[];
+    IN_DTYPE params[];
 };
 
 layout(binding = 2) writeonly buffer Out
@@ -55,20 +55,20 @@ void main(void)
     }
 
     uint off = tid_b * indices_shape.strides[0] + tid_c * indices_shape.strides[1] +
-               tid_h * indices_shape.strides[2] * tid_w * indices_shape.strides[3];
+               tid_h * indices_shape.strides[2] + tid_w * indices_shape.strides[3];
 
-    uint tok = UNK_TOK;
-    if (off < indices_shape.shapes[0] * indices_shape.shapes[1] * indices_shape.shapes[2] * indices_shape.shapes[3])
+    uint tok = indices[off];
+    if (tok >= params_shape.shapes[2])
     {
-        tok = indices[off];
+        tok = UNK_TOK;
     }
 
     uint dim = params_shape.shapes[3];
-	uint out_off = tid_c * output_shape.strides[0] + tid_h * output_shape.strides[1] + tid_w * output_shape.strides[2];
+    uint out_off = tid_c * output_shape.strides[0] + tid_h * output_shape.strides[1] + tid_w * output_shape.strides[2];
+    uint params_off = (tok * params_shape.strides[2]);
 
     for (uint w = 0; w < dim; ++w)
     {
-        uint params_off = (tok * params_shape.strides[2]);
-		output0[out_off + w] = OUT_DTYPE(params[params_off + w]);
+        output0[out_off + w] = OUT_DTYPE(params[params_off + w]);
     }
 }

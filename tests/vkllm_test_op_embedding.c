@@ -7,6 +7,7 @@
 #include "src/vkllm_op_embedding.h"
 #include "src/vkllm_tensor.h"
 #include "vkllm_test_common.h"
+#include <string.h>
 #
 
 static struct
@@ -29,26 +30,52 @@ static void embedding_op_host(const uint32_t *indices, const void *params, const
 
     float *out_fp32 = (float *)out;
     float *params_fp32 = (float *)params;
-
-    _LOOP_SHAPE(shapes, {
-        uint32_t i = get_indice(_b, _c, _h, _w, strides, sizeof(uint32_t));
-        uint32_t tok = indices[i];
-        if (tok >= shapes1[2])
+    uint32_t n_params = strides1[0] * shapes1[0] / sizeof(float);
+    uint32_t n_out = strides2[0] * shapes2[0] / sizeof(float);
+    do
+    {
+        for (uint32_t _b = 0; _b < shapes[0]; ++_b)
         {
-            tok = 0;
-        }
-
-        uint32_t params_off = get_indice(1, 1, tok, 0, strides1, dsize);
-        uint32_t out_off = get_indice(_c, _h, _w, 0, strides2, dsize);
-
-        for (uint32_t k = 0; k < shapes1[3]; ++k)
-        {
-            if (dtype == vkllm_dtype_float32)
+            for (uint32_t _c = 0; _c < shapes[1]; ++_c)
             {
-                out_fp32[out_off + k] = params_fp32[params_off + k];
+                for (uint32_t _h = 0; _h < shapes[2]; ++_h)
+                {
+                    for (uint32_t _w = 0; _w < shapes[3]; ++_w)
+                    {
+                        {
+                            uint32_t i = get_indice(_b, _c, _h, _w, strides, sizeof(uint32_t));
+                            uint32_t tok = indices[i];
+                            if (tok >= shapes1[2])
+                            {
+                                tok = 0;
+                            }
+                            uint32_t params_off = get_indice(0, 0, tok, 0, strides1, dsize);
+                            uint32_t out_off = get_indice(_c, _h, _w, 0, strides2, dsize);
+                            for (uint32_t k = 0; k < shapes1[3]; ++k)
+                            {
+                                if (out_off + k >= n_out)
+                                {
+                                    log_error("tok %u indices %u + %u = %u at (%u %u %u %u) out of output0 %u", tok, k,
+                                              out_off, k + out_off, _b, _c, _h, _w, n_out);
+                                }
+
+                                if (params_off + k >= n_params)
+                                {
+                                    log_error("tok %u indices %u + %u = %u at (%u %u %u %u) out of params %u", tok, k,
+                                              params_off, k + params_off, _b, _c, _h, _w, n_params);
+                                }
+
+                                if (dtype == vkllm_dtype_float32)
+                                {
+                                    out_fp32[out_off + k] = params_fp32[params_off + k];
+                                }
+                            }
+                        };
+                    }
+                }
             }
         }
-    });
+    } while (0);
 }
 
 START_TEST(test_embedding_op)
@@ -71,7 +98,7 @@ START_TEST(test_embedding_op)
                      VKLLM_ERR_OK);
 
     struct vkllm_tensor *out0 = NULL;
-    uint32_t shapes_out[] = {tests[_i].shapes0[0], tests[_i].shapes0[1], tests[_i].shapes0[2], tests[_i].shapes1[3]};
+    uint32_t shapes_out[] = {tests[_i].shapes0[1], tests[_i].shapes0[2], tests[_i].shapes0[3], tests[_i].shapes1[3]};
     struct vkllm_tensor *srcs[] = {indices, params};
 
     uint32_t UNK_TOK = 0;
@@ -85,26 +112,31 @@ START_TEST(test_embedding_op)
     vkllm_array_u8_new(&params_host, params->bytes);
     vkllm_array_u8_new(&out0_host, out0->bytes);
 
-    random_tensor(indices_host, indices->shapes, indices->strides, indices->dtype);
-    random_tensor(params_host, params->shapes, params->strides, params->dtype);
+    memset(out0_host->data, 0, out0_host->alloc_n);
 
-    vkllm_commands_begin(context, commands);
-    vkllm_commands_upload(context, commands, indices, indices_host->data, indices_host->alloc_n);
-    vkllm_commands_upload(context, commands, params, params_host->data, params_host->alloc_n);
-    vkllm_op_embedding(context, commands, out0);
-    vkllm_commands_end(context, commands);
-    vkllm_commands_submit(context, commands);
-    vkllm_commands_wait_exec(context, commands);
-    vkllm_tensor_flush_cache(context, out0);
+    random_tensor(indices_host->data, indices->shapes, indices->strides, indices->dtype);
+    random_tensor(params_host->data, params->shapes, params->strides, params->dtype);
+
+    ck_assert_int_eq(vkllm_commands_begin(context, commands), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_commands_upload(context, commands, indices, indices_host->data, indices_host->alloc_n),
+                     VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_commands_upload(context, commands, params, params_host->data, params_host->alloc_n),
+                     VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_op_embedding(context, commands, out0), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_commands_end(context, commands), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_commands_submit(context, commands), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_commands_wait_exec(context, commands), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_tensor_flush_cache(context, out0), VKLLM_ERR_OK);
 
     embedding_op_host((const uint32_t *)indices_host->data, params_host->data, out0_host->data, indices->shapes,
                       params->shapes, out0->shapes, indices->strides, params->strides, out0->strides, params->dtype);
 
     const float *p = out0->data.host;
-    ck_assert_float_le(compare_buf(out0_host->data, p, out0->shapes, out0->strides, out0->bytes, out0->dtype), 1e-5);
 
-    print_n("out0 host", (const float *)out0_host->data, 10);
-    print_n("out0", p, 10);
+    // print_n("out0 host", (const float *)out0_host->data, 512);
+    // print_n("out0", p, 512);
+
+    ck_assert_float_le(compare_buf(out0_host->data, p, out0->shapes, out0->strides, out0->bytes, out0->dtype), 1e-5);
 
     vkllm_tensor_free(context, out0);
     vkllm_tensor_free(context, indices);

@@ -10,6 +10,8 @@
 #include "vkllm_errors.h"
 #include "vkllm_gpu_device.h"
 #include "vkllm_tensor.h"
+#include <stdlib.h>
+#include <string.h>
 
 vkllm_err_t vkllm_shader_constants_new(struct vkllm_shader_constants **constants, uint32_t init_bytes)
 {
@@ -163,9 +165,9 @@ vkllm_err_t vkllm_pipeline_create_shader_module(struct vkllm_pipeline *pipeline,
     return VKLLM_ERR_OK;
 }
 
-vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, struct vkllm_shader_info shader_info, const uint8_t *spv,
-                               const size_t spv_size, struct vkllm_shader_constants *specializations,
-                               struct vkllm_pipeline **pipeline)
+vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, const char *name, struct vkllm_shader_info shader_info,
+                               const uint8_t *spv, const size_t spv_size,
+                               struct vkllm_shader_constants *specializations, struct vkllm_pipeline **pipeline)
 {
     struct vkllm_gpu_device *device = context->device;
     _CHECK_ARGS(context && device && spv && pipeline);
@@ -182,10 +184,13 @@ vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, struct vkllm_shade
         return VKLLM_ERR_ARGS;
     }
 
-    _NEW_AND_CHECK(*pipeline, struct vkllm_pipeline);
+    size_t name_len = name ? strlen(name) : 0;
+    *pipeline = (struct vkllm_pipeline *)malloc(sizeof(struct vkllm_pipeline) + name_len);
+
     struct vkllm_pipeline *p = *pipeline;
     p->shader_info = shader_info;
     p->device = device;
+    strncpy((char *)p->name, name, name_len);
 
     // FIXME: leak pipeline
     _CHECK(vkllm_pipeline_create_layout(p));
@@ -326,14 +331,14 @@ void vkllm_pipeline_free(struct vkllm_context *context, struct vkllm_pipeline *p
     free(pipeline);
 }
 
-static vkllm_err_t vkllm_create_add_pipeline(struct vkllm_context *context, const uint8_t *spv, const size_t spv_size,
-                                             struct vkllm_pipeline **ppipeline)
+static vkllm_err_t vkllm_create_add_pipeline(struct vkllm_context *context, const char *name, const uint8_t *spv,
+                                             const size_t spv_size, struct vkllm_pipeline **ppipeline)
 {
     _CHECK_ARGS(context);
     struct vkllm_shader_info shader_info = {
         .binding_count = 3, .push_constant_bytes = sizeof(uint32_t) * 8, .local_x = 512, .local_y = 1, .local_z = 1};
 
-    vkllm_err_t err = vkllm_pipeline_new(context, shader_info, spv, spv_size, NULL, ppipeline);
+    vkllm_err_t err = vkllm_pipeline_new(context, name, shader_info, spv, spv_size, NULL, ppipeline);
 
     if (err != VKLLM_ERR_OK)
     {
@@ -346,8 +351,8 @@ static vkllm_err_t vkllm_create_add_pipeline(struct vkllm_context *context, cons
 static vkllm_err_t vkllm_create_all_add_pipeline(struct vkllm_context *context)
 {
 #define _CREATE_ADD_PIPELINE(_tag)                                                                                     \
-    _CHECK(vkllm_create_add_pipeline(context, _vkllm_add_comp_##_tag##_spv(), _vkllm_add_comp_##_tag##_size(),         \
-                                     &context->pipelines.add.pipeline_##_tag))
+    _CHECK(vkllm_create_add_pipeline(context, "pipeline_add_" #_tag, _vkllm_add_comp_##_tag##_spv(),                   \
+                                     _vkllm_add_comp_##_tag##_size(), &context->pipelines.add.pipeline_##_tag))
 
     if (context->device->support_fp16_arithmetic)
     {
@@ -373,7 +378,7 @@ static vkllm_err_t vkllm_create_embedding_pipeline(struct vkllm_context *context
         .binding_count = 3, .push_constant_bytes = sizeof(uint32_t) * 25, .local_x = 512, .local_y = 1, .local_z = 1};
 
 #define _CREATE_EMBEDDING_PIPELINE(_tag)                                                                               \
-    _CHECK(vkllm_pipeline_new(context, shader_info, _vkllm_embedding_comp_##_tag##_spv(),                              \
+    _CHECK(vkllm_pipeline_new(context, "pipeline_embedding_" #_tag, shader_info, _vkllm_embedding_comp_##_tag##_spv(), \
                               _vkllm_embedding_comp_##_tag##_size(), NULL,                                             \
                               &context->pipelines.embedding.pipeline_##_tag))
 
