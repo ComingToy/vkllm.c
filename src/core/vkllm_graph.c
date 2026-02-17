@@ -1,9 +1,10 @@
 #include "vkllm_graph.h"
-#include "vkllm_common.h"
 #include "vkllm_commands.h"
+#include "vkllm_common.h"
 #include "vkllm_context.h"
 #include "vkllm_hashset.h"
 #include "vkllm_op_bin.h"
+#include "vkllm_op_copy.h"
 #include "vkllm_op_embedding.h"
 #include "vkllm_op_matmul.h"
 #include "vkllm_op_rmsnorm.h"
@@ -93,6 +94,9 @@ static vkllm_err_t vkllm_graph_init_tensor(struct vkllm_context *context, struct
     case VKLLM_OP_NONE:
         // Input tensors or constants, no initialization needed
         break;
+    case VKLLM_OP_COPY:
+        _CHECK(vkllm_op_copy_init(context, commands, tensor));
+        break;
     case VKLLM_OP_BIN:
         _CHECK(vkllm_op_bin_init(context, commands, tensor));
         break;
@@ -171,6 +175,9 @@ static vkllm_err_t vkllm_graph_run_tensor(struct vkllm_context *context, struct 
     case VKLLM_OP_NONE:
         // Input tensors or constants, no execution needed
         break;
+    case VKLLM_OP_COPY:
+        _CHECK(vkllm_op_copy_run(context, commands, tensor));
+        break;
     case VKLLM_OP_BIN:
         _CHECK(vkllm_op_bin_run(context, commands, tensor));
         break;
@@ -248,6 +255,9 @@ static vkllm_err_t vkllm_graph_post_run_tensor(struct vkllm_context *context, st
     {
     case VKLLM_OP_NONE:
         // Input tensors or constants, no post-run needed
+        break;
+    case VKLLM_OP_COPY:
+        _CHECK(vkllm_op_copy_post_run(context, commands, tensor));
         break;
     case VKLLM_OP_BIN:
         _CHECK(vkllm_op_bin_post_run(context, commands, tensor));
