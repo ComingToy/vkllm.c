@@ -1,10 +1,9 @@
 #include "vkllm_commands.h"
 #include "log.h"
-#include "src/vkllm_array.h"
 #include "src/vkllm_common.h"
 #include "src/vkllm_gpu_device.h"
 #include "src/vkllm_tensor.h"
-#include <cstring>
+#include <string.h>
 #include <vulkan/vulkan.h>
 
 static vkllm_err_t vkllm_create_command_buffer(struct vkllm_commands *commands)
@@ -173,6 +172,7 @@ vkllm_err_t vkllm_commands_download(struct vkllm_context *context, struct vkllm_
     __vkllm_commands_sync_tensor(context, commands, staging, VK_ACCESS_HOST_READ_BIT, VK_PIPELINE_STAGE_HOST_BIT);
     vkllm_tensor_flush_cache(context, staging);
     memcpy(data, staging->data.host, bytes);
+    return VKLLM_ERR_OK;
 }
 
 void vkllm_commands_free(struct vkllm_context *context, struct vkllm_commands *commands)

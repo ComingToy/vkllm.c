@@ -31,7 +31,7 @@ int main(int argc, const char *argv[])
         return -1;
     }
 
-    vkllm_gpu_device_destory(context, gpu);
+    vkllm_gpu_device_free(context, gpu);
     vkllm_destroy_context(context);
     return 0;
 }
