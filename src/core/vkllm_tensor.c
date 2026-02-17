@@ -17,8 +17,7 @@ static vkllm_err_t vkllm_calc_strides(struct vkllm_gpu_device *device, const uin
     uint32_t blocks = (w + dtype_info.items_per_block - 1) / dtype_info.items_per_block;
     uint32_t bytes = blocks * dtype_info.bytes_per_block;
 
-    size_t align = device->vk_physical_dev.subgroup_properties.subgroupSize * dtype_info.bytes;
-    size_t align_bytes = (bytes + align - 1) / align * align;
+    size_t align_bytes = bytes;
 
     strides[3] = dtype_info.bytes;
     strides[2] = (uint32_t)align_bytes;
@@ -100,8 +99,6 @@ vkllm_err_t vkllm_tensor_new(struct vkllm_context *context, const char *name, co
     size_t total_bytes = shapes[0] * t->strides[0];
     size_t align = device->vk_physical_dev.properties.limits.nonCoherentAtomSize;
     size_t total_aligned_bytes = (total_bytes + align - 1) / align * align;
-    align = device->vk_physical_dev.subgroup_properties.subgroupSize;
-    total_aligned_bytes = (total_aligned_bytes + align - 1) / align * align;
     t->bytes = total_aligned_bytes;
 
     t->device = device;
@@ -204,8 +201,7 @@ static bool is_padding(struct vkllm_context *context, vkllm_dtype_t dtype, uint3
     uint32_t blocks = (w + dtype_info.items_per_block - 1) / dtype_info.items_per_block;
     uint32_t bytes = blocks * dtype_info.bytes_per_block;
 
-    size_t align = context->device->vk_physical_dev.subgroup_properties.subgroupSize * dtype_info.bytes;
-    size_t align_bytes = (bytes + align - 1) / align * align;
+    size_t align_bytes = bytes;
     size_t unaligned_bytes = dtype_info.bytes * w;
 
     return align_bytes != unaligned_bytes;
