@@ -21,6 +21,8 @@ layout(binding = 2) writeonly buffer Output0
     OUT_DTYPE output0[];
 };
 
+// 0: add, 1: sub 2: mul 3: div
+layout(constant_id = 0) const int op = 0;
 
 void get_indices(uint tid, out uint b, out uint c, out uint h, out uint w)
 {
@@ -47,8 +49,25 @@ void main(void)
         return;
     }
 
-    uint off = tid_w * shape.strides[3] + tid_h * shape.strides[2] + tid_c * shape.strides[1] + tid_b * shape.strides[0];
+    uint off =
+        tid_w * shape.strides[3] + tid_h * shape.strides[2] + tid_c * shape.strides[1] + tid_b * shape.strides[0];
     LOAD_DTYPE in0 = LOAD_DTYPE(input0[off]);
     LOAD_DTYPE in1 = LOAD_DTYPE(input1[off]);
-    output0[off] = OUT_DTYPE(in0 + in1);
+
+    if (op == 0)
+    {
+        output0[off] = OUT_DTYPE(in0 + in1);
+    }
+    else if (op == 1)
+    {
+        output0[off] = OUT_DTYPE(in0 - in1);
+    }
+    else if (op == 2)
+    {
+        output0[off] = OUT_DTYPE(in0 * in1);
+    }
+    else if (op == 3)
+    {
+        output0[off] = OUT_DTYPE(in0 / in1);
+    }
 }
