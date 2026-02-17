@@ -3,6 +3,7 @@
 #include "vkllm_common.h"
 #include "vkllm_comp_shaders_f16f16f16.h"
 #include "vkllm_comp_shaders_f16f16f32.h"
+#include "vkllm_comp_shaders_f16f32f16.h"
 #include "vkllm_comp_shaders_f16f32f32.h"
 #include "vkllm_comp_shaders_f32f32f32.h"
 #include "vkllm_context.h"
@@ -354,16 +355,22 @@ static vkllm_err_t vkllm_create_all_add_pipeline(struct vkllm_context *context)
     _CHECK(vkllm_create_add_pipeline(context, "pipeline_add_" #_tag, _vkllm_add_comp_##_tag##_spv(),                   \
                                      _vkllm_add_comp_##_tag##_size(), &context->pipelines.add.pipeline_##_tag))
 
-    if (context->device->support_fp16_arithmetic)
+    context->pipelines.add.pipeline_f16f16f16 = NULL;
+    context->pipelines.add.pipeline_f16f16f32 = NULL;
+    context->pipelines.add.pipeline_f16f32f32 = NULL;
+    context->pipelines.add.pipeline_f32f32f32 = NULL;
+    context->pipelines.add.pipeline_f16f32f16 = NULL;
+
+    if (context->device->support_16bit_storage)
     {
-        _CREATE_ADD_PIPELINE(f16f16f16);
-        _CREATE_ADD_PIPELINE(f16f16f32);
+        _CREATE_ADD_PIPELINE(f16f32f16);
+        if (context->device->support_fp16_arithmetic)
+        {
+            _CREATE_ADD_PIPELINE(f16f16f16);
+            _CREATE_ADD_PIPELINE(f16f16f32);
+        }
     }
-    else
-    {
-        context->pipelines.add.pipeline_f16f16f32 = NULL;
-        context->pipelines.add.pipeline_f16f16f16 = NULL;
-    }
+
     _CREATE_ADD_PIPELINE(f16f32f32);
     _CREATE_ADD_PIPELINE(f32f32f32);
 
@@ -377,6 +384,12 @@ static vkllm_err_t vkllm_create_embedding_pipeline(struct vkllm_context *context
     struct vkllm_shader_info shader_info = {
         .binding_count = 3, .push_constant_bytes = sizeof(uint32_t) * 25, .local_x = 512, .local_y = 1, .local_z = 1};
 
+    context->pipelines.embedding.pipeline_f16f16f16 = NULL;
+    context->pipelines.embedding.pipeline_f16f16f32 = NULL;
+    context->pipelines.embedding.pipeline_f16f32f32 = NULL;
+    context->pipelines.embedding.pipeline_f32f32f32 = NULL;
+    context->pipelines.embedding.pipeline_f16f32f16 = NULL;
+
 #define _CREATE_EMBEDDING_PIPELINE(_tag)                                                                               \
     _CHECK(vkllm_pipeline_new(context, "pipeline_embedding_" #_tag, shader_info, _vkllm_embedding_comp_##_tag##_spv(), \
                               _vkllm_embedding_comp_##_tag##_size(), NULL,                                             \
@@ -384,10 +397,15 @@ static vkllm_err_t vkllm_create_embedding_pipeline(struct vkllm_context *context
 
     if (context->device->support_16bit_storage)
     {
-        _CREATE_EMBEDDING_PIPELINE(f16f16f16);
-        _CREATE_EMBEDDING_PIPELINE(f16f16f32);
         _CREATE_EMBEDDING_PIPELINE(f16f32f32);
+        _CREATE_EMBEDDING_PIPELINE(f16f32f16);
+        if (context->device->support_fp16_arithmetic)
+        {
+            _CREATE_EMBEDDING_PIPELINE(f16f16f16);
+            _CREATE_EMBEDDING_PIPELINE(f16f16f32);
+        }
     }
+
     _CREATE_EMBEDDING_PIPELINE(f32f32f32);
 #undef _CREATE_EMBEDDING_PIPELINE
     return VKLLM_ERR_OK;
@@ -411,7 +429,8 @@ vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context)
     _vkllm_free_op_pipeline(context, op, f16f16f16);                                                                   \
     _vkllm_free_op_pipeline(context, op, f16f16f32);                                                                   \
     _vkllm_free_op_pipeline(context, op, f16f32f32);                                                                   \
-    _vkllm_free_op_pipeline(context, op, f32f32f32)
+    _vkllm_free_op_pipeline(context, op, f32f32f32);                                                                   \
+    _vkllm_free_op_pipeline(context, op, f16f32f16);
 
 void vkllm_free_all_pipelines(struct vkllm_context *context)
 {

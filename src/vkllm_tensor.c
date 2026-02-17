@@ -104,7 +104,14 @@ static vkllm_err_t vkllm_tensor_get_pipeline(struct vkllm_context *context, stru
         {
             if (tensor->dtype == vkllm_dtype_float16)
             {
-                tensor->pipeline = context->pipelines.embedding.pipeline_f16f16f16;
+                if (tensor->device->support_fp16_arithmetic)
+                {
+                    tensor->pipeline = context->pipelines.embedding.pipeline_f16f16f16;
+                }
+                else
+                {
+                    tensor->pipeline = context->pipelines.embedding.pipeline_f16f32f16;
+                }
             }
             else
             {

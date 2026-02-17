@@ -93,6 +93,7 @@ cc_shader_library(
         ':vkllm_comp_shaders_f16f16f32',
         ':vkllm_comp_shaders_f16f32f32',
         ':vkllm_comp_shaders_f32f32f32',
+        ':vkllm_comp_shaders_f16f32f16',
     ],
     visibility = ["//visibility:public"]
 )
