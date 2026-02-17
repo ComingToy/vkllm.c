@@ -8,9 +8,15 @@ struct vkllm_context;
 struct vkllm_graph;
 struct vkllm_tensor;
 
+struct vkllm_llama2_self_attn_layer_params
+{
+    struct vkllm_tensor *WK, *WQ, *WV;
+    float freq_base;
+    uint32_t offsets;
+    uint32_t num_head;
+};
 extern vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, struct vkllm_graph *graph,
-                                                      struct vkllm_tensor *input, struct vkllm_tensor *WQ,
-                                                      struct vkllm_tensor *WK, struct vkllm_tensor *WV,
-                                                      struct vkllm_op_rope_params params, const uint32_t num_head);
+                                                      struct vkllm_tensor *input,
+                                                      struct vkllm_llama2_self_attn_layer_params params);
 
 #endif
