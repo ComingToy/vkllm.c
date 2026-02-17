@@ -297,7 +297,22 @@ static vkllm_err_t init_gpu_device(struct vkllm_context *context, struct vkllm_g
     return VKLLM_ERR_OK;
 }
 
-vkllm_err_t vkllm_new_gpu_device(struct vkllm_context *context, uint32_t id, struct vkllm_gpu_device **ppdev)
+vkllm_err_t vkllm_gpu_device_require_queue(struct vkllm_gpu_device *device, VkQueueFlagBits flags, uint32_t *type)
+{
+    for (uint32_t i = 0; i < device->vk_physical_dev.n_queue_family_properties; ++i)
+    {
+        VkQueueFamilyProperties property = device->vk_physical_dev.queue_family_properties[i];
+        if ((property.queueFlags & flags) == flags)
+        {
+            *type = i;
+            return VKLLM_ERR_OK;
+        }
+    }
+
+    return VKLLM_ERR_ARGS;
+}
+
+vkllm_err_t vkllm_gpu_device_new(struct vkllm_context *context, uint32_t id, struct vkllm_gpu_device **ppdev)
 {
     _NEW_AND_CHECK(*ppdev, struct vkllm_gpu_device);
 
@@ -325,7 +340,7 @@ err_create_instance:
     return ret;
 }
 
-void vkllm_destroy_gpu_device(struct vkllm_context *context, struct vkllm_gpu_device *pdev)
+void vkllm_gpu_device_destory(struct vkllm_context *context, struct vkllm_gpu_device *pdev)
 {
     vkDestroyDevice(pdev->vk_dev, NULL);
     vkDestroyInstance(pdev->vk_instance, NULL);

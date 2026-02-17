@@ -30,6 +30,7 @@
             return __r;                                                                                                \
     } while (0)
 
+#define BOOL_S(_cond) (!!(_cond) ? "false" : "true")
 // configs
 
 #define VKLLM_MAX_PHY_DEVS 16

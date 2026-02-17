@@ -43,7 +43,7 @@ struct vkllm_gpu_device
     VmaAllocator vma_allocator;
 };
 
-extern vkllm_err_t vkllm_new_gpu_device(struct vkllm_context *context, uint32_t id, struct vkllm_gpu_device **ppdev);
-
-extern void vkllm_destroy_gpu_device(struct vkllm_context *context, struct vkllm_gpu_device *pdev);
+extern vkllm_err_t vkllm_gpu_device_new(struct vkllm_context *context, uint32_t id, struct vkllm_gpu_device **ppdev);
+extern vkllm_err_t vkllm_gpu_device_require_queue(struct vkllm_gpu_device *device, VkQueueFlagBits flags, uint32_t *type);
+extern void vkllm_gpu_device_destory(struct vkllm_context *context, struct vkllm_gpu_device *pdev);
 #endif
