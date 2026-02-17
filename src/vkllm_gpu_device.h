@@ -9,15 +9,16 @@
 #include "vkllm_context.h"
 #include "vkllm_errors.h"
 
-struct vkllm_vk_physical_dev {
+struct vkllm_vk_physical_dev
+{
     uint32_t id;
     VkPhysicalDevice dev;
     VkPhysicalDeviceFeatures features;
     VkPhysicalDeviceProperties properties;
-    VkExtensionProperties* ext_properties;
+    VkExtensionProperties *ext_properties;
     uint32_t n_ext_properties;
     VkPhysicalDeviceMemoryProperties mem_properties;
-    VkQueueFamilyProperties* queue_family_properties;
+    VkQueueFamilyProperties *queue_family_properties;
     uint32_t n_queue_family_properties;
     VkPhysicalDeviceSubgroupProperties subgroup_properties;
     VkPhysicalDeviceShaderFloat16Int8Features feat_shader_fp16_int8;
@@ -26,7 +27,8 @@ struct vkllm_vk_physical_dev {
     VkPhysicalDeviceProperties2 properties2;
 };
 
-struct vkllm_gpu_device {
+struct vkllm_gpu_device
+{
     uint32_t api_version;
     VkInstance vk_instance;
     VkDevice vk_dev;
@@ -38,13 +40,10 @@ struct vkllm_gpu_device {
     bool support_int8_arithmetic;
     bool support_pipeline_statistics;
     int subgroup_size;
-	VmaAllocator vma_allocator;
+    VmaAllocator vma_allocator;
 };
 
-extern vkllm_err_t vkllm_new_gpu_device(struct vkllm_context* context,
-					uint32_t id,
-					struct vkllm_gpu_device** ppdev);
+extern vkllm_err_t vkllm_new_gpu_device(struct vkllm_context *context, uint32_t id, struct vkllm_gpu_device **ppdev);
 
-extern void vkllm_destroy_gpu_device(struct vkllm_context* context,
-				     struct vkllm_gpu_device* pdev);
+extern void vkllm_destroy_gpu_device(struct vkllm_context *context, struct vkllm_gpu_device *pdev);
 #endif
