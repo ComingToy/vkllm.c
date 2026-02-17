@@ -15,17 +15,17 @@ layout(push_constant) uniform constants
 
 layout(binding = 0) readonly buffer Input0
 {
-    IN_TYPE0 input0[];
+    IN_DTYPE0 input0[];
 };
 
 layout(binding = 1) readonly buffer Input1
 {
-    IN_TYPE1 input1[];
+    IN_DTYPE1 input1[];
 };
 
 layout(binding = 2) writeonly buffer Output0
 {
-    OUT_TYPE output0[];
+    OUT_DTYPE output0[];
 };
 
 
@@ -56,7 +56,7 @@ void main(void)
 
     uint off = tid_w * shape.strides[3] + tid_h * shape.strides[2] + tid_c * shape.strides[1] + tid_b * shape.strides[0];
     off = off / 4;
-    LOAD_TYPE in0 = LOAD_TYPE(input0[off]);
-    LOAD_TYPE in1 = LOAD_TYPE(input1[off]);
-    output0[off] = OUT_TYPE(in0 + in1);
+    LOAD_DTYPE in0 = LOAD_DTYPE(input0[off]);
+    LOAD_DTYPE in1 = LOAD_DTYPE(input1[off]);
+    output0[off] = OUT_DTYPE(in0 + in1);
 }
