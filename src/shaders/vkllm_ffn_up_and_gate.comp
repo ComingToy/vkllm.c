@@ -60,6 +60,15 @@ void main(void)
     float thread_results_up[TM][TN];
     float thread_results_gate[TM][TN];
 
+    for (uint r = 0; r < TM; ++r)
+    {
+        for (uint c = 0; c < TN; ++c)
+        {
+            thread_results_up[r][c] = 0.0;
+            thread_results_gate[r][c] = 0.0;
+        }
+    }
+
     uint K = shape_x.shapes[3];
     uint blk_ld_x_offset = blk_id_x * BM;
     uint blk_ld_y_offset = blk_id_y * BN;
