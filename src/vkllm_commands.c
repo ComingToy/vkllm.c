@@ -88,9 +88,9 @@ vkllm_err_t vkllm_commands_end(struct vkllm_context *context, struct vkllm_comma
     return VKLLM_ERR_OK;
 }
 
-void __vkllm_commands_sync_tensor(struct vkllm_context *context, struct vkllm_commands *commands,
-                                  struct vkllm_tensor *tensor, VkAccessFlagBits dst_access,
-                                  VkPipelineStageFlagBits dst_stage)
+void vkllm_commands_sync_tensor(struct vkllm_context *context, struct vkllm_commands *commands,
+                                struct vkllm_tensor *tensor, VkAccessFlagBits dst_access,
+                                VkPipelineStageFlagBits dst_stage)
 {
     VkBufferMemoryBarrier barrier = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -144,8 +144,7 @@ vkllm_err_t vkllm_commands_upload(struct vkllm_context *context, struct vkllm_co
     tensor->pipeline_stage = VK_PIPELINE_STAGE_HOST_BIT;
     vkllm_tensor_invalid_cache(context, staging);
 
-    __vkllm_commands_sync_tensor(context, commands, staging, VK_ACCESS_TRANSFER_READ_BIT,
-                                 VK_PIPELINE_STAGE_TRANSFER_BIT);
+    vkllm_commands_sync_tensor(context, commands, staging, VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
     VkBufferCopy region = {0, 0, bytes};
     vkCmdCopyBuffer(commands->vk_command_buffer, staging->data.vk_buf, tensor->data.vk_buf, 1, &region);
@@ -186,14 +185,13 @@ vkllm_err_t vkllm_commands_download(struct vkllm_context *context, struct vkllm_
 
     if (tensor->data.mapped)
     {
-        __vkllm_commands_sync_tensor(context, commands, tensor, VK_ACCESS_HOST_READ_BIT, VK_PIPELINE_STAGE_HOST_BIT);
+        vkllm_commands_sync_tensor(context, commands, tensor, VK_ACCESS_HOST_READ_BIT, VK_PIPELINE_STAGE_HOST_BIT);
         vkllm_tensor_flush_cache(context, tensor);
         memcpy(data, tensor->data.host, bytes);
         return VKLLM_ERR_OK;
     }
 
-    __vkllm_commands_sync_tensor(context, commands, tensor, VK_ACCESS_TRANSFER_READ_BIT,
-                                 VK_PIPELINE_STAGE_TRANSFER_BIT);
+    vkllm_commands_sync_tensor(context, commands, tensor, VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
     struct vkllm_tensor *staging;
     _CHECK(vkllm_tensor_new_staging(context, tensor, &staging));
 
@@ -202,7 +200,7 @@ vkllm_err_t vkllm_commands_download(struct vkllm_context *context, struct vkllm_
     staging->access_flags = VK_ACCESS_TRANSFER_WRITE_BIT;
     staging->pipeline_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 
-    __vkllm_commands_sync_tensor(context, commands, staging, VK_ACCESS_HOST_READ_BIT, VK_PIPELINE_STAGE_HOST_BIT);
+    vkllm_commands_sync_tensor(context, commands, staging, VK_ACCESS_HOST_READ_BIT, VK_PIPELINE_STAGE_HOST_BIT);
 
     static download_task_args_t args;
     args.staging = staging;
@@ -211,6 +209,28 @@ vkllm_err_t vkllm_commands_download(struct vkllm_context *context, struct vkllm_
 
     struct vkllm_commands_task task = {.func = defer_download_task, .context = context, .priv = &args};
     vkllm_array_commands_task_append(commands->defer_tasks, task);
+    return VKLLM_ERR_OK;
+}
+
+vkllm_err_t vkllm_commands_pipeline(struct vkllm_context *context, struct vkllm_commands *commands,
+                                    struct vkllm_pipeline *pipeline, struct vkllm_shader_constants *constants,
+                                    uint32_t group_x, uint32_t group_y, uint32_t group_z)
+{
+    _CHECK_ARGS(context && pipeline && constants);
+
+    const VkPhysicalDeviceLimits *limits = &pipeline->device->vk_physical_dev.properties.limits;
+    if (group_x > limits->maxComputeWorkGroupCount[0] || group_y > limits->maxComputeWorkGroupCount[1] ||
+        group_z > limits->maxComputeWorkGroupCount[2])
+    {
+        log_error(
+            "group counts out of range. max group counts = (%u, %u, %u), but group_x = %u, group_y = %u, group_z = %u",
+            limits->maxComputeWorkGroupCount[0], limits->maxComputeWorkGroupCount[1],
+            limits->maxComputeWorkGroupCount[2], group_x, group_y, group_z);
+        return VKLLM_ERR_ARGS;
+    }
+
+    // sync
+    vkCmdBindPipeline(commands->vk_command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->vk_pipeline);
     return VKLLM_ERR_OK;
 }
 

@@ -30,19 +30,41 @@
             return __r;                                                                                                \
     } while (0)
 
-#define _CHECK_VK(fn)                                                                                                  \
+#define _CHECK_JUMP(_fn, _ret, _label)                                                                                 \
     do                                                                                                                 \
     {                                                                                                                  \
-        VkResult err = (fn);                                                                                           \
-        if (err != VK_SUCCESS)                                                                                         \
+        _ret = (_fn);                                                                                                  \
+        if (_ret != VKLLM_ERR_OK)                                                                                      \
         {                                                                                                              \
-            log_error(#fn " failed: %d", (int)err);                                                                    \
+            goto _label;                                                                                               \
+        }                                                                                                              \
+    } while (0)
+
+#define _CHECK_VK(__fn)                                                                                                \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        VkResult __err = (__fn);                                                                                       \
+        if (__err != VK_SUCCESS)                                                                                       \
+        {                                                                                                              \
+            log_error(#__fn " failed: %d", (int)__err);                                                                \
             return VKLLM_ERR_VULKAN;                                                                                   \
         }                                                                                                              \
     } while (0)
 
+#define _CHECK_VK_JUMP(__fn, __ret, __label)                                                                               \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        VkResult __err = (__fn);                                                                                         \
+        if (__err != VK_SUCCESS)                                                                                       \
+        {                                                                                                              \
+            log_error(#__fn " failed: %d", (int)__err);                                                                  \
+            __ret = VKLLM_ERR_VULKAN;                                                                                   \
+            goto __label;                                                                                               \
+        }                                                                                                              \
+    } while (0)
+
 #define BOOL_S(_cond) (!!(_cond) ? "false" : "true")
-#define _CHECK_ARGS(_cond)                                                                                         \
+#define _CHECK_ARGS(_cond)                                                                                             \
     do                                                                                                                 \
     {                                                                                                                  \
         if (!(_cond))                                                                                                  \
