@@ -258,7 +258,7 @@ vkllm_err_t vkllm_commands_pipeline(struct vkllm_context *context, struct vkllm_
     vkCmdBindDescriptorSets(commands->vk_command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->vk_pipeline_layout,
                             0, 1, &pipeline->vk_desc_set, 0, NULL);
 
-    vkCmdDispatch(commands->vk_command_buffer, group_x, group_x, group_x);
+    vkCmdDispatch(commands->vk_command_buffer, group_x, group_y, group_z);
     return VKLLM_ERR_OK;
 }
 

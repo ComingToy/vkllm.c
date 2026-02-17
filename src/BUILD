@@ -9,7 +9,7 @@ cc_library(
         "vkllm_commands.c",
         "vkllm_pipeline.c",
         "vkllm_ops.c",
-        "vkllm_op_vector_add.c",
+        "vkllm_op_add.c",
     ],
     hdrs = [
         "vkllm_gpu_device.h",
@@ -25,7 +25,7 @@ cc_library(
         "vkllm_pipeline.h",
         "vkllm_array.h",
         "vkllm_ops.h",
-        "vkllm_op_vector_add.h",
+        "vkllm_op_add.h",
     ],
     deps = [
 		"//vulkan_rules:vulkan_cc_library",

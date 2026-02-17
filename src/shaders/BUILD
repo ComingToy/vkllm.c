@@ -5,6 +5,7 @@ glsl_shader(
     name = "vkllm_comp_shaders",
     shaders = glob(["*.comp"]),
     hdrs = [
+        "vkllm_shader_header.comp.h",
     ],
     extra_args = [
         "--target-env=vulkan1.2",
