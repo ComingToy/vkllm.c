@@ -83,6 +83,8 @@
         (__out)[3] = (__vec4)[3] / (__den);                                                                            \
     } while (0)
 
+#define _MUL4(__vec4) ((__vec4)[0] * (__vec4)[1] * (__vec4)[2] * (__vec4)[3])
+
 // configs
 
 #define VKLLM_MAX_PHY_DEVS 16

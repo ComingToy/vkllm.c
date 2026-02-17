@@ -38,6 +38,7 @@ cc_library(
     copts = [
         "-std=c11"
     ],
+    linkstatic = True,
     visibility = ["//visibility:public"],
 )
 
@@ -53,6 +54,7 @@ cc_library(
 		"@vma//:vma",
 		"//vulkan_rules:vulkan_cc_library",
 	],
+    linkstatic = True,
 	visibility = [
 		"//visibility:public",
 	],
