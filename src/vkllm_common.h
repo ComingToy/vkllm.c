@@ -51,15 +51,15 @@
         }                                                                                                              \
     } while (0)
 
-#define _CHECK_VK_JUMP(__fn, __ret, __label)                                                                               \
+#define _CHECK_VK_JUMP(__fn, __ret, __label)                                                                           \
     do                                                                                                                 \
     {                                                                                                                  \
-        VkResult __err = (__fn);                                                                                         \
+        VkResult __err = (__fn);                                                                                       \
         if (__err != VK_SUCCESS)                                                                                       \
         {                                                                                                              \
-            log_error(#__fn " failed: %d", (int)__err);                                                                  \
-            __ret = VKLLM_ERR_VULKAN;                                                                                   \
-            goto __label;                                                                                               \
+            log_error(#__fn " failed: %d", (int)__err);                                                                \
+            __ret = VKLLM_ERR_VULKAN;                                                                                  \
+            goto __label;                                                                                              \
         }                                                                                                              \
     } while (0)
 
@@ -73,6 +73,16 @@
             return VKLLM_ERR_ARGS;                                                                                     \
         }                                                                                                              \
     } while (0)
+
+#define _DIV4_S(__vec4, __den, __out)                                                                                  \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        (__out)[0] = (__vec4)[0] / (__den);                                                                            \
+        (__out)[1] = (__vec4)[1] / (__den);                                                                            \
+        (__out)[2] = (__vec4)[2] / (__den);                                                                            \
+        (__out)[3] = (__vec4)[3] / (__den);                                                                            \
+    } while (0)
+
 // configs
 
 #define VKLLM_MAX_PHY_DEVS 16
