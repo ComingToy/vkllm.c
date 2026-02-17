@@ -8,6 +8,7 @@ cc_library(
     ],
     deps = [
         "//src/core:core",
+        "@gguf-tools//:gguf",
     ],
     copts = [
         "-std=c11"

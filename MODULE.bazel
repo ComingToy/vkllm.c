@@ -54,4 +54,5 @@ use_repo(
     "log.c",
     "check",
     "vma",
+    "gguf-tools",
 )
