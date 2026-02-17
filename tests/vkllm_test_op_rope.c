@@ -9,7 +9,7 @@
 #include <math.h>
 #include <string.h>
 
-// RoPE formula: 
+// RoPE formula:
 // For each pair (x[2i], x[2i+1]) at position pos:
 // theta = (pos + offset) / (base ^ (2i / dim))
 // x'[2i]   = cos(theta) * x[2i]   - sin(theta) * x[2i+1]
@@ -123,7 +123,7 @@ START_TEST(test_op_rope)
                      VKLLM_ERR_OK);
 
     // Create RoPE parameters
-    struct vkllm_rope_params params = {
+    struct vkllm_op_rope_params params = {
         .offset = tests[_i].offset,
         .base = tests[_i].base,
     };
@@ -145,7 +145,7 @@ START_TEST(test_op_rope)
 
     // Generate random data
     random_tensor(input_host->data, input->shapes, input->strides, input->dtype);
-	// print_n_f16("input host: ", input_host->data, 64);
+    // print_n_f16("input host: ", input_host->data, 64);
 
     // Upload data and execute
     ck_assert_int_eq(vkllm_commands_begin(context, commands), VKLLM_ERR_OK);
@@ -171,14 +171,14 @@ START_TEST(test_op_rope)
     float tolerance = (tests[_i].dtype == vkllm_dtype_float16) ? 1e-2 : 1e-4;
     float error =
         compare_buf(output_host->data, gpu_output, output->shapes, output->strides, output->bytes, output->dtype);
-    
+
     // Debug output if test fails
     if (error > tolerance)
     {
         log_error("Test case %d failed: error = %f, tolerance = %f", _i, error, tolerance);
-        log_error("Shapes: [%u, %u, %u, %u], offset: %u, base: %f, dtype: %s", 
-                  tests[_i].shapes[0], tests[_i].shapes[1], tests[_i].shapes[2], tests[_i].shapes[3],
-                  tests[_i].offset, tests[_i].base, vkllm_dtype_s(tests[_i].dtype));
+        log_error("Shapes: [%u, %u, %u, %u], offset: %u, base: %f, dtype: %s", tests[_i].shapes[0], tests[_i].shapes[1],
+                  tests[_i].shapes[2], tests[_i].shapes[3], tests[_i].offset, tests[_i].base,
+                  vkllm_dtype_s(tests[_i].dtype));
     }
 
     ck_assert_float_le(error, tolerance);
@@ -200,7 +200,7 @@ Suite *vkllm_op_rope_test_suite(void)
     suite = suite_create("vkllm_op_rope");
     tcase = tcase_create("vkllm_op_rope_f32");
 
-    tcase_add_loop_test(tcase, test_op_rope, 0, sizeof(tests)/sizeof(tests[0]));
+    tcase_add_loop_test(tcase, test_op_rope, 0, sizeof(tests) / sizeof(tests[0]));
     tcase_set_timeout(tcase, 60.0);
     suite_add_tcase(suite, tcase);
     return suite;

@@ -10,6 +10,7 @@
 #include "vkllm_matmul_shaders.h"
 #include "vkllm_rmsnorm_shaders.h"
 #include "vkllm_rope_shaders.h"
+#include "vkllm_softmax_shaders.h"
 #include "vkllm_tensor.h"
 #include <stdlib.h>
 #include <string.h>
@@ -512,15 +513,59 @@ static vkllm_err_t vkllm_create_rope_pipelines(struct vkllm_context *context)
                                             .local_y = 1,
                                             .local_z = 1};
 
-    _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f16f32", shader_info, _vkllm_rope_f16f32_spv(),
-                              _vkllm_rope_f16f32_size(), NULL, &context->pipelines.rope.f16f32));
+    context->pipelines.rope.f16f16 = NULL;
+    context->pipelines.rope.f16f32 = NULL;
+    if (context->device->support_16bit_storage)
+    {
+        _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f16f32", shader_info, _vkllm_rope_f16f32_spv(),
+                                  _vkllm_rope_f16f32_size(), NULL, &context->pipelines.rope.f16f32));
+
+        if (context->device->support_fp16_arithmetic)
+        {
+            shader_info.push_constant_bytes = sizeof(uint32_t) * 9 + 2 * sizeof(uint16_t);
+            _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f16f16", shader_info, _vkllm_rope_f16f16_spv(),
+                                      _vkllm_rope_f16f16_size(), NULL, &context->pipelines.rope.f16f16));
+        }
+    }
 
     _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f32f32", shader_info, _vkllm_rope_f32f32_spv(),
                               _vkllm_rope_f32f32_size(), NULL, &context->pipelines.rope.f32f32));
 
-    shader_info.push_constant_bytes = sizeof(uint32_t) * 9 + 2*sizeof(uint16_t);
-    _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f16f16", shader_info, _vkllm_rope_f16f16_spv(),
-                              _vkllm_rope_f16f16_size(), NULL, &context->pipelines.rope.f16f16));
+    return VKLLM_ERR_OK;
+}
+
+static vkllm_err_t vkllm_create_softmax_pipelines(struct vkllm_context *context)
+{
+    // Softmax shader uses subgroup operations, local size = (subgroupSize, 1, 1)
+    // Push constants: ShapeConstant (8 * uint32), seq_mask (int32), offsets (uint32)
+    struct vkllm_shader_info shader_info = {.binding_count = 2,
+                                            .push_constant_bytes = sizeof(uint32_t) * 9 + sizeof(int32_t),
+                                            .local_x = 512,
+                                            .local_y = 1,
+                                            .local_z = 1};
+
+    context->pipelines.softmax.f16f16 = NULL;
+    context->pipelines.softmax.f16f32 = NULL;
+
+    if (context->device->support_16bit_storage)
+    {
+        _CHECK(vkllm_pipeline_new(context, "pipeline_softmax_f16f32", shader_info, _vkllm_softmax_f16f32_spv(),
+                                  _vkllm_softmax_f16f32_size(), NULL, &context->pipelines.softmax.f16f32));
+
+        if (context->device->support_fp16_arithmetic)
+        {
+            _CHECK(vkllm_pipeline_new(context, "pipeline_softmax_f16f16", shader_info, _vkllm_softmax_f16f16_spv(),
+                                      _vkllm_softmax_f16f16_size(), NULL, &context->pipelines.softmax.f16f16));
+        }
+        else
+        {
+            context->pipelines.softmax.f16f16 = NULL;
+        }
+    }
+
+    _CHECK(vkllm_pipeline_new(context, "pipeline_softmax_f32f32", shader_info, _vkllm_softmax_f32f32_spv(),
+                              _vkllm_softmax_f32f32_size(), NULL, &context->pipelines.softmax.f32f32));
+
     return VKLLM_ERR_OK;
 }
 
@@ -531,6 +576,7 @@ vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context)
     _CHECK(vkllm_create_rmsnorm_pipeline(context));
     _CHECK(vkllm_create_matmul_pipelines(context));
     _CHECK(vkllm_create_rope_pipelines(context));
+    _CHECK(vkllm_create_softmax_pipelines(context));
     return VKLLM_ERR_OK;
 }
 
@@ -563,6 +609,10 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
     vkllm_pipeline_free(context, context->pipelines.rope.f16f16);
     vkllm_pipeline_free(context, context->pipelines.rope.f16f32);
     vkllm_pipeline_free(context, context->pipelines.rope.f32f32);
+
+    vkllm_pipeline_free(context, context->pipelines.softmax.f16f16);
+    vkllm_pipeline_free(context, context->pipelines.softmax.f16f32);
+    vkllm_pipeline_free(context, context->pipelines.softmax.f32f32);
 }
 #undef vkllm_free_op_pipelines
 #undef _vkllm_free_op_pipeline

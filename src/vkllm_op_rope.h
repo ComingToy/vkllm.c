@@ -9,7 +9,7 @@ extern "C" {
 #include "vkllm_context.h"
 #include "vkllm_tensor.h"
 
-struct vkllm_rope_params
+struct vkllm_op_rope_params
 {
     uint32_t offset; // position offset
     float base;      // base frequency (typically 10000.0)

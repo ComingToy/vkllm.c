@@ -54,6 +54,13 @@ struct vkllm_context
             struct vkllm_pipeline *f16f32;
             struct vkllm_pipeline *f32f32;
         } rope;
+
+        struct
+        {
+            struct vkllm_pipeline *f16f16;
+            struct vkllm_pipeline *f16f32;
+            struct vkllm_pipeline *f32f32;
+        } softmax;
     } pipelines;
 };
 

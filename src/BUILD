@@ -14,6 +14,7 @@ cc_library(
         "vkllm_op_rmsnorm.c",
         "vkllm_op_matmul.c",
         "vkllm_op_rope.c",
+        "vkllm_op_softmax.c",
     ],
     hdrs = [
         "vkllm_gpu_device.h",
@@ -34,6 +35,7 @@ cc_library(
         "vkllm_op_rmsnorm.h",
         "vkllm_op_matmul.h",
         "vkllm_op_rope.h",
+        "vkllm_op_softmax.h",
     ],
     deps = [
 		"//vulkan_rules:vulkan_cc_library",
