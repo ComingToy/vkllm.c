@@ -301,8 +301,8 @@ static vkllm_err_t vkllm_create_add_pipeline(struct vkllm_context *context)
 
     _CHECK(vkllm_shader_constants_new(&specializations, sizeof(uint32_t) * 3));
 
-    const uint8_t *spv = _vkllm_add_0_comp_f32_f32_f32_spv();
-    const size_t spv_size = _vkllm_add_0_comp_f32_f32_f32_size();
+    const uint8_t *spv = _vkllm_add_comp_f32_f32_f32_spv();
+    const size_t spv_size = _vkllm_add_comp_f32_f32_f32_size();
 
     vkllm_err_t err = vkllm_pipeline_new(context, shader_info, spv, spv_size, specializations, &pipeline);
     vkllm_shader_constants_free(specializations);
@@ -328,8 +328,8 @@ static vkllm_err_t vkllm_create_embedding_pipeline(struct vkllm_context *context
     _CHECK_ARGS(context);
     struct vkllm_shader_info shader_info = {
         .binding_count = 3, .push_constant_bytes = sizeof(uint32_t) * 25, .local_x = 512, .local_y = 1, .local_z = 1};
-    const uint8_t *spv = _vkllm_embedding_0_comp_f32_f32_f32_spv();
-    const size_t spv_size = _vkllm_embedding_0_comp_f32_f32_f32_size();
+    const uint8_t *spv = _vkllm_embedding_comp_f32_f32_f32_spv();
+    const size_t spv_size = _vkllm_embedding_comp_f32_f32_f32_size();
 
     struct vkllm_pipeline *pipeline = NULL;
     struct vkllm_shader_constants *specializations = NULL;
