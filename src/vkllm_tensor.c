@@ -91,6 +91,26 @@ static vkllm_err_t vkllm_tensor_get_pipeline(struct vkllm_context *context, stru
     }
     else if (tensor->op == VKLLM_OP_EMBEDDING)
     {
+        _CHECK_ARGS(tensor->srcs[0] && tensor->srcs[1]);
+        if (tensor->dtype != vkllm_dtype_float32 || tensor->srcs[0]->dtype != vkllm_dtype_uint32)
+        {
+            log_error("unsupported op result dtype: %s, dtype of in0: %s", vkllm_dtype_s(tensor->dtype),
+                      vkllm_dtype_s(tensor->srcs[0]->dtype));
+            return VKLLM_ERR_ARGS;
+        }
+
+        if (tensor->srcs[1]->dtype == vkllm_dtype_float16)
+        {
+            tensor->pipeline = context->pipelines.embedding.pipeline_f16f32f32;
+        }
+        else if (tensor->srcs[1]->dtype == vkllm_dtype_float32)
+        {
+            tensor->pipeline = context->pipelines.embedding.pipeline_f32f32f32;
+        }
+        else
+        {
+            return VKLLM_ERR_ARGS;
+        }
     }
     else
     {
@@ -100,7 +120,8 @@ static vkllm_err_t vkllm_tensor_get_pipeline(struct vkllm_context *context, stru
 
     if (!tensor->pipeline && tensor->op != VKLLM_OP_NONE)
     {
-        log_error("tensor %s op = %s, dtype = %s, pipeline not found.", tensor->name, vkllm_op_s(tensor->op));
+        log_error("tensor %s op = %s, dtype = %s, pipeline not found.", tensor->name, vkllm_op_s(tensor->op),
+                  vkllm_dtype_s(tensor->dtype));
         return VKLLM_ERR_PIPELINE_NOT_FOUND;
     }
 

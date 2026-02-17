@@ -1,8 +1,8 @@
 #ifndef __VKLLM_TEST_COMMON_H__
 #define __VKLLM_TEST_COMMON_H__
 
-#include "src/vkllm_dtypes.h"
 #include "src/vkllm_common.h"
+#include "src/vkllm_dtypes.h"
 #include <stdlib.h>
 typedef struct fp16_pack
 {
@@ -101,6 +101,71 @@ static inline void random_buf(void *a, const size_t n, vkllm_dtype_t dtype)
         p[i] = 10.0 * (rand() % 100) / 100.0;
     }
 }
+
+static inline void random_tensor(void *data, uint32_t shapes[4], uint32_t strides[4], vkllm_dtype_t dtype)
+{
+
+    struct vkllm_dtype_info info;
+    vkllm_get_dtype_info(dtype, &info);
+    uint32_t es[4] = {strides[0] / info.bytes, strides[1] / info.bytes, strides[2] / info.bytes,
+                      strides[3] / info.bytes};
+
+    vkllm_fp16_pack *fp16 = (vkllm_fp16_pack *)data;
+    float *fp32 = (float *)data;
+    uint32_t *u32 = (uint32_t *)data;
+
+    for (uint32_t b = 0; b < shapes[0]; ++b)
+    {
+        for (uint32_t c = 0; c < shapes[1]; ++c)
+        {
+            for (uint32_t h = 0; h < shapes[2]; ++h)
+            {
+                for (uint32_t w = 0; w < shapes[3]; ++w)
+                {
+                    uint32_t i = b * es[0] + c * es[1] + h * es[2] + w * es[3];
+                    if (dtype == vkllm_dtype_float16)
+                    {
+                        fp16[i] = vkllm_fp32_to_fp16((rand() % 100) / 10.0f);
+                    }
+                    else if (dtype == vkllm_dtype_float32)
+                    {
+                        fp32[i] = (rand() % 100) / 10.0f;
+                    }
+                    else if (dtype == vkllm_dtype_uint32)
+                    {
+                        u32[i] = (uint32_t)((rand() % 100) / 10);
+                    }
+                }
+            }
+        }
+    }
+}
+
+static inline uint32_t get_indice(uint32_t b, uint32_t c, uint32_t h, uint32_t w, const uint32_t strides[4],
+                                  uint32_t dsize)
+{
+    uint32_t es[] = {strides[0] / dsize, strides[1] / dsize, strides[2] / dsize, strides[3] / dsize};
+    uint32_t i = b * es[0] + c * es[1] + h * es[2] + w * es[3];
+    return i;
+}
+
+#define _LOOP_SHAPE(shapes, _body)                                                                                     \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        for (uint32_t _b = 0; _b < shapes[0]; ++_b)                                                                    \
+        {                                                                                                              \
+            for (uint32_t _c = 0; _c < shapes[1]; ++_c)                                                                \
+            {                                                                                                          \
+                for (uint32_t _h = 0; _h < shapes[2]; ++_h)                                                            \
+                {                                                                                                      \
+                    for (uint32_t _w = 0; _w < shapes[3]; ++_w)                                                        \
+                    {                                                                                                  \
+                        _body;                                                                                         \
+                    }                                                                                                  \
+                }                                                                                                      \
+            }                                                                                                          \
+        }                                                                                                              \
+    } while (0)
 
 static inline float compare_buf(const void *lhs, const void *rhs, uint32_t shapes[4], uint32_t strides[4],
                                 uint32_t bytes, vkllm_dtype_t dtype)

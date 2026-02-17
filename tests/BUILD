@@ -33,8 +33,8 @@ COPTS = [
 ]
 
 cc_test(
-    name = "test_transfer",
-    srcs = ["test_transfer.c"],
+    name = "vkllm_test_transfer",
+    srcs = ["vkllm_test_transfer.c"],
     deps = DEPS,
     copts = COPTS,
     linkopts = LINK_OPTS,
@@ -50,7 +50,7 @@ cc_test(
 
 cc_test(
     name = "vkllm_test_op_embedding",
-    srcs = ["vkllm_test_op_add.c"],
+    srcs = ["vkllm_test_op_embedding.c"],
     deps = DEPS,
     copts = COPTS,
     linkopts = LINK_OPTS,
