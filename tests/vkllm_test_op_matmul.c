@@ -162,7 +162,7 @@ static struct
     vkllm_dtype_t dtype;
     bool transposed_b;
 } tests[] = {
-#if 0
+#if 1
     // Single batch tests (B=1, C=1, no broadcasting) with transposed B
     {1, 1, 1, 1, 512, 1024, 2048, vkllm_dtype_float16, true},
     {1, 1, 1, 1, 333, 1259, 365, vkllm_dtype_float16, true},
@@ -194,7 +194,7 @@ static struct
     {4, 2, 4, 2, 256, 512, 1024, vkllm_dtype_float32, false},
 #endif
 
-#if 0
+#if 1
     // Broadcasting tests: B_a=1, B_b>1 (broadcast A's batch dimension)
     {1, 1, 4, 1, 128, 256, 512, vkllm_dtype_float16, true},
     {1, 1, 8, 1, 64, 128, 256, vkllm_dtype_float32, true},

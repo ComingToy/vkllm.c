@@ -154,7 +154,10 @@ START_TEST(test_embedding_op_f32)
     // print_n("out0 host", (const float *)out0_host->data, 512);
     // print_n("out0", p, 512);
 
-    ck_assert_float_le(compare_buf(out0_host->data, p, out0->shapes, out0->strides, out0->bytes, out0->dtype), 1e-5);
+    char test_case_name[64];
+    snprintf(test_case_name, sizeof(test_case_name), "test_embedding_op_f32_%d", _i);
+    ck_assert_float_le(
+        compare_buf(out0_host->data, p, out0->shapes, out0->strides, out0->bytes, out0->dtype, test_case_name), 1e-5);
 
     vkllm_tensor_free(context, out0);
     vkllm_tensor_free(context, indices);
@@ -224,7 +227,10 @@ START_TEST(test_embedding_op_f16)
 
     const void *p = out0->data.host;
 
-    ck_assert_float_le(compare_buf(out0_host->data, p, out0->shapes, out0->strides, out0->bytes, out0->dtype), 1e-5);
+    char test_case_name[64];
+    snprintf(test_case_name, sizeof(test_case_name), "test_embedding_op_f16_%d", _i);
+    ck_assert_float_le(
+        compare_buf(out0_host->data, p, out0->shapes, out0->strides, out0->bytes, out0->dtype, test_case_name), 1e-5);
 
     vkllm_tensor_free(context, out0);
     vkllm_tensor_free(context, indices);

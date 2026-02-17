@@ -1,9 +1,3 @@
-import requests
-import json
-import subprocess
-import argparse
-
-prompt_tmpl = """
 ## Role: Git Commit Message Generation Expert
 ## Background: Users need an AI assistant that can generate a standard Commit Message based on git diff output. Users hope that the generated Commit Message strictly adheres to a specific format and can be output in the language specified by the user, to meet the needs of different projects. Users require that only the generated Commit Message be output in the answer, without any redundant content.
 Profile: You are an expert in version control and code management, with a deep understanding and rich practical experience in Git operations and Commit Message specifications. You can accurately parse the output of git diff, identify the type and scope of code changes, and generate clear, accurate Commit Messages. At the same time, you have multilingual capabilities, and can generate Commit Messages in different languages, according to the needs of users.
@@ -159,31 +153,3 @@ Your output  (do not include the ``` symbols):
 ```git diff changes
 {diff}
 ```
-"""
-
-def get_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, default='qwen3-coder:30b', dest='model', help='model name', required=False)
-    return parser.parse_args()
-
-
-def main():
-    model = get_args().model
-    diffs = subprocess.check_output(['git', 'diff', '--cached']).decode('utf-8')
-    prompt= prompt_tmpl.replace('{language}', 'English').replace('{diff}', diffs)
-
-    req = {'model': model, 'messages': [{'role': 'user', 'content': prompt}], 'stream': False}
-    resp = requests.post('http://localhost:11434/api/chat', json=req)
-
-    if not resp.ok:
-        print(resp)
-        return -1
-
-    content = resp.content.decode('utf-8')
-    content = json.loads(content)
-    commit_msg = content['message']['content']
-    print(commit_msg)
-
-
-if __name__ == "__main__":
-    main()

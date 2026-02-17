@@ -107,7 +107,11 @@ START_TEST(test_op_add)
     const float *p = out0->data.host;
     // print_n("buf2", buf2->data, 64);
     // print_n("out0", p, 64);
-    ck_assert_float_le(compare_buf(buf2->data, p, out0->shapes, out0->strides, out0->bytes, vkllm_dtype_float32), 1e-5);
+    char test_case_name[64];
+    snprintf(test_case_name, sizeof(test_case_name), "test_op_add_%d", _i);
+    ck_assert_float_le(
+        compare_buf(buf2->data, p, out0->shapes, out0->strides, out0->bytes, vkllm_dtype_float32, test_case_name),
+        1e-5);
 
     vkllm_tensor_free(context, in0);
     vkllm_tensor_free(context, in1);
