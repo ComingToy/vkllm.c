@@ -142,9 +142,15 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     err = vkllm_tensor_permute(context, output, output_permute_axis);
     _CHECK(err);
 
+    struct vkllm_tensor *final_output = NULL;
+    _CHECK(vkllm_tensor_new(context, "final_output", output->shapes, output->dtype, VKLLM_OP_COPY, &output, 1, NULL, 0,
+                            false, &final_output));
+
+    _CHECK(vkllm_graph_add_node(context, graph, final_output));
+
     // Then reshape to [batch, 1, seq_len, num_head*head_dim]
     uint32_t output_final_shapes[4] = {batch, 1, seq_len, num_head_times_head_dim};
-    err = vkllm_tensor_reshape(context, output, output_final_shapes);
+    err = vkllm_tensor_reshape(context, final_output, output_final_shapes);
     _CHECK(err);
 
     return VKLLM_ERR_OK;

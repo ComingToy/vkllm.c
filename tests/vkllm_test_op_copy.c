@@ -100,10 +100,13 @@ START_TEST(test_op_copy)
                                       0, false, &input),
                      VKLLM_ERR_OK);
 
+    uint32_t axis[] = {0, 2, 1, 3};
+    ck_assert_int_eq(vkllm_tensor_permute(context, input, axis), VKLLM_ERR_OK);
+
     struct vkllm_tensor *output;
     struct vkllm_tensor *srcs[] = {input};
-    ck_assert_int_eq(vkllm_tensor_new(context, "output", tests[_i].shapes, tests[_i].dtype, VKLLM_OP_COPY, srcs, 1,
-                                      NULL, 0, true, &output),
+    ck_assert_int_eq(vkllm_tensor_new(context, "output", input->shapes, tests[_i].dtype, VKLLM_OP_COPY, srcs, 1, NULL,
+                                      0, true, &output),
                      VKLLM_ERR_OK);
 
     struct vkllm_array_u8 *buf_input = NULL, *buf_expected = NULL;
@@ -116,8 +119,7 @@ START_TEST(test_op_copy)
 
     random_tensor(buf_input->data, input->shapes, input->strides, input->dtype, 0.0, 1.0);
 
-    copy_op_host(buf_input->data, buf_expected->data, tests[_i].shapes, input->strides, output->strides,
-                 tests[_i].dtype);
+    copy_op_host(buf_input->data, buf_expected->data, input->shapes, input->strides, output->strides, tests[_i].dtype);
 
     ck_assert_int_eq(vkllm_commands_begin(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_upload(context, commands, input, buf_input->data, buf_input->alloc_n),
