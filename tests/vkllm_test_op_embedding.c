@@ -105,16 +105,17 @@ START_TEST(test_embedding_op_f32)
     ck_assert_int_eq(err, VKLLM_ERR_OK);
 
     struct vkllm_tensor *indices = NULL, *params = NULL;
-    ck_assert_int_eq(vkllm_tensor_new(context, "indices", tests_f32[_i].shapes0, vkllm_dtype_uint32, VKLLM_OP_NONE, NULL, 0,
-                                      NULL, 0, false, &indices),
+    ck_assert_int_eq(vkllm_tensor_new(context, "indices", tests_f32[_i].shapes0, vkllm_dtype_uint32, VKLLM_OP_NONE,
+                                      NULL, 0, NULL, 0, false, &indices),
                      VKLLM_ERR_OK);
 
-    ck_assert_int_eq(vkllm_tensor_new(context, "params", tests_f32[_i].shapes1, tests_f32[_i].dtype, VKLLM_OP_NONE, NULL, 0,
-                                      NULL, 0, false, &params),
+    ck_assert_int_eq(vkllm_tensor_new(context, "params", tests_f32[_i].shapes1, tests_f32[_i].dtype, VKLLM_OP_NONE,
+                                      NULL, 0, NULL, 0, false, &params),
                      VKLLM_ERR_OK);
 
     struct vkllm_tensor *out0 = NULL;
-    uint32_t shapes_out[] = {tests_f32[_i].shapes0[1], tests_f32[_i].shapes0[2], tests_f32[_i].shapes0[3], tests_f32[_i].shapes1[3]};
+    uint32_t shapes_out[] = {tests_f32[_i].shapes0[1], tests_f32[_i].shapes0[2], tests_f32[_i].shapes0[3],
+                             tests_f32[_i].shapes1[3]};
     struct vkllm_tensor *srcs[] = {indices, params};
 
     uint32_t UNK_TOK = 0;
@@ -138,7 +139,9 @@ START_TEST(test_embedding_op_f32)
                      VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_upload(context, commands, params, params_host->data, params_host->alloc_n),
                      VKLLM_ERR_OK);
-    ck_assert_int_eq(vkllm_op_embedding(context, commands, out0), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_op_embedding_init(context, commands, out0), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_op_embedding_run(context, commands, out0), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_op_embedding_post_run(context, commands, out0), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_end(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_submit(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_wait_exec(context, commands), VKLLM_ERR_OK);
@@ -175,16 +178,17 @@ START_TEST(test_embedding_op_f16)
     ck_assert_int_eq(err, VKLLM_ERR_OK);
 
     struct vkllm_tensor *indices = NULL, *params = NULL;
-    ck_assert_int_eq(vkllm_tensor_new(context, "indices", tests_f16[_i].shapes0, vkllm_dtype_uint32, VKLLM_OP_NONE, NULL, 0,
-                                      NULL, 0, false, &indices),
+    ck_assert_int_eq(vkllm_tensor_new(context, "indices", tests_f16[_i].shapes0, vkllm_dtype_uint32, VKLLM_OP_NONE,
+                                      NULL, 0, NULL, 0, false, &indices),
                      VKLLM_ERR_OK);
 
-    ck_assert_int_eq(vkllm_tensor_new(context, "params", tests_f16[_i].shapes1, tests_f16[_i].dtype, VKLLM_OP_NONE, NULL, 0,
-                                      NULL, 0, false, &params),
+    ck_assert_int_eq(vkllm_tensor_new(context, "params", tests_f16[_i].shapes1, tests_f16[_i].dtype, VKLLM_OP_NONE,
+                                      NULL, 0, NULL, 0, false, &params),
                      VKLLM_ERR_OK);
 
     struct vkllm_tensor *out0 = NULL;
-    uint32_t shapes_out[] = {tests_f16[_i].shapes0[1], tests_f16[_i].shapes0[2], tests_f16[_i].shapes0[3], tests_f16[_i].shapes1[3]};
+    uint32_t shapes_out[] = {tests_f16[_i].shapes0[1], tests_f16[_i].shapes0[2], tests_f16[_i].shapes0[3],
+                             tests_f16[_i].shapes1[3]};
     struct vkllm_tensor *srcs[] = {indices, params};
 
     uint32_t UNK_TOK = 0;
@@ -208,7 +212,9 @@ START_TEST(test_embedding_op_f16)
                      VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_upload(context, commands, params, params_host->data, params_host->alloc_n),
                      VKLLM_ERR_OK);
-    ck_assert_int_eq(vkllm_op_embedding(context, commands, out0), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_op_embedding_init(context, commands, out0), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_op_embedding_run(context, commands, out0), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_op_embedding_post_run(context, commands, out0), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_end(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_submit(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_wait_exec(context, commands), VKLLM_ERR_OK);

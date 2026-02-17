@@ -9,6 +9,7 @@
 #include "vkllm_gpu_device.h"
 #include "vkllm_matmul_shaders.h"
 #include "vkllm_rmsnorm_shaders.h"
+#include "vkllm_rope_shaders.h"
 #include "vkllm_tensor.h"
 #include <stdlib.h>
 #include <string.h>
@@ -503,12 +504,29 @@ static vkllm_err_t vkllm_create_matmul_pipelines(struct vkllm_context *context)
     return VKLLM_ERR_OK;
 }
 
+static vkllm_err_t vkllm_create_rope_pipelines(struct vkllm_context *context)
+{
+    struct vkllm_shader_info shader_info = {
+        .binding_count = 3, .push_constant_bytes = sizeof(uint32_t) * 17, .local_x = 512, .local_y = 1, .local_z = 1};
+
+    _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f16f16", shader_info, _vkllm_rope_f16f16_spv(),
+                              _vkllm_rope_f16f16_size(), NULL, &context->pipelines.rope.f16f16));
+
+    _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f16f32", shader_info, _vkllm_rope_f16f32_spv(),
+                              _vkllm_rope_f16f32_size(), NULL, &context->pipelines.rope.f16f32));
+
+    _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f32f32", shader_info, _vkllm_rope_f32f32_spv(),
+                              _vkllm_rope_f32f32_size(), NULL, &context->pipelines.rope.f32f32));
+    return VKLLM_ERR_OK;
+}
+
 vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context)
 {
     _CHECK(vkllm_create_all_add_pipeline(context));
     _CHECK(vkllm_create_embedding_pipeline(context));
     _CHECK(vkllm_create_rmsnorm_pipeline(context));
     _CHECK(vkllm_create_matmul_pipelines(context));
+    _CHECK(vkllm_create_rope_pipelines(context));
     return VKLLM_ERR_OK;
 }
 

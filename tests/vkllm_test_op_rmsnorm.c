@@ -150,7 +150,9 @@ START_TEST(test_op_rmsnorm)
                      VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_upload(context, commands, weight, weight_host->data, weight_host->alloc_n),
                      VKLLM_ERR_OK);
-    ck_assert_int_eq(vkllm_op_rmsnorm(context, commands, output), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_op_rmsnorm_init(context, commands, output), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_op_rmsnorm_run(context, commands, output), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_op_rmsnorm_post_run(context, commands, output), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_end(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_submit(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_wait_exec(context, commands), VKLLM_ERR_OK);

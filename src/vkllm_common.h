@@ -93,6 +93,7 @@ extern "C" {
 
 #define __PACKED__ __attribute__((packed))
 
+#define __UNUSED(__x) ((void)__x)
 
 // configs
 

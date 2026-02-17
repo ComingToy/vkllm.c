@@ -306,7 +306,9 @@ START_TEST(test_op_matmul)
     ck_assert_int_eq(vkllm_commands_begin(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_upload(context, commands, input_a, buf_a->data, buf_a->alloc_n), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_upload(context, commands, input_b, buf_b->data, buf_b->alloc_n), VKLLM_ERR_OK);
-    ck_assert_int_eq(vkllm_op_matmul(context, commands, output), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_op_matmul_init(context, commands, output), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_op_matmul_run(context, commands, output), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_op_matmul_post_run(context, commands, output), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_end(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_submit(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_wait_exec(context, commands), VKLLM_ERR_OK);

@@ -9,8 +9,12 @@ extern "C" {
 #include "vkllm_context.h"
 #include "vkllm_tensor.h"
 
-extern vkllm_err_t vkllm_op_matmul(struct vkllm_context *context, struct vkllm_commands *commands,
-                                   struct vkllm_tensor *tensor);
+extern vkllm_err_t vkllm_op_matmul_init(struct vkllm_context *context, struct vkllm_commands *commands,
+                                        struct vkllm_tensor *tensor);
+extern vkllm_err_t vkllm_op_matmul_run(struct vkllm_context *context, struct vkllm_commands *commands,
+                                       struct vkllm_tensor *tensor);
+extern vkllm_err_t vkllm_op_matmul_post_run(struct vkllm_context *context, struct vkllm_commands *commands,
+                                            struct vkllm_tensor *tensor);
 
 #ifdef __cplusplus
 }

@@ -90,6 +90,26 @@ glsl_shader(
     ],
 )
 
+glsl_shader(
+    name = "vkllm_rope_shaders",
+    shaders = [
+        "vkllm_rope.comp",
+    ],
+    hdrs = COMP_SHADER_HDRS,
+    extra_args = COMMON_ARGS,
+    tool = "//tools:binary_to_array",
+    macros = [
+        "-D_SUPPORT_16BIT_STORAGE -D_SUPPORT_FLOAT16_ARITHMETIC -DTYPE=float16_t -DLOAD_DTYPE=float16_t",
+        "-D_SUPPORT_16BIT_STORAGE -DTYPE=float16_t -DLOAD_DTYPE=float",
+        "-DTYPE=float -DLOAD_DTYPE=float",
+    ],
+    suffixes = [
+        "_f16f16",
+        "_f16f32",
+        "_f32f32",
+    ],
+)
+
 cc_shader_library(
     name = "vkllm_shaders",
     deps = [
@@ -97,6 +117,7 @@ cc_shader_library(
         ":vkllm_embedding_shaders",
         ":vkllm_rmsnorm_shaders",
         ":vkllm_matmul_shaders",
+        ":vkllm_rope_shaders",
     ],
     visibility = ["//visibility:public"]
 )

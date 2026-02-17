@@ -92,7 +92,9 @@ START_TEST(test_op_add)
     ck_assert_int_eq(vkllm_commands_begin(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_upload(context, commands, in0, (const uint8_t *)buf->data, bytes), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_upload(context, commands, in1, (const uint8_t *)buf1->data, bytes), VKLLM_ERR_OK);
-    ck_assert_int_eq(vkllm_op_add(context, commands, out0), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_op_add_init(context, commands, out0), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_op_add_run(context, commands, out0), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_op_add_post_run(context, commands, out0), VKLLM_ERR_OK);
     // ck_assert_int_eq(vkllm_commands_download(context, commands, out0, (uint8_t *)buf3->data, out0->bytes),
     //                  VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_end(context, commands), VKLLM_ERR_OK);

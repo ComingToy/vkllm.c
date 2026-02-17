@@ -40,7 +40,8 @@ static vkllm_err_t vkllm_op_add_get_pipeline(struct vkllm_context *context, stru
     }
 }
 
-vkllm_err_t vkllm_op_add(struct vkllm_context *context, struct vkllm_commands *commands, struct vkllm_tensor *tensor)
+vkllm_err_t vkllm_op_add_init(struct vkllm_context *context, struct vkllm_commands *commands,
+                              struct vkllm_tensor *tensor)
 {
     _CHECK_ARGS(context && commands && tensor);
     _CHECK_ARGS(tensor->srcs[0] && tensor->srcs[1]);
@@ -53,11 +54,16 @@ vkllm_err_t vkllm_op_add(struct vkllm_context *context, struct vkllm_commands *c
     _CHECK_ARGS(in0->shapes[2] == in1->shapes[2] && in0->shapes[2] == tensor->shapes[2]);
     _CHECK_ARGS(in0->shapes[3] == in1->shapes[3] && in0->shapes[3] == tensor->shapes[3]);
 
-    vkllm_err_t err = VKLLM_ERR_OK;
-
     struct vkllm_pipeline *pipeline = NULL;
     _CHECK(vkllm_op_add_get_pipeline(context, tensor, &pipeline));
     tensor->pipeline = pipeline;
+
+    return VKLLM_ERR_OK;
+}
+
+vkllm_err_t vkllm_op_add_run(struct vkllm_context *context, struct vkllm_commands *commands,
+                             struct vkllm_tensor *tensor)
+{
 
     struct vkllm_dtype_info dtype_info;
     uint32_t strides[4];
@@ -69,12 +75,16 @@ vkllm_err_t vkllm_op_add(struct vkllm_context *context, struct vkllm_commands *c
     vkllm_shader_constants_append_n(constants, tensor->shapes, 4);
     vkllm_shader_constants_append_n(constants, strides, 4);
 
+    vkllm_err_t err = VKLLM_ERR_OK;
     struct vkllm_array_ptr *bindings = NULL;
     _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 3), err, free_constants_out);
+
+    struct vkllm_tensor *in0 = tensor->srcs[0], *in1 = tensor->srcs[1];
     vkllm_array_ptr_append(bindings, in0);
     vkllm_array_ptr_append(bindings, in1);
     vkllm_array_ptr_append(bindings, tensor);
 
+    struct vkllm_pipeline *pipeline = tensor->pipeline;
     uint32_t N = _MUL4(tensor->shapes);
     uint32_t group_x = (N + pipeline->shader_info.local_x - 1) / pipeline->shader_info.local_x;
     uint32_t group_y = 1, group_z = 1;
@@ -104,4 +114,13 @@ free_bindings_out:
 free_constants_out:
     vkllm_shader_constants_free(constants);
     return err;
+}
+
+extern vkllm_err_t vkllm_op_add_post_run(struct vkllm_context *context, struct vkllm_commands *commands,
+                                         struct vkllm_tensor *tensor)
+{
+    __UNUSED(context);
+    __UNUSED(commands);
+    __UNUSED(tensor);
+    return VKLLM_ERR_OK;
 }
