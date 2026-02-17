@@ -13,6 +13,21 @@ LINK_OPTS = select({
     "//conditions:default": [], 
 })
 
+cc_library(
+    name = "vkllm_test_common",
+    srcs = [],
+    hdrs = [
+        "vkllm_test_common.h",
+    ],
+)
+
+DEPS = [
+    "//src:core",
+    "//thirdparty/check:check",
+    "//thirdparty/openblas:openblas",
+    ":vkllm_test_common",
+]
+
 
 COPTS = [
     "-std=c11",
@@ -21,10 +36,7 @@ COPTS = [
 cc_test(
     name = "test_transfer",
     srcs = ["test_transfer.c"],
-    deps = [
-        "//src:core",
-        "//thirdparty/check:check",
-    ],
+    deps = DEPS,
     copts = COPTS,
     linkopts = LINK_OPTS,
 )
@@ -32,10 +44,7 @@ cc_test(
 cc_test(
     name = "test_op_add",
     srcs = ["test_op_add.c"],
-    deps = [
-        "//src:core",
-        "//thirdparty/check:check",
-    ],
+    deps = DEPS,
     copts = COPTS,
     linkopts = LINK_OPTS,
 )

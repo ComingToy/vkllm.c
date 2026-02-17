@@ -6,18 +6,19 @@
 #include "src/vkllm_dtypes.h"
 #include "src/vkllm_op_add.h"
 #include "src/vkllm_tensor.h"
-#include <float.h>
+#include "vkllm_test_common.h"
+#include <cblas.h>
 #include <stdio.h>
 
 static void random_buf(void *a, const size_t n, vkllm_dtype_t dtype)
 {
     if (dtype == vkllm_dtype_float16)
     {
-        _Float16 *p = (_Float16 *)a;
+        vkllm_fp16_pack *p = (vkllm_fp16_pack*)a;
 
         for (size_t i = 0; i < n; ++i)
         {
-            p[i] = (_Float16)(10.0 * (rand() % 100) / 100.0);
+            p[i] = vkllm_fp32_to_fp16(10.0 * (rand() % 100) / 100.0);
         }
 
         return;
@@ -34,12 +35,12 @@ static void add_buf(const void *a, const void *b, void *c, size_t n, vkllm_dtype
 {
     if (dtype == vkllm_dtype_float16)
     {
-        const _Float16 *p0 = a, *p1 = b;
+        const vkllm_fp16_pack *p0 = a, *p1 = b;
         float *p2 = c;
 
         for (size_t i = 0; i < n; ++i)
         {
-            p2[i] = (float)(p0[i] + p1[i]);
+            p2[i] = vkllm_fp16_to_fp32(p0[i]) + vkllm_fp16_to_fp32(p1[i]);
         }
 
         return;
@@ -74,8 +75,8 @@ static float compare_buf(const void *lhs, const void *rhs, uint32_t shapes[4], u
 
     const float *lhs_fp32 = lhs;
     const float *rhs_fp32 = rhs;
-    const _Float16 *lhs_fp16 = lhs;
-    const _Float16 *rhs_fp16 = rhs;
+    const vkllm_fp16_pack *lhs_fp16 = lhs;
+    const vkllm_fp16_pack *rhs_fp16 = rhs;
 
     for (uint32_t b = 0; b < shapes[0]; ++b)
     {
@@ -89,7 +90,9 @@ static float compare_buf(const void *lhs, const void *rhs, uint32_t shapes[4], u
 
                     if (dtype == vkllm_dtype_float16)
                     {
-                        err = err + alpha * (float)((lhs_fp16[i] - rhs_fp16[i]) * (lhs_fp16[i] - rhs_fp16[i]));
+                        float v0 = vkllm_fp16_to_fp32(lhs_fp16[i]);
+                        float v1 = vkllm_fp16_to_fp32(rhs_fp16[i]);
+                        err = err + alpha * (v0 - v1) * (v0 - v1);
                         continue;
                     }
 
