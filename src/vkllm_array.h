@@ -15,7 +15,7 @@
         _type *data;                                                                                                   \
     };                                                                                                                 \
                                                                                                                        \
-    vkllm_err_t vkllm_array_##_name_new(struct vkllm_array_##_name **arr, size_t init)                                 \
+    inline vkllm_err_t vkllm_array_##_name_new(struct vkllm_array_##_name **arr, size_t init)                          \
     {                                                                                                                  \
         size_t alloc_bytes = sizeof(**arr);                                                                            \
         *arr = (struct vkllm_array_##_name *)malloc(alloc_bytes);                                                      \
@@ -32,7 +32,8 @@
         }                                                                                                              \
         return VKLLM_ERR_OK;                                                                                           \
     }                                                                                                                  \
-    vkllm_err_t vkllm_array_##_name_append(struct vkllm_array_##_name *arr, _type element)                             \
+                                                                                                                       \
+    inline vkllm_err_t vkllm_array_##_name_append(struct vkllm_array_##_name *arr, _type element)                      \
     {                                                                                                                  \
         if (arr->used_n >= arr->alloc_n)                                                                               \
         {                                                                                                              \
@@ -46,7 +47,7 @@
         arr->data[arr->used_n++] = element;                                                                            \
         return VKLLM_ERR_OK;                                                                                           \
     }                                                                                                                  \
-    void vkllm_array_##name_free(struct vkllm_array_##_name *arr)                                                      \
+    inline void vkllm_array_##name_free(struct vkllm_array_##_name *arr)                                               \
     {                                                                                                                  \
         if (!arr)                                                                                                      \
             return;                                                                                                    \
@@ -55,5 +56,5 @@
         free(arr);                                                                                                     \
     }
 
-VKLLM_DEF_ARRAY(defer_fn, uint64_t)
+VKLLM_DEF_ARRAY(ptr, void *)
 #endif
