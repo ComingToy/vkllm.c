@@ -63,3 +63,11 @@ cc_test(
     copts = COPTS,
     linkopts = LINK_OPTS,
 )
+
+cc_test(
+    name = "vkllm_test_op_matmul",
+    srcs = ["vkllm_test_op_matmul.c"],
+    deps = DEPS,
+    copts = COPTS,
+    linkopts = LINK_OPTS,
+)

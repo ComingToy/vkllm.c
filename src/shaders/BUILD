@@ -29,7 +29,6 @@ glsl_shader(
         "_f16f16f32",
         "_f16f16f16",
     ],
-    visibility = ["//visibility:public"]
 )
 
 glsl_shader(
@@ -48,7 +47,6 @@ glsl_shader(
         "_f16",
         "_f32",
     ],
-    visibility = ["//visibility:public"]
 )
 
 glsl_shader(
@@ -69,15 +67,32 @@ glsl_shader(
         "_f16f32f16",
         "_f32f32f32",
     ],
-    visibility = ["//visibility:public"]
+)
+
+glsl_shader(
+    name = "vkllm_matmul_shaders",
+    shaders = [
+        "vkllm_matmul_align_r4_c4.comp",
+        "vkllm_matmul.comp",
+    ],
+    hdrs = COMP_SHADER_HDRS,
+    extra_args = COMMON_ARGS,
+    tool = "//tools:binary_to_array",
+    macros = [
+        "-DIN0_DTYPE=float -DIN1_DTYPE=float -DLOAD_DTYPE=float -DOUT_DTYPE=float",
+    ],
+    suffixes = [
+        "_f32f32f32",
+    ],
 )
 
 cc_shader_library(
-    name = 'vkllm_shaders',
+    name = "vkllm_shaders",
     deps = [
-        ':vkllm_add_shaders',
-        ':vkllm_embedding_shaders',
-        ':vkllm_rmsnorm_shaders',
+        ":vkllm_add_shaders",
+        ":vkllm_embedding_shaders",
+        ":vkllm_rmsnorm_shaders",
+        ":vkllm_matmul_shaders",
     ],
     visibility = ["//visibility:public"]
 )

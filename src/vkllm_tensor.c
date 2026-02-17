@@ -141,6 +141,10 @@ static vkllm_err_t vkllm_tensor_get_pipeline(struct vkllm_context *context, stru
         {
         }
     }
+    else if (tensor->op == VKLLM_OP_MATMUL)
+    {
+        tensor->pipeline = context->pipelines.matmul.f32f32f32;
+    }
     else
     {
         log_error("unsupported op type: %s", vkllm_op_s(tensor->op));
@@ -196,6 +200,8 @@ vkllm_err_t vkllm_tensor_new(struct vkllm_context *context, const char *name, co
     size_t total_bytes = shapes[0] * t->strides[0];
     size_t align = device->vk_physical_dev.properties.limits.nonCoherentAtomSize;
     size_t total_aligned_bytes = (total_bytes + align - 1) / align * align;
+    align = device->vk_physical_dev.subgroup_properties.subgroupSize;
+    total_aligned_bytes = (total_aligned_bytes + align - 1) / align * align;
     t->bytes = total_aligned_bytes;
 
     t->device = device;

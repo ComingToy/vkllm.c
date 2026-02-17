@@ -258,7 +258,19 @@ vkllm_err_t vkllm_commands_pipeline(struct vkllm_context *context, struct vkllm_
     vkCmdBindDescriptorSets(commands->vk_command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->vk_pipeline_layout,
                             0, 1, &pipeline->vk_desc_set, 0, NULL);
 
+    if (context->device->support_query_timestamp)
+    {
+        vkCmdResetQueryPool(commands->vk_command_buffer, pipeline->vk_query_pool, 0, 2);
+        vkCmdWriteTimestamp(commands->vk_command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, pipeline->vk_query_pool, 0);
+    }
+
     vkCmdDispatch(commands->vk_command_buffer, group_x, group_y, group_z);
+
+    if (context->device->support_query_timestamp)
+    {
+        vkCmdWriteTimestamp(commands->vk_command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, pipeline->vk_query_pool,
+                            1);
+    }
     return VKLLM_ERR_OK;
 }
 
