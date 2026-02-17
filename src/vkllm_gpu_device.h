@@ -8,10 +8,25 @@
 #include "vkllm_context.h"
 #include "vkllm_errors.h"
 
+struct vkllm_vk_physical_dev {
+    uint32_t id;
+    VkPhysicalDevice dev;
+    VkPhysicalDeviceFeatures features;
+    VkPhysicalDeviceProperties properties;
+    VkExtensionProperties* ext_properties;
+    uint32_t n_ext_properties;
+    VkPhysicalDeviceMemoryProperties mem_properties;
+    VkQueueFamilyProperties* queue_family_properties;
+    uint32_t n_queue_family_properties;
+    VkPhysicalDeviceSubgroupProperties subgroup_properties;
+    VkPhysicalDeviceProperties2 properties2;
+};
+
 struct vkllm_gpu_device {
-    int id;
     uint32_t api_version;
     VkInstance instance;
+    struct vkllm_vk_physical_dev vk_physical_dev;
+	bool support_descriptor_templ_update;
     bool support_16bit_storage;
     bool support_8bit_storage;
     bool support_fp16_arithmetic;
@@ -20,6 +35,6 @@ struct vkllm_gpu_device {
     int subgroup_size;
 };
 
-extern vkllm_err_t new_gpu_device(struct vkllm_context* context, int id,
+extern vkllm_err_t new_gpu_device(struct vkllm_context* context, uint32_t id,
 				  struct vkllm_gpu_device** ppdev);
 #endif
