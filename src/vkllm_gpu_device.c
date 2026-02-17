@@ -39,7 +39,11 @@ static int create_instance(struct vkllm_context* context,
     VkInstanceCreateInfo instance_create_info = {
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pNext = NULL,
+#if __APPLE__
         .flags = VK_KHR_portability_enumeration,
+#else
+        .flags = 0,
+#endif
         .pApplicationInfo = &app_info,
         .enabledLayerCount = sizeof(enable_layers) / sizeof(const char*),
         .ppEnabledLayerNames = enable_layers,
