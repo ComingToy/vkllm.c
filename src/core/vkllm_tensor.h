@@ -18,7 +18,7 @@ struct vkllm_pipeline;
 struct vkllm_gpu_device;
 struct vkllm_tensor
 {
-    const char *name;
+    const char name[128];
     vkllm_dtype_t dtype;
     uint32_t shapes[4];
     uint32_t strides[4];

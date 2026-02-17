@@ -143,3 +143,11 @@ cc_test(
     copts = COPTS,
     linkopts = LINK_OPTS,
 )
+
+cc_test(
+    name = "vkllm_test_load_gguf",
+    srcs = ["vkllm_test_load_gguf.c"],
+    deps = DEPS,
+    copts = COPTS,
+    linkopts = LINK_OPTS,
+)

@@ -5,6 +5,7 @@
 #include "vkllm_ops.h"
 
 #include "vkllm_common.h"
+#include <stdlib.h>
 #include <string.h>
 
 static vkllm_err_t vkllm_calc_strides(struct vkllm_gpu_device *device, const uint32_t *shapes, vkllm_dtype_t dtype,
@@ -83,7 +84,9 @@ vkllm_err_t vkllm_tensor_new(struct vkllm_context *context, const char *name, co
     *p = (struct vkllm_tensor *)malloc(sizeof(struct vkllm_tensor) + params_bytes);
 
     struct vkllm_tensor *t = *p;
-    t->name = name;
+
+    strncpy((char *)t->name, name, sizeof(t->name));
+
     t->dtype = dtype;
     t->shapes[0] = shapes[0];
     t->shapes[1] = shapes[1];
@@ -254,7 +257,7 @@ vkllm_err_t vkllm_tensor_copy_ref(struct vkllm_context *context, struct vkllm_te
     *p = (struct vkllm_tensor *)malloc(sizeof(struct vkllm_tensor));
     struct vkllm_tensor *t = *p;
 
-    t->name = tensor->name;
+    strncpy((char *)t->name, tensor->name, sizeof(t->name));
     t->dtype = tensor->dtype;
     for (uint32_t i = 0; i < 4; ++i)
     {
