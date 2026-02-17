@@ -8,6 +8,7 @@
 #include "src/core/vkllm_pipeline.h"
 #include "src/core/vkllm_tensor.h"
 #include "vkllm_test_common.h"
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -24,10 +25,15 @@ static struct vkllm_commands *g_commands = NULL;
 // Broadcasting rules: B_c = max(B_a, B_b), C_c = max(C_a, C_b)
 // If B_a or B_b is 1, it broadcasts to B_c; same for C_a and C_b
 // Using 4D tensor format with batch support and broadcasting
+static inline float silu(float x)
+{
+    return x / (1.0f + expf(-x));
+}
+
 static void matmul_op_host(const void *input_a, const void *input_b, void *output, uint32_t B_a, uint32_t C_a,
                            uint32_t B_b, uint32_t C_b, uint32_t M, uint32_t K, uint32_t N, const uint32_t strides_a[4],
                            const uint32_t strides_b[4], const uint32_t strides_c[4], vkllm_dtype_t dtype,
-                           bool transposed_b)
+                           bool transposed_b, bool act)
 {
     struct vkllm_dtype_info info;
     vkllm_get_dtype_info(dtype, &info);
@@ -94,6 +100,10 @@ static void matmul_op_host(const void *input_a, const void *input_b, void *outpu
                         }
                         // C[b, c, i, j]
                         uint32_t idx_c = b * es_c[0] + c * es_c[1] + i * es_c[2] + j * es_c[3];
+                        if (act)
+                        {
+                            sum = silu(sum);
+                        }
                         c_fp16[idx_c] = vkllm_fp32_to_fp16(sum);
                     }
                 }
@@ -142,6 +152,10 @@ static void matmul_op_host(const void *input_a, const void *input_b, void *outpu
                         }
                         // C[b, c, i, j]
                         uint32_t idx_c = b * es_c[0] + c * es_c[1] + i * es_c[2] + j * es_c[3];
+                        if (act)
+                        {
+                            sum = silu(sum);
+                        }
                         c_fp32[idx_c] = sum;
                     }
                 }
@@ -161,85 +175,118 @@ static struct
     uint32_t N;
     vkllm_dtype_t dtype;
     bool transposed_b;
+    bool act;
 } tests[] = {
 #if 1
-    // Single batch tests (B=1, C=1, no broadcasting) with transposed B
-    {1, 1, 1, 1, 512, 1024, 2048, vkllm_dtype_float16, true},
-    {1, 1, 1, 1, 333, 1259, 365, vkllm_dtype_float16, true},
-    {1, 1, 1, 1, 512, 1024, 2048, vkllm_dtype_float32, true},
-    {1, 1, 1, 1, 333, 1259, 365, vkllm_dtype_float32, true},
+    // Single batch tests (B=1, C=1, no broadcasting) with transposed B, no activation
+    {1, 1, 1, 1, 512, 1024, 2048, vkllm_dtype_float16, true, false},
+    {1, 1, 1, 1, 333, 1259, 365, vkllm_dtype_float16, true, false},
+    {1, 1, 1, 1, 512, 1024, 2048, vkllm_dtype_float32, true, false},
+    {1, 1, 1, 1, 333, 1259, 365, vkllm_dtype_float32, true, false},
 
-    // Single batch tests (B=1, C=1, no broadcasting) without transposed B
-    {1, 1, 1, 1, 512, 1024, 2048, vkllm_dtype_float16, false},
-    {1, 1, 1, 1, 333, 1259, 365, vkllm_dtype_float16, false},
-    {1, 1, 1, 1, 512, 1024, 2048, vkllm_dtype_float32, false},
-    {1, 1, 1, 1, 333, 1259, 365, vkllm_dtype_float32, false},
+    // Single batch tests (B=1, C=1, no broadcasting) without transposed B, no activation
+    {1, 1, 1, 1, 512, 1024, 2048, vkllm_dtype_float16, false, false},
+    {1, 1, 1, 1, 333, 1259, 365, vkllm_dtype_float16, false, false},
+    {1, 1, 1, 1, 512, 1024, 2048, vkllm_dtype_float32, false, false},
+    {1, 1, 1, 1, 333, 1259, 365, vkllm_dtype_float32, false, false},
 
-    // Multi-batch tests (B>1, C=1, no broadcasting) with transposed B
-    {4, 1, 4, 1, 256, 512, 1024, vkllm_dtype_float16, true},
-    {8, 1, 8, 1, 128, 256, 512, vkllm_dtype_float32, true},
-    {16, 1, 16, 1, 64, 128, 256, vkllm_dtype_float16, true},
+    // Multi-batch tests (B>1, C=1, no broadcasting) with transposed B, no activation
+    {4, 1, 4, 1, 256, 512, 1024, vkllm_dtype_float16, true, false},
+    {8, 1, 8, 1, 128, 256, 512, vkllm_dtype_float32, true, false},
+    {16, 1, 16, 1, 64, 128, 256, vkllm_dtype_float16, true, false},
 
-    // Multi-batch tests (B>1, C=1, no broadcasting) without transposed B
-    {4, 1, 4, 1, 256, 512, 1024, vkllm_dtype_float16, false},
-    {8, 1, 8, 1, 128, 256, 512, vkllm_dtype_float32, false},
-    {16, 1, 16, 1, 64, 128, 256, vkllm_dtype_float16, false},
+    // Multi-batch tests (B>1, C=1, no broadcasting) without transposed B, no activation
+    {4, 1, 4, 1, 256, 512, 1024, vkllm_dtype_float16, false, false},
+    {8, 1, 8, 1, 128, 256, 512, vkllm_dtype_float32, false, false},
+    {16, 1, 16, 1, 64, 128, 256, vkllm_dtype_float16, false, false},
 
-    // Multi-batch and multi-channel tests (B>1, C>1, no broadcasting) with transposed B
-    {2, 4, 2, 4, 128, 256, 512, vkllm_dtype_float16, true},
-    {4, 2, 4, 2, 256, 512, 1024, vkllm_dtype_float32, true},
+    // Multi-batch and multi-channel tests (B>1, C>1, no broadcasting) with transposed B, no activation
+    {2, 4, 2, 4, 128, 256, 512, vkllm_dtype_float16, true, false},
+    {4, 2, 4, 2, 256, 512, 1024, vkllm_dtype_float32, true, false},
 
-    // Multi-batch and multi-channel tests (B>1, C>1, no broadcasting) without transposed B
-    {2, 4, 2, 4, 128, 256, 512, vkllm_dtype_float16, false},
-    {4, 2, 4, 2, 256, 512, 1024, vkllm_dtype_float32, false},
+    // Multi-batch and multi-channel tests (B>1, C>1, no broadcasting) without transposed B, no activation
+    {2, 4, 2, 4, 128, 256, 512, vkllm_dtype_float16, false, false},
+    {4, 2, 4, 2, 256, 512, 1024, vkllm_dtype_float32, false, false},
 #endif
 
 #if 1
-    // Broadcasting tests: B_a=1, B_b>1 (broadcast A's batch dimension)
-    {1, 1, 4, 1, 128, 256, 512, vkllm_dtype_float16, true},
-    {1, 1, 8, 1, 64, 128, 256, vkllm_dtype_float32, true},
-    {1, 1, 4, 1, 128, 256, 512, vkllm_dtype_float16, false},
-    {1, 1, 8, 1, 64, 128, 256, vkllm_dtype_float32, false},
+    // Broadcasting tests: B_a=1, B_b>1 (broadcast A's batch dimension), no activation
+    {1, 1, 4, 1, 128, 256, 512, vkllm_dtype_float16, true, false},
+    {1, 1, 8, 1, 64, 128, 256, vkllm_dtype_float32, true, false},
+    {1, 1, 4, 1, 128, 256, 512, vkllm_dtype_float16, false, false},
+    {1, 1, 8, 1, 64, 128, 256, vkllm_dtype_float32, false, false},
 
-    // Broadcasting tests: B_a>1, B_b=1 (broadcast B's batch dimension)
-    {4, 1, 1, 1, 128, 256, 512, vkllm_dtype_float16, true},
+    // Broadcasting tests: B_a>1, B_b=1 (broadcast B's batch dimension), no activation
+    {4, 1, 1, 1, 128, 256, 512, vkllm_dtype_float16, true, false},
 
-    {8, 1, 1, 1, 64, 128, 256, vkllm_dtype_float32, true},
-    {4, 1, 1, 1, 128, 256, 512, vkllm_dtype_float16, false},
-    {8, 1, 1, 1, 64, 128, 256, vkllm_dtype_float32, false},
+    {8, 1, 1, 1, 64, 128, 256, vkllm_dtype_float32, true, false},
+    {4, 1, 1, 1, 128, 256, 512, vkllm_dtype_float16, false, false},
+    {8, 1, 1, 1, 64, 128, 256, vkllm_dtype_float32, false, false},
 #endif
 
-// Broadcasting tests: C_a=1, C_b>1 (broadcast A's channel dimension)
+// Broadcasting tests: C_a=1, C_b>1 (broadcast A's channel dimension), no activation
 #if 1
-    {1, 1, 1, 4, 128, 256, 512, vkllm_dtype_float16, true},
-    {1, 1, 1, 8, 64, 128, 256, vkllm_dtype_float32, true},
+    {1, 1, 1, 4, 128, 256, 512, vkllm_dtype_float16, true, false},
+    {1, 1, 1, 8, 64, 128, 256, vkllm_dtype_float32, true, false},
 #endif
-    {1, 1, 1, 4, 128, 256, 512, vkllm_dtype_float16, false},
-    {1, 1, 1, 8, 64, 128, 256, vkllm_dtype_float32, false},
+    {1, 1, 1, 4, 128, 256, 512, vkllm_dtype_float16, false, false},
+    {1, 1, 1, 8, 64, 128, 256, vkllm_dtype_float32, false, false},
 #if 1
-    // Broadcasting tests: C_a>1, C_b=1 (broadcast B's channel dimension)
-    {1, 4, 1, 1, 128, 256, 512, vkllm_dtype_float16, true},
-    {1, 8, 1, 1, 64, 128, 256, vkllm_dtype_float32, true},
-    {1, 4, 1, 1, 128, 256, 512, vkllm_dtype_float16, false},
-    {1, 8, 1, 1, 64, 128, 256, vkllm_dtype_float32, false},
+    // Broadcasting tests: C_a>1, C_b=1 (broadcast B's channel dimension), no activation
+    {1, 4, 1, 1, 128, 256, 512, vkllm_dtype_float16, true, false},
+    {1, 8, 1, 1, 64, 128, 256, vkllm_dtype_float32, true, false},
+    {1, 4, 1, 1, 128, 256, 512, vkllm_dtype_float16, false, false},
+    {1, 8, 1, 1, 64, 128, 256, vkllm_dtype_float32, false, false},
 
-    // Broadcasting tests: Both dimensions (B_a=1, C_a=1, B_b>1, C_b>1)
-    {1, 1, 4, 4, 64, 128, 256, vkllm_dtype_float16, true},
-    {1, 1, 2, 8, 64, 128, 256, vkllm_dtype_float32, true},
-    {1, 1, 4, 4, 64, 128, 256, vkllm_dtype_float16, false},
-    {1, 1, 2, 8, 64, 128, 256, vkllm_dtype_float32, false},
+    // Broadcasting tests: Both dimensions (B_a=1, C_a=1, B_b>1, C_b>1), no activation
+    {1, 1, 4, 4, 64, 128, 256, vkllm_dtype_float16, true, false},
+    {1, 1, 2, 8, 64, 128, 256, vkllm_dtype_float32, true, false},
+    {1, 1, 4, 4, 64, 128, 256, vkllm_dtype_float16, false, false},
+    {1, 1, 2, 8, 64, 128, 256, vkllm_dtype_float32, false, false},
 
-    // Broadcasting tests: Both dimensions (B_a>1, C_a>1, B_b=1, C_b=1)
-    {4, 4, 1, 1, 64, 128, 256, vkllm_dtype_float16, true},
-    {2, 8, 1, 1, 64, 128, 256, vkllm_dtype_float32, true},
-    {4, 4, 1, 1, 64, 128, 256, vkllm_dtype_float16, false},
-    {2, 8, 1, 1, 64, 128, 256, vkllm_dtype_float32, false},
+    // Broadcasting tests: Both dimensions (B_a>1, C_a>1, B_b=1, C_b=1), no activation
+    {4, 4, 1, 1, 64, 128, 256, vkllm_dtype_float16, true, false},
+    {2, 8, 1, 1, 64, 128, 256, vkllm_dtype_float32, true, false},
+    {4, 4, 1, 1, 64, 128, 256, vkllm_dtype_float16, false, false},
+    {2, 8, 1, 1, 64, 128, 256, vkllm_dtype_float32, false, false},
 
-    // Complex broadcasting: B_a=1, C_a>1, B_b>1, C_b=1
-    {1, 4, 4, 1, 64, 128, 256, vkllm_dtype_float16, true},
-    {1, 8, 8, 1, 64, 128, 256, vkllm_dtype_float32, true},
-    {1, 4, 4, 1, 64, 128, 256, vkllm_dtype_float16, false},
-    {1, 8, 8, 1, 64, 128, 256, vkllm_dtype_float32, false},
+    // Complex broadcasting: B_a=1, C_a>1, B_b>1, C_b=1, no activation
+    {1, 4, 4, 1, 64, 128, 256, vkllm_dtype_float16, true, false},
+    {1, 8, 8, 1, 64, 128, 256, vkllm_dtype_float32, true, false},
+    {1, 4, 4, 1, 64, 128, 256, vkllm_dtype_float16, false, false},
+    {1, 8, 8, 1, 64, 128, 256, vkllm_dtype_float32, false, false},
+#endif
+
+#if 1
+    // Tests with SILU activation
+    // Single batch tests with transposed B, SILU activation
+    {1, 1, 1, 1, 512, 1024, 2048, vkllm_dtype_float16, true, true},
+    {1, 1, 1, 1, 333, 1259, 365, vkllm_dtype_float32, true, true},
+
+    // Single batch tests without transposed B, SILU activation
+    {1, 1, 1, 1, 256, 512, 1024, vkllm_dtype_float16, false, true},
+    {1, 1, 1, 1, 128, 256, 512, vkllm_dtype_float32, false, true},
+
+    // Multi-batch tests with transposed B, SILU activation
+    {4, 1, 4, 1, 256, 512, 1024, vkllm_dtype_float16, true, true},
+    {8, 1, 8, 1, 128, 256, 512, vkllm_dtype_float32, true, true},
+
+    // Multi-batch tests without transposed B, SILU activation
+    {4, 1, 4, 1, 256, 512, 1024, vkllm_dtype_float16, false, true},
+    {8, 1, 8, 1, 128, 256, 512, vkllm_dtype_float32, false, true},
+
+    // Multi-batch and multi-channel tests with transposed B, SILU activation
+    {2, 4, 2, 4, 128, 256, 512, vkllm_dtype_float16, true, true},
+    {4, 2, 4, 2, 256, 512, 1024, vkllm_dtype_float32, true, true},
+
+    // Broadcasting tests with SILU activation
+    {1, 1, 4, 1, 128, 256, 512, vkllm_dtype_float16, true, true},
+    {4, 1, 1, 1, 128, 256, 512, vkllm_dtype_float32, true, true},
+    {1, 1, 1, 4, 128, 256, 512, vkllm_dtype_float16, true, true},
+    {1, 4, 1, 1, 64, 128, 256, vkllm_dtype_float32, true, true},
+    {1, 1, 4, 4, 64, 128, 256, vkllm_dtype_float16, true, true},
+    {4, 4, 1, 1, 64, 128, 256, vkllm_dtype_float32, true, true},
+    {1, 4, 4, 1, 64, 128, 256, vkllm_dtype_float16, true, true},
 #endif
 };
 
@@ -286,9 +333,9 @@ START_TEST(test_op_matmul)
     uint32_t shapes_c[4] = {B_c, C_c, M, N};
     struct vkllm_tensor *srcs[] = {input_a, input_b};
     struct vkllm_tensor *output;
-    float scale = 1.0f;
+    struct vkllm_op_matmul_params params = {1.0f, tests[_i].act};
     ck_assert_int_eq(vkllm_tensor_new(context, "output", shapes_c, tests[_i].dtype, VKLLM_OP_MATMUL, srcs, 2,
-                                      (uint8_t *)&scale, sizeof(scale), true, &output),
+                                      (uint8_t *)&params, sizeof(params), true, &output),
                      VKLLM_ERR_OK);
 
     // Allocate host buffers
@@ -308,7 +355,7 @@ START_TEST(test_op_matmul)
 
     // Compute expected result on CPU
     matmul_op_host(buf_a->data, buf_b->data, buf_c_expected->data, B_a, C_a, B_b, C_b, M, K, N, input_a->strides,
-                   input_b->strides, output->strides, tests[_i].dtype, tests[_i].transposed_b);
+                   input_b->strides, output->strides, tests[_i].dtype, tests[_i].transposed_b, tests[_i].act);
 
     // Execute on GPU
 
@@ -338,15 +385,16 @@ START_TEST(test_op_matmul)
 
     // Use larger tolerance for float16 due to lower precision
     float tolerance = (tests[_i].dtype == vkllm_dtype_float16) ? 1e-2 : 1e-3;
-    if (_i == 16){
+    if (_i == 16)
+    {
         log_info("start test case 16");
     }
 
     char test_case_name[64];
     snprintf(test_case_name, sizeof(test_case_name), "test_case_%d", _i);
 
-    float loss =
-        compare_buf(buf_c_expected->data, gpu_output, output->shapes, output->strides, output->bytes, output->dtype, test_case_name);
+    float loss = compare_buf(buf_c_expected->data, gpu_output, output->shapes, output->strides, output->bytes,
+                             output->dtype, test_case_name);
     if (loss > tolerance)
     {
         log_info("test case %d loss = %f, tolerance = %f", _i, loss, tolerance);

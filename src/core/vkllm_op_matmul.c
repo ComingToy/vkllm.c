@@ -173,7 +173,7 @@ vkllm_err_t vkllm_op_matmul_run(struct vkllm_context *context, struct vkllm_comm
 
     const struct vkllm_op_matmul_params *params = get_matmul_params(tensor);
     const float scale = params->scale;
-    const int act = params->act;
+    const int32_t act = params->act;
 
     struct vkllm_shader_constants *constants = NULL;
     _CHECK(vkllm_shader_constants_new(&constants, 64));

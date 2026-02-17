@@ -12,7 +12,7 @@ extern "C" {
 struct vkllm_op_matmul_params
 {
     float scale;
-    int act;
+    int32_t act;
 };
 
 extern vkllm_err_t vkllm_op_matmul_init(struct vkllm_context *context, struct vkllm_commands *commands,
