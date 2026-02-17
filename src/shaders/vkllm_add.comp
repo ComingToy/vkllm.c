@@ -1,12 +1,5 @@
 #version 450 core
 
-#ifdef _SUPPORT_16BIT_STORAGE
-#extension GL_EXT_shader_16bit_storage: require
-#endif
-#ifdef _SUPPORT_FLOAT16_ARITHMETIC
-#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
-#endif
-
 #include "vkllm_shader_header.comp.h"
 layout(push_constant) uniform constants
 {
