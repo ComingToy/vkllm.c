@@ -51,4 +51,5 @@ vkllm_thirdparty_deps = use_extension("//:extensions.bzl", "vkllm_thirdparty_dep
 use_repo(
     vkllm_thirdparty_deps,
     "log.c",
+    "vma",
 )
