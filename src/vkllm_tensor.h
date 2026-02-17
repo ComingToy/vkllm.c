@@ -13,7 +13,6 @@
 struct vkllm_tensor
 {
     const char *name;
-    void *host_buf;
     vkllm_dtype_t dtype;
     uint32_t shapes[4];
     uint32_t strides[4];
@@ -24,17 +23,26 @@ struct vkllm_tensor
     {
         VmaAllocation allocation;
         VmaAllocationInfo alloc_info;
-        VkBuffer buf;
-    } device_buf;
+        VkBuffer vk_buf;
+        void *host;
+        bool mapped; // host_buf is mapped
+    } data;
+
+    VkAccessFlagBits access_flags;
+    VkPipelineStageFlagBits pipeline_stage;
 
     vkllm_op_t op;
     struct vkllm_tensor *srcs[VKLLM_MAX_SRCS];
-    void *params;
-    bool mapped; // host_buf is mapped
+    uint8_t params[];
 };
 
-extern vkllm_err_t vkllm_new_tensor(struct vkllm_context *context, struct vkllm_gpu_device *device, const char *name,
+extern vkllm_err_t vkllm_tensor_new(struct vkllm_context *context, struct vkllm_gpu_device *device, const char *name,
                                     const uint32_t *shapes, vkllm_dtype_t dtype, vkllm_op_t op,
-                                    struct vkllm_tensor **srcs, const uint32_t n_srcs, void *params, bool mapped,
-                                    struct vkllm_tensor **p);
+                                    struct vkllm_tensor **srcs, const uint32_t n_srcs, const uint8_t *params,
+                                    size_t params_bytes, bool mapped, struct vkllm_tensor **p);
+extern void vkllm_tensor_free(struct vkllm_context *context, struct vkllm_tensor *tensor);
+extern vkllm_err_t vkllm_tensor_invalid_cache(struct vkllm_context *context, struct vkllm_tensor *tensor);
+extern vkllm_err_t vkllm_tensor_flush_cache(struct vkllm_context *context, struct vkllm_tensor *tensor);
+extern vkllm_err_t vkllm_tensor_new_staging(struct vkllm_context *context, struct vkllm_tensor *tensor,
+                                            struct vkllm_tensor **staging);
 #endif

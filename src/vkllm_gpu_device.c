@@ -341,7 +341,7 @@ err_create_instance:
     return ret;
 }
 
-void vkllm_gpu_device_destory(struct vkllm_context *context, struct vkllm_gpu_device *pdev)
+void vkllm_gpu_device_free(struct vkllm_context *context, struct vkllm_gpu_device *pdev)
 {
     vkDestroyDevice(pdev->vk_dev, NULL);
     vkDestroyInstance(pdev->vk_instance, NULL);
