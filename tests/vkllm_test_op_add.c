@@ -1,37 +1,14 @@
 #include "check.h"
 #include "src/vkllm_array.h"
 #include "src/vkllm_commands.h"
-#include "src/vkllm_common.h"
 #include "src/vkllm_context.h"
 #include "src/vkllm_dtypes.h"
 #include "src/vkllm_op_add.h"
 #include "src/vkllm_tensor.h"
 #include "vkllm_test_common.h"
-#include <cblas.h>
 #include <stdio.h>
 
-static void random_buf(void *a, const size_t n, vkllm_dtype_t dtype)
-{
-    if (dtype == vkllm_dtype_float16)
-    {
-        vkllm_fp16_pack *p = (vkllm_fp16_pack*)a;
-
-        for (size_t i = 0; i < n; ++i)
-        {
-            p[i] = vkllm_fp32_to_fp16(10.0 * (rand() % 100) / 100.0);
-        }
-
-        return;
-    }
-
-    float *p = (float *)a;
-    for (size_t i = 0; i < n; ++i)
-    {
-        p[i] = 10.0 * (rand() % 100) / 100.0;
-    }
-}
-
-static void add_buf(const void *a, const void *b, void *c, size_t n, vkllm_dtype_t dtype)
+static inline void add_buf(const void *a, const void *b, void *c, size_t n, vkllm_dtype_t dtype)
 {
     if (dtype == vkllm_dtype_float16)
     {
@@ -52,67 +29,6 @@ static void add_buf(const void *a, const void *b, void *c, size_t n, vkllm_dtype
     {
         p2[i] = p0[i] + p1[i];
     }
-}
-
-static float compare_buf(const void *lhs, const void *rhs, uint32_t shapes[4], uint32_t strides[4], uint32_t bytes,
-                         vkllm_dtype_t dtype)
-{
-    uint32_t n = _MUL4(shapes);
-    float alpha = 1.0 / n;
-    float err = .0;
-
-    // fprintf(stderr, "alpha: %f, bytes: %u, n: %u, en: %zu\n", alpha, bytes, n, bytes / sizeof(float));
-
-    struct vkllm_dtype_info info;
-    vkllm_get_dtype_info(dtype, &info);
-
-    uint32_t es[4] = {strides[0] / info.bytes, strides[1] / info.bytes, strides[2] / info.bytes,
-                      strides[3] / info.bytes};
-
-    // fprintf(stderr, "shapes = [%u, %u, %u, %u], strides = [%u, %u, %u, %u], es = [%u, %u, %u, %u]\n", shapes[0],
-    //         shapes[1], shapes[2], shapes[3], strides[0], strides[1], strides[2], strides[3], es[0], es[1], es[2],
-    //         es[3]);
-
-    const float *lhs_fp32 = lhs;
-    const float *rhs_fp32 = rhs;
-    const vkllm_fp16_pack *lhs_fp16 = lhs;
-    const vkllm_fp16_pack *rhs_fp16 = rhs;
-
-    for (uint32_t b = 0; b < shapes[0]; ++b)
-    {
-        for (uint32_t c = 0; c < shapes[1]; ++c)
-        {
-            for (uint32_t h = 0; h < shapes[2]; ++h)
-            {
-                for (uint32_t w = 0; w < shapes[3]; ++w)
-                {
-                    uint32_t i = b * es[0] + c * es[1] + h * es[2] + w * es[3];
-
-                    if (dtype == vkllm_dtype_float16)
-                    {
-                        float v0 = vkllm_fp16_to_fp32(lhs_fp16[i]);
-                        float v1 = vkllm_fp16_to_fp32(rhs_fp16[i]);
-                        err = err + alpha * (v0 - v1) * (v0 - v1);
-                        continue;
-                    }
-
-                    err = err + alpha * (lhs_fp32[i] - rhs_fp32[i]) * (lhs_fp32[i] - rhs_fp32[i]);
-                }
-            }
-        }
-    }
-
-    return err;
-}
-
-static void print_n(const char *prefix, const float *buf, const size_t n)
-{
-    fprintf(stderr, "%s: ", prefix);
-    for (size_t i = 0; i < n; ++i)
-    {
-        fprintf(stderr, "%f ", buf[i]);
-    }
-    fprintf(stderr, "\n");
 }
 
 static struct

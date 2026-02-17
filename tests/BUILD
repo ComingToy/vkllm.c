@@ -24,7 +24,6 @@ cc_library(
 DEPS = [
     "//src:core",
     "//thirdparty/check:check",
-    "//thirdparty/openblas:openblas",
     ":vkllm_test_common",
 ]
 
@@ -42,8 +41,16 @@ cc_test(
 )
 
 cc_test(
-    name = "test_op_add",
-    srcs = ["test_op_add.c"],
+    name = "vkllm_test_op_add",
+    srcs = ["vkllm_test_op_add.c"],
+    deps = DEPS,
+    copts = COPTS,
+    linkopts = LINK_OPTS,
+)
+
+cc_test(
+    name = "vkllm_test_op_embedding",
+    srcs = ["vkllm_test_op_add.c"],
     deps = DEPS,
     copts = COPTS,
     linkopts = LINK_OPTS,
