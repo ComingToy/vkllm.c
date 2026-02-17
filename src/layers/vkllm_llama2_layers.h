@@ -10,7 +10,7 @@ struct vkllm_tensor;
 
 struct vkllm_llama2_self_attn_layer_params
 {
-    struct vkllm_tensor *WK, *WQ, *WV;
+    struct vkllm_tensor *WK, *WQ, *WV, *WO;
     struct vkllm_tensor *norm_weight;
     float norm_power;
     float norm_eps;
