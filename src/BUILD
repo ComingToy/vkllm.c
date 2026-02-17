@@ -15,6 +15,8 @@ cc_library(
         "vkllm_dtypes.inc",
         "vkllm_dtypes.h",
         "vkllm_common.h",
+        "vkllm_tensor.h",
+        "vkllm_ops.h",
     ],
     deps = [
 		"//vulkan_rules:vulkan_cc_library",
