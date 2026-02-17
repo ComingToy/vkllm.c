@@ -10,5 +10,6 @@ struct vkllm_context {
 };
 
 extern vkllm_err_t vkllm_new_context(struct vkllm_context** context);
+extern void vkllm_destroy_context(struct vkllm_context* pcontext);
 
 #endif
