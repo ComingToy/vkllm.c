@@ -1,10 +1,10 @@
 #include "check.h"
-#include "src/vkllm_array.h"
-#include "src/vkllm_commands.h"
-#include "src/vkllm_context.h"
-#include "src/vkllm_dtypes.h"
-#include "src/vkllm_op_softmax.h"
-#include "src/vkllm_tensor.h"
+#include "src/core/vkllm_array.h"
+#include "src/core/vkllm_commands.h"
+#include "src/core/vkllm_context.h"
+#include "src/core/vkllm_dtypes.h"
+#include "src/core/vkllm_op_softmax.h"
+#include "src/core/vkllm_tensor.h"
 #include "vkllm_test_common.h"
 #include <math.h>
 #include <string.h>

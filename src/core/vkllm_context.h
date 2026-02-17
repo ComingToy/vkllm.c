@@ -1,7 +1,7 @@
 #ifndef __VKLLM_CONTEXT_H__
 #define __VKLLM_CONTEXT_H__
 
-#include "src/vkllm_common.h"
+#include "vkllm_common.h"
 #ifdef __cplusplus
 extern "C" {
 #endif

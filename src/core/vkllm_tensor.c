@@ -1,10 +1,10 @@
 #include "vkllm_tensor.h"
-#include "src/vkllm_ops.h"
+#include "vkllm_ops.h"
 #include "vkllm_context.h"
 #include "vkllm_dtypes.h"
 #include "vkllm_gpu_device.h"
 
-#include "src/vkllm_common.h"
+#include "vkllm_common.h"
 #include <string.h>
 
 static vkllm_err_t vkllm_calc_strides(struct vkllm_gpu_device *device, const uint32_t *shapes, vkllm_dtype_t dtype,

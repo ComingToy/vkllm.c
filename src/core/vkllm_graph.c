@@ -1,5 +1,5 @@
 #include "vkllm_graph.h"
-#include "src/vkllm_common.h"
+#include "vkllm_common.h"
 #include "vkllm_commands.h"
 #include "vkllm_context.h"
 #include "vkllm_hashset.h"

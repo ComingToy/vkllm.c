@@ -1,8 +1,8 @@
 #include "log.h"
-#include "src/vkllm_commands.h"
-#include "src/vkllm_context.h"
-#include "src/vkllm_gpu_device.h"
-#include "src/vkllm_tensor.h"
+#include "src/core/vkllm_commands.h"
+#include "src/core/vkllm_context.h"
+#include "src/core/vkllm_gpu_device.h"
+#include "src/core/vkllm_tensor.h"
 #include <stdio.h>
 
 void random_buf(float *a, const size_t n)

@@ -1,8 +1,8 @@
 #ifndef __VKLLM_TEST_COMMON_H__
 #define __VKLLM_TEST_COMMON_H__
 
-#include "src/vkllm_common.h"
-#include "src/vkllm_dtypes.h"
+#include "src/core/vkllm_common.h"
+#include "src/core/vkllm_dtypes.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
