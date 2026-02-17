@@ -1,7 +1,10 @@
 #include "vkllm_pipeline.h"
 #include "vkllm_array.h"
 #include "vkllm_common.h"
-#include "vkllm_comp_shaders_f32_f32_f32.h"
+#include "vkllm_comp_shaders_f16f16f16.h"
+#include "vkllm_comp_shaders_f16f16f32.h"
+#include "vkllm_comp_shaders_f16f32f32.h"
+#include "vkllm_comp_shaders_f32f32f32.h"
 #include "vkllm_context.h"
 #include "vkllm_dtypes.h"
 #include "vkllm_errors.h"
@@ -26,6 +29,26 @@ fail_sizes:
 fail_offsets:
     vkllm_array_u8_free(p->data);
 fail_data:
+    return err;
+}
+
+vkllm_err_t vkllm_shader_constants_copy(const struct vkllm_shader_constants *src, struct vkllm_shader_constants **dst)
+{
+    vkllm_err_t err = VKLLM_ERR_OK;
+
+    _CHECK_ARGS(src);
+    _NEW_AND_CHECK(*dst, struct vkllm_shader_constants);
+
+    struct vkllm_shader_constants *p = *dst;
+    _CHECK_JUMP(vkllm_array_u8_copy(src->data, &p->data), err, fail_copy);
+    _CHECK_JUMP(vkllm_array_u32_copy(src->offsets, &p->offsets), err, fail_copy);
+    _CHECK_JUMP(vkllm_array_u32_copy(src->sizes, &p->sizes), err, fail_copy);
+    p->bytes = src->bytes;
+
+    return err;
+
+fail_copy:
+    vkllm_shader_constants_free(p);
     return err;
 }
 
@@ -145,7 +168,7 @@ vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, struct vkllm_shade
                                struct vkllm_pipeline **pipeline)
 {
     struct vkllm_gpu_device *device = context->device;
-    _CHECK_ARGS(context && device && spv && specializations && pipeline);
+    _CHECK_ARGS(context && device && spv && pipeline);
 
     const VkPhysicalDeviceLimits *limits = &device->vk_physical_dev.properties.limits;
 
@@ -169,40 +192,50 @@ vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, struct vkllm_shade
     _CHECK(vkllm_pipeline_init_desc_set_pool(p));
     _CHECK(vkllm_pipeline_create_shader_module(p, spv, spv_size));
 
-    vkllm_shader_constants_append(specializations, shader_info.local_x);
-    vkllm_shader_constants_append(specializations, shader_info.local_y);
-    vkllm_shader_constants_append(specializations, shader_info.local_z);
+    struct vkllm_shader_constants *local_specializations = NULL;
+    if (specializations)
+    {
+        _CHECK(vkllm_shader_constants_copy(specializations, &local_specializations));
+    }
+    else
+    {
+        _CHECK(vkllm_shader_constants_new(&local_specializations, 24));
+    }
+
+    vkllm_shader_constants_append(local_specializations, shader_info.local_x);
+    vkllm_shader_constants_append(local_specializations, shader_info.local_y);
+    vkllm_shader_constants_append(local_specializations, shader_info.local_z);
 
     VkSpecializationMapEntry *specialization_entries = NULL;
-    _NEW_N_AND_CHECK(specialization_entries, VkSpecializationMapEntry, specializations->offsets->used_n);
+    _NEW_N_AND_CHECK(specialization_entries, VkSpecializationMapEntry, local_specializations->offsets->used_n);
 
-    for (uint32_t i = 0; i < specializations->offsets->used_n - 3; ++i)
+    for (uint32_t i = 0; i < local_specializations->offsets->used_n - 3; ++i)
     {
         VkSpecializationMapEntry entry = {
             .constantID = i,
-            .offset = specializations->offsets->data[i],
-            .size = specializations->sizes->data[i],
+            .offset = local_specializations->offsets->data[i],
+            .size = local_specializations->sizes->data[i],
         };
 
         specialization_entries[i] = entry;
     }
 
-    for (uint32_t i = 0, k = specializations->offsets->used_n - 3; i < 3; ++i, ++k)
+    for (uint32_t i = 0, k = local_specializations->offsets->used_n - 3; i < 3; ++i, ++k)
     {
         uint32_t id = 253 + i;
         VkSpecializationMapEntry entry = {
             .constantID = id,
-            .offset = specializations->offsets->data[k],
-            .size = specializations->sizes->data[k],
+            .offset = local_specializations->offsets->data[k],
+            .size = local_specializations->sizes->data[k],
         };
 
         specialization_entries[k] = entry;
     }
 
-    VkSpecializationInfo specialization_info = {.mapEntryCount = specializations->offsets->used_n,
+    VkSpecializationInfo specialization_info = {.mapEntryCount = local_specializations->offsets->used_n,
                                                 .pMapEntries = specialization_entries,
-                                                .dataSize = (size_t)specializations->data->used_n,
-                                                .pData = specializations->data->data};
+                                                .dataSize = (size_t)local_specializations->data->used_n,
+                                                .pData = local_specializations->data->data};
 
     VkPipelineShaderStageCreateInfo shader_stage_create_info = {.sType =
                                                                     VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -225,6 +258,7 @@ vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, struct vkllm_shade
         vkCreateComputePipelines(p->device->vk_dev, VK_NULL_HANDLE, 1, &pipeline_create_info, NULL, &p->vk_pipeline);
 
     free(specialization_entries);
+    vkllm_shader_constants_free(local_specializations);
     if (vkresult != VK_SUCCESS)
     {
         log_error("vkCreateComputePipelines failed: %d", (int)vkresult);
@@ -290,36 +324,35 @@ void vkllm_pipeline_free(struct vkllm_context *context, struct vkllm_pipeline *p
     free(pipeline);
 }
 
-static vkllm_err_t vkllm_create_add_pipeline(struct vkllm_context *context)
+static vkllm_err_t vkllm_create_add_pipeline(struct vkllm_context *context, const uint8_t *spv, const size_t spv_size,
+                                             struct vkllm_pipeline **ppipeline)
 {
     _CHECK_ARGS(context);
     struct vkllm_shader_info shader_info = {
         .binding_count = 3, .push_constant_bytes = sizeof(uint32_t) * 8, .local_x = 512, .local_y = 1, .local_z = 1};
 
-    struct vkllm_pipeline *pipeline = NULL;
-    struct vkllm_shader_constants *specializations = NULL;
-
-    _CHECK(vkllm_shader_constants_new(&specializations, sizeof(uint32_t) * 3));
-
-    const uint8_t *spv = _vkllm_add_comp_f32_f32_f32_spv();
-    const size_t spv_size = _vkllm_add_comp_f32_f32_f32_size();
-
-    vkllm_err_t err = vkllm_pipeline_new(context, shader_info, spv, spv_size, specializations, &pipeline);
-    vkllm_shader_constants_free(specializations);
+    vkllm_err_t err = vkllm_pipeline_new(context, shader_info, spv, spv_size, NULL, ppipeline);
 
     if (err != VKLLM_ERR_OK)
     {
         log_error("vkllm_pipeline_new failed: %s", vkllm_err_s(err));
-        return err;
     }
 
-    struct vkllm_array_dtype *dtypes = NULL;
-    vkllm_array_dtype_new(&dtypes, 2);
-    vkllm_array_dtype_append(dtypes, vkllm_dtype_float32);
-    vkllm_array_dtype_append(dtypes, vkllm_dtype_float32);
-    struct vkllm_pipeline_desc desc = {.in_dtypes = dtypes, .dtype = vkllm_dtype_float32, .pipeline = pipeline};
+    return err;
+}
 
-    vkllm_array_pipeline_desc_append(context->pipelines.add, desc);
+static vkllm_err_t vkllm_create_all_add_pipeline(struct vkllm_context *context)
+{
+#define _CREATE_ADD_PIPELINE(_tag)                                                                                     \
+    _CHECK(vkllm_create_add_pipeline(context, _vkllm_add_comp_##_tag##_spv(), _vkllm_add_comp_##_tag##_size(),         \
+                                     &context->pipelines.add.pipeline_##_tag))
+
+    _CREATE_ADD_PIPELINE(f16f16f16);
+    _CREATE_ADD_PIPELINE(f16f16f32);
+    _CREATE_ADD_PIPELINE(f16f32f32);
+    _CREATE_ADD_PIPELINE(f32f32f32);
+
+#undef _CREATE_ADD_PIPELINE
     return VKLLM_ERR_OK;
 }
 
@@ -328,50 +361,41 @@ static vkllm_err_t vkllm_create_embedding_pipeline(struct vkllm_context *context
     _CHECK_ARGS(context);
     struct vkllm_shader_info shader_info = {
         .binding_count = 3, .push_constant_bytes = sizeof(uint32_t) * 25, .local_x = 512, .local_y = 1, .local_z = 1};
-    const uint8_t *spv = _vkllm_embedding_comp_f32_f32_f32_spv();
-    const size_t spv_size = _vkllm_embedding_comp_f32_f32_f32_size();
 
-    struct vkllm_pipeline *pipeline = NULL;
-    struct vkllm_shader_constants *specializations = NULL;
-    _CHECK(vkllm_shader_constants_new(&specializations, 24));
+#define _CREATE_EMBEDDING_PIPELINE(_tag)                                                                               \
+    _CHECK(vkllm_pipeline_new(context, shader_info, _vkllm_embedding_comp_##_tag##_spv(),                              \
+                              _vkllm_embedding_comp_##_tag##_size(), NULL,                                             \
+                              &context->pipelines.embedding.pipeline_##_tag))
 
-    vkllm_err_t err = vkllm_pipeline_new(context, shader_info, spv, spv_size, specializations, &pipeline);
-    vkllm_shader_constants_free(specializations);
-
-    if (err != VKLLM_ERR_OK)
-    {
-        return err;
-    }
-
-    struct vkllm_array_dtype *dtypes = NULL;
-    vkllm_array_dtype_new(&dtypes, 2);
-    vkllm_array_dtype_append(dtypes, vkllm_dtype_uint32);
-    vkllm_array_dtype_append(dtypes, vkllm_dtype_float32);
-
-    struct vkllm_pipeline_desc desc = {.in_dtypes = dtypes, .dtype = vkllm_dtype_float32, .pipeline = pipeline};
-    vkllm_array_pipeline_desc_append(context->pipelines.embedding, desc);
+    _CREATE_EMBEDDING_PIPELINE(f16f16f16);
+    _CREATE_EMBEDDING_PIPELINE(f16f16f32);
+    _CREATE_EMBEDDING_PIPELINE(f16f32f32);
+    _CREATE_EMBEDDING_PIPELINE(f32f32f32);
+#undef _CREATE_EMBEDDING_PIPELINE
     return VKLLM_ERR_OK;
 }
 
 vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context)
 {
-    _CHECK(vkllm_create_add_pipeline(context));
+    _CHECK(vkllm_create_all_add_pipeline(context));
     _CHECK(vkllm_create_embedding_pipeline(context));
     return VKLLM_ERR_OK;
 }
 
-static void vkllm_free_pipeline_desc(struct vkllm_context *context, struct vkllm_array_pipeline_desc *arr)
+static void _vkllm_free_pipelines(struct vkllm_context *context, struct vkllm_pipeline **pipelines, const size_t size)
 {
-    for (uint32_t i = 0; i < arr->used_n; ++i)
+    for (uint32_t i = 0; i < size; ++i)
     {
-        struct vkllm_pipeline_desc *desc = &arr->data[i];
-        vkllm_pipeline_free(context, desc->pipeline);
-        vkllm_array_dtype_free(desc->in_dtypes);
+        vkllm_pipeline_free(context, pipelines[i]);
     }
 }
 
+#define vkllm_free_op_pipelines(context, op)                                                                           \
+    _vkllm_free_pipelines(context, context->pipelines.op.pipelines, _ARRAY_SIZE(context->pipelines.op.pipelines))
+
 void vkllm_free_all_pipelines(struct vkllm_context *context)
 {
-    vkllm_free_pipeline_desc(context, context->pipelines.add);
-    vkllm_free_pipeline_desc(context, context->pipelines.embedding);
+    vkllm_free_op_pipelines(context, add);
+    vkllm_free_op_pipelines(context, embedding);
 }
+#undef vkllm_free_op_pipelines
