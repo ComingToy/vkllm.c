@@ -11,6 +11,13 @@
 #include <stdio.h>
 #include <string.h>
 
+// ============================================================================
+// CRITICAL FIX: Use a global context shared across all test cases
+// This prevents repeated VkInstance creation/destruction which can cause
+// GPU driver issues and device enumeration failures
+// ============================================================================
+static struct vkllm_context *g_context = NULL;
+
 // Matrix multiplication: C = A * B with broadcasting support
 // A: [B_a, C_a, M, K], B: [B_b, C_b, K, N] or [B_b, C_b, N, K], C: [B_c, C_c, M, N]
 // Broadcasting rules: B_c = max(B_a, B_b), C_c = max(C_a, C_b)
@@ -229,12 +236,12 @@ static struct
 
 START_TEST(test_op_matmul)
 {
-    struct vkllm_context *context;
-    vkllm_err_t err = vkllm_context_new(0, &context);
-    ck_assert_int_eq(err, VKLLM_ERR_OK);
+    // FIXED: Use global context instead of creating a new one each time
+    struct vkllm_context *context = g_context;
+    ck_assert_ptr_nonnull(context);
 
     struct vkllm_commands *commands;
-    err = vkllm_commands_new(context, &commands);
+    vkllm_err_t err = vkllm_commands_new(context, &commands);
     ck_assert_int_eq(err, VKLLM_ERR_OK);
 
     uint32_t B_a = tests[_i].B_a;
@@ -324,7 +331,7 @@ START_TEST(test_op_matmul)
         compare_buf(buf_c_expected->data, gpu_output, output->shapes, output->strides, output->bytes, output->dtype),
         tolerance);
 
-    // Clean up
+    // Clean up tensors (but NOT the context!)
     vkllm_tensor_free(context, input_a);
     vkllm_tensor_free(context, input_b);
     vkllm_tensor_free(context, output);
@@ -332,9 +339,32 @@ START_TEST(test_op_matmul)
     vkllm_array_u8_free(buf_b);
     vkllm_array_u8_free(buf_c_expected);
     vkllm_commands_free(context, commands);
-    vkllm_context_free(context);
+    
+    // IMPORTANT: Do NOT call vkllm_context_free() here!
+    // The context will be freed in the teardown function
 }
 END_TEST;
+
+// Setup function called once before all tests
+static void setup_global_context(void)
+{
+    vkllm_err_t err = vkllm_context_new(0, &g_context);
+    if (err != VKLLM_ERR_OK)
+    {
+        fprintf(stderr, "Failed to create global context: %d\n", err);
+        exit(EXIT_FAILURE);
+    }
+}
+
+// Teardown function called once after all tests
+static void teardown_global_context(void)
+{
+    if (g_context != NULL)
+    {
+        vkllm_context_free(g_context);
+        g_context = NULL;
+    }
+}
 
 Suite *vkllm_op_matmul_test_suite(void)
 {
@@ -343,6 +373,12 @@ Suite *vkllm_op_matmul_test_suite(void)
     suite = suite_create("vkllm_op_matmul");
     tcase_f32 = tcase_create("vkllm_op_matmul");
 
+    // CRITICAL FIX: Use UNCHECKED fixtures to ensure setup/teardown runs ONLY ONCE
+    // for the entire test suite, not once per test case
+    // checked_fixture = runs before/after EACH test (wrong!)
+    // unchecked_fixture = runs before/after ALL tests (correct!)
+    tcase_add_unchecked_fixture(tcase_f32, setup_global_context, teardown_global_context);
+    
     tcase_add_loop_test(tcase_f32, test_op_matmul, 0, _ARRAY_SIZE(tests));
     tcase_set_timeout(tcase_f32, 120.0);
     suite_add_tcase(suite, tcase_f32);
