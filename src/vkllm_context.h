@@ -23,11 +23,10 @@ extern "C"
         {
             struct
             {
-                struct vkllm_pipeline *pipeline_f32f32f32;
-                struct vkllm_pipeline *pipeline_f16f32f32;
-                struct vkllm_pipeline *pipeline_f16f16f32;
-                struct vkllm_pipeline *pipeline_f16f16f16;
-                struct vkllm_pipeline *pipeline_f16f32f16;
+                struct vkllm_pipeline *f32f32f32;
+                struct vkllm_pipeline *f16f32f32;
+                struct vkllm_pipeline *f16f16f32;
+                struct vkllm_pipeline *f16f16f16;
             } add;
             struct
             {

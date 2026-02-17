@@ -1,13 +1,10 @@
 #include "vkllm_pipeline.h"
+#include "vkllm_add_shaders.h"
 #include "vkllm_array.h"
 #include "vkllm_common.h"
-#include "vkllm_comp_shaders_f16f16f16.h"
-#include "vkllm_comp_shaders_f16f16f32.h"
-#include "vkllm_comp_shaders_f16f32f16.h"
-#include "vkllm_comp_shaders_f16f32f32.h"
-#include "vkllm_comp_shaders_f32f32f32.h"
 #include "vkllm_context.h"
 #include "vkllm_dtypes.h"
+#include "vkllm_embedding_shaders.h"
 #include "vkllm_errors.h"
 #include "vkllm_gpu_device.h"
 #include "vkllm_tensor.h"
@@ -332,38 +329,23 @@ void vkllm_pipeline_free(struct vkllm_context *context, struct vkllm_pipeline *p
     free(pipeline);
 }
 
-static vkllm_err_t vkllm_create_add_pipeline(struct vkllm_context *context, const char *name, const uint8_t *spv,
-                                             const size_t spv_size, struct vkllm_pipeline **ppipeline)
+static vkllm_err_t vkllm_create_all_add_pipeline(struct vkllm_context *context)
 {
+#define _CREATE_ADD_PIPELINE(_tag)                                                                                     \
+    _CHECK(vkllm_pipeline_new(context, "add_" #_tag, shader_info, _vkllm_add_##_tag##_spv(),                           \
+                              _vkllm_add_##_tag##_size(), NULL, &context->pipelines.add._tag))
     _CHECK_ARGS(context);
     struct vkllm_shader_info shader_info = {
         .binding_count = 3, .push_constant_bytes = sizeof(uint32_t) * 8, .local_x = 512, .local_y = 1, .local_z = 1};
 
-    vkllm_err_t err = vkllm_pipeline_new(context, name, shader_info, spv, spv_size, NULL, ppipeline);
-
-    if (err != VKLLM_ERR_OK)
-    {
-        log_error("vkllm_pipeline_new failed: %s", vkllm_err_s(err));
-    }
-
-    return err;
-}
-
-static vkllm_err_t vkllm_create_all_add_pipeline(struct vkllm_context *context)
-{
-#define _CREATE_ADD_PIPELINE(_tag)                                                                                     \
-    _CHECK(vkllm_create_add_pipeline(context, "pipeline_add_" #_tag, _vkllm_add_comp_##_tag##_spv(),                   \
-                                     _vkllm_add_comp_##_tag##_size(), &context->pipelines.add.pipeline_##_tag))
-
-    context->pipelines.add.pipeline_f16f16f16 = NULL;
-    context->pipelines.add.pipeline_f16f16f32 = NULL;
-    context->pipelines.add.pipeline_f16f32f32 = NULL;
-    context->pipelines.add.pipeline_f32f32f32 = NULL;
-    context->pipelines.add.pipeline_f16f32f16 = NULL;
+    context->pipelines.add.f16f16f16 = NULL;
+    context->pipelines.add.f16f32f32 = NULL;
+    context->pipelines.add.f16f16f32 = NULL;
+    context->pipelines.add.f32f32f32 = NULL;
 
     if (context->device->support_16bit_storage)
     {
-        _CREATE_ADD_PIPELINE(f16f32f16);
+        _CREATE_ADD_PIPELINE(f16f32f32);
         if (context->device->support_fp16_arithmetic)
         {
             _CREATE_ADD_PIPELINE(f16f16f16);
@@ -371,7 +353,6 @@ static vkllm_err_t vkllm_create_all_add_pipeline(struct vkllm_context *context)
         }
     }
 
-    _CREATE_ADD_PIPELINE(f16f32f32);
     _CREATE_ADD_PIPELINE(f32f32f32);
 
 #undef _CREATE_ADD_PIPELINE
@@ -389,12 +370,12 @@ static vkllm_err_t vkllm_create_embedding_pipeline(struct vkllm_context *context
 
     if (context->device->support_16bit_storage)
     {
-        vkllm_pipeline_new(context, "pipeline_embedding_f16", shader_info, _vkllm_embedding_comp_f16f16f16_spv(),
-                           _vkllm_embedding_comp_f16f16f16_size(), NULL, &context->pipelines.embedding.f16);
+        _CHECK(vkllm_pipeline_new(context, "pipeline_embedding_f16", shader_info, _vkllm_embedding_f16_spv(),
+                                  _vkllm_embedding_f16_size(), NULL, &context->pipelines.embedding.f16));
     }
 
-    vkllm_pipeline_new(context, "pipeline_embedding_f32", shader_info, _vkllm_embedding_comp_f32f32f32_spv(),
-                       _vkllm_embedding_comp_f32f32f32_size(), NULL, &context->pipelines.embedding.f32);
+    _CHECK(vkllm_pipeline_new(context, "pipeline_embedding_f32", shader_info, _vkllm_embedding_f32_spv(),
+                              _vkllm_embedding_f32_size(), NULL, &context->pipelines.embedding.f32));
     return VKLLM_ERR_OK;
 }
 
@@ -405,23 +386,12 @@ vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context)
     return VKLLM_ERR_OK;
 }
 
-#define _member(context, op, tag) ((context)->pipelines.op.pipeline_##tag)
-#define _vkllm_free_op_pipeline(context, op, tag)                                                                      \
-    if (_member(context, op, tag))                                                                                     \
-    {                                                                                                                  \
-        vkllm_pipeline_free(context, _member(context, op, tag));                                                       \
-    }
-
-#define vkllm_free_op_pipelines(context, op)                                                                           \
-    _vkllm_free_op_pipeline(context, op, f16f16f16);                                                                   \
-    _vkllm_free_op_pipeline(context, op, f16f16f32);                                                                   \
-    _vkllm_free_op_pipeline(context, op, f16f32f32);                                                                   \
-    _vkllm_free_op_pipeline(context, op, f32f32f32);                                                                   \
-    _vkllm_free_op_pipeline(context, op, f16f32f16);
-
 void vkllm_free_all_pipelines(struct vkllm_context *context)
 {
-    vkllm_free_op_pipelines(context, add);
+    vkllm_pipeline_free(context, context->pipelines.add.f16f16f16);
+    vkllm_pipeline_free(context, context->pipelines.add.f16f32f32);
+    vkllm_pipeline_free(context, context->pipelines.add.f32f32f32);
+
     vkllm_pipeline_free(context, context->pipelines.embedding.f16);
     vkllm_pipeline_free(context, context->pipelines.embedding.f32);
 }
