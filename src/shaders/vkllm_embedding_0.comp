@@ -1,4 +1,6 @@
 #version 450 core
+#extension GL_EXT_shader_16bit_storage: require
+
 #include "vkllm_shader_header.comp.h"
 
 layout(push_constant) uniform constants
@@ -16,12 +18,12 @@ layout(binding = 0) readonly buffer Indices
 
 layout(binding = 1) readonly buffer Params
 {
-    float params[];
+    IN_TYPE0 params[];
 };
 
 layout(binding = 2) writeonly buffer Out
 {
-    float output0[];
+    OUT_TYPE output0[];
 };
 
 void get_indices(uint tid, in out uint b, out uint c, out uint h, out uint w)
@@ -66,6 +68,6 @@ void main(void)
     for (uint w = 0; w < dim; ++w)
     {
         uint params_off = (tok * params_shape.strides[2]) / 4;
-		output0[out_off + w] = params[params_off + w];
+		output0[out_off + w] = OUT_TYPE(params[params_off + w]);
     }
 }
