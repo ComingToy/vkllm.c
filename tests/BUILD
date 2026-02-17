@@ -135,3 +135,11 @@ cc_test(
     copts = COPTS,
     linkopts = LINK_OPTS,
 )
+
+cc_test(
+    name = "vkllm_test_op_ffn_up_and_gate",
+    srcs = ["vkllm_test_op_ffn_up_and_gate.c"],
+    deps = DEPS,
+    copts = COPTS,
+    linkopts = LINK_OPTS,
+)
