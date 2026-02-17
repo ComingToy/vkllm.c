@@ -6,8 +6,8 @@ layout(push_constant) uniform constants
 {
     ShapeConstant in_shape;
     ShapeConstant w_shape;
-    LOAD_DTYPE power;
-    LOAD_DTYPE eps;
+    float power;
+    float eps;
 };
 
 layout(binding = 0) readonly buffer in0_buffer_type
@@ -32,7 +32,7 @@ void main(void)
 {
     uint tid_x = gl_GlobalInvocationID.x;
     uint row_id = gl_WorkGroupID.z * gl_NumWorkGroups.y + gl_WorkGroupID.y;
-    
+
     uint bn = in_shape.shapes[1] * in_shape.shapes[2];
     uint b = row_id / bn;
     uint c = (row_id - b * bn) / in_shape.shapes[2];
@@ -51,7 +51,7 @@ void main(void)
     for (uint i = tid_x; i < W; i += _RMS_NORM_BLOCK_X)
     {
         LOAD_DTYPE v = LOAD_DTYPE(in0[row_offset + i]);
-        sum[tid_x] += (v*v);
+        sum[tid_x] += (v * v);
     }
 
     barrier();
@@ -63,15 +63,20 @@ void main(void)
         {
             sum[tid_x] += sum[tid_x + i];
         }
+        barrier();
+        memoryBarrierShared();
     }
 
-    LOAD_DTYPE mean = sum[0]/LOAD_DTYPE(W);
+    barrier();
+    memoryBarrierShared();
+
+    LOAD_DTYPE mean = sum[0] / LOAD_DTYPE(W);
     LOAD_DTYPE alpha = inversesqrt(mean + eps);
 
-    for (uint i = 0; i < W; i += _RMS_NORM_BLOCK_X)
+    for (uint i = tid_x; i < W; i += _RMS_NORM_BLOCK_X)
     {
         LOAD_DTYPE v0 = LOAD_DTYPE(in0[row_offset + i]);
-        LOAD_DTYPE v1 = LOAD_DTYPE(in1[i]); 
+        LOAD_DTYPE v1 = LOAD_DTYPE(in1[i]);
         out0[row_offset + i] = OUT_DTYPE(v0 * v1 * alpha);
     }
 }

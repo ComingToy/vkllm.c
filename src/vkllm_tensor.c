@@ -117,7 +117,28 @@ static vkllm_err_t vkllm_tensor_get_pipeline(struct vkllm_context *context, stru
         }
         else
         {
-            return VKLLM_ERR_ARGS;
+        }
+    }
+    else if (tensor->op == VKLLM_OP_RMSNORM)
+    {
+        _CHECK_ARGS(tensor->srcs[0] && tensor->srcs[1]);
+        if (tensor->dtype == vkllm_dtype_float32 && tensor->srcs[0]->dtype == vkllm_dtype_float32 &&
+            tensor->srcs[1]->dtype == vkllm_dtype_float32)
+        {
+            tensor->pipeline = context->pipelines.rmsnorm.f32f32f32;
+        }
+        else if (tensor->dtype == vkllm_dtype_float32 && tensor->srcs[0]->dtype == vkllm_dtype_float16 &&
+                 tensor->srcs[1]->dtype == vkllm_dtype_float16)
+        {
+            tensor->pipeline = context->pipelines.rmsnorm.f16f32f32;
+        }
+        else if (tensor->dtype == vkllm_dtype_float16 && tensor->srcs[0]->dtype == vkllm_dtype_float16 &&
+                 tensor->srcs[1]->dtype == vkllm_dtype_float16)
+        {
+            tensor->pipeline = context->pipelines.rmsnorm.f16f32f16;
+        }
+        else
+        {
         }
     }
     else

@@ -2,13 +2,26 @@
 #include "vkllm_context.h"
 
 #include <log.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "vkllm_common.h"
 #include "vulkan/vulkan_core.h"
 
-#define __VKLLM_DEBUG__ 1
+// #define __VKLLM_DEBUG__ 1
+
+#ifdef __VKLLM_DEBUG__
+static VKAPI_ATTR VkBool32 VKAPI_CALL
+debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,    // 消息严重级别
+              VkDebugUtilsMessageTypeFlagsEXT messageType,               // 消息类型
+              const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, // 回调数据
+              void *pUserData)
+{
+    fprintf(stderr, "validation layer: %s\n", pCallbackData->pMessage);
+    return VK_FALSE;
+}
+#endif
 
 static int create_instance(struct vkllm_gpu_device *pdev)
 {
@@ -37,11 +50,20 @@ static int create_instance(struct vkllm_gpu_device *pdev)
 #ifdef __APPLE__
         VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
 #endif
+#ifdef __VKLLM_DEBUG__
+        VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
+#endif
     };
+
+    VkValidationFeatureEnableEXT enabledFeatures[] = {VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT};
+
+    VkValidationFeaturesEXT validationFeatures = {.sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
+                                                  .enabledValidationFeatureCount = 1,
+                                                  .pEnabledValidationFeatures = enabledFeatures};
 
     VkInstanceCreateInfo instance_create_info = {
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        .pNext = NULL,
+        .pNext = &validationFeatures,
 #if __APPLE__
         .flags = VK_KHR_portability_enumeration,
 #else
@@ -60,6 +82,29 @@ static int create_instance(struct vkllm_gpu_device *pdev)
         log_error("create vulkan instance failed: %d", (int)ret);
         return VKLLM_ERR_VULKAN;
     }
+
+#ifdef __VKLLM_DEBUG__
+    VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+        .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT |   // 错误
+                           VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | // 警告
+                           VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT,
+        .pfnUserCallback = debugCallback,
+        .pUserData = NULL,
+        .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |  // 验证层消息/`debugPrintfEXT`输出
+                       VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT | // 性能警告
+                       VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT,      // 与规范或性能无关的一般事件,
+        .flags = 0,
+    };
+
+    PFN_vkCreateDebugUtilsMessengerEXT pfn =
+        (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(pdev->vk_instance, "vkCreateDebugUtilsMessengerEXT");
+    if (pfn)
+    {
+        _CHECK_VK(pfn(pdev->vk_instance, &debugCreateInfo, NULL, &pdev->vk_debug_msgr));
+    }
+
+#endif
 
     return VKLLM_ERR_OK;
 }
@@ -344,6 +389,7 @@ vkllm_err_t vkllm_gpu_device_new(struct vkllm_context *context, uint32_t id)
         goto err_init_gpu_dev;
     }
 
+#ifdef __VKLLM_DEBUG__
     log_info("gpu device info:");
     log_info("support_16bit_storage: %s", BOOL_S(pdev->support_16bit_storage));
     log_info("support_8bit_storage: %s", BOOL_S(pdev->support_8bit_storage));
@@ -354,6 +400,7 @@ vkllm_err_t vkllm_gpu_device_new(struct vkllm_context *context, uint32_t id)
 
     const uint32_t *max_group_counts = pdev->vk_physical_dev.properties.limits.maxComputeWorkGroupCount;
     log_info("group count limits.xyz = (%u, %u, %u)", max_group_counts[0], max_group_counts[1], max_group_counts[2]);
+#endif
     return VKLLM_ERR_OK;
 
 err_init_gpu_dev:
@@ -392,6 +439,13 @@ void vkllm_gpu_device_free(struct vkllm_context *context)
 {
     struct vkllm_gpu_device *pdev = context->device;
     vmaDestroyAllocator(pdev->vma_allocator);
+
+    PFN_vkDestroyDebugUtilsMessengerEXT pfn = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
+        pdev->vk_instance, "vkDestroyDebugUtilsMessengerEXT");
+    if (pfn)
+    {
+        pfn(pdev->vk_instance, pdev->vk_debug_msgr, NULL);
+    }
     vkDestroyDevice(pdev->vk_dev, NULL);
     vkDestroyInstance(pdev->vk_instance, NULL);
     free(pdev->vk_physical_dev.ext_properties);

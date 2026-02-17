@@ -386,7 +386,7 @@ static vkllm_err_t vkllm_create_rmsnorm_pipeline(struct vkllm_context *context)
 
     struct vkllm_shader_info shader_info = {
         .binding_count = 3,
-        .push_constant_bytes = sizeof(uint32_t) * 8 * 2,
+        .push_constant_bytes = sizeof(uint32_t) * 8 * 2 + sizeof(float) * 2,
         .local_x = 512,
         .local_y = 1,
         .local_z = 1,
@@ -398,6 +398,8 @@ static vkllm_err_t vkllm_create_rmsnorm_pipeline(struct vkllm_context *context)
     {
         _CHECK(vkllm_pipeline_new(context, "pipeline_rmsnorm_f16f32f32", shader_info, _vkllm_rmsnorm_f16f32f32_spv(),
                                   _vkllm_rmsnorm_f16f32f32_size(), NULL, &context->pipelines.rmsnorm.f16f32f32));
+        _CHECK(vkllm_pipeline_new(context, "pipeline_rmsnorm_f16f32f16", shader_info, _vkllm_rmsnorm_f16f32f16_spv(),
+                                  _vkllm_rmsnorm_f16f32f16_size(), NULL, &context->pipelines.rmsnorm.f16f32f16));
     }
 
     _CHECK(vkllm_pipeline_new(context, "pipeline_rmsnorm_f32f32f32", shader_info, _vkllm_rmsnorm_f32f32f32_spv(),
@@ -424,6 +426,7 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
     vkllm_pipeline_free(context, context->pipelines.embedding.f32);
 
     vkllm_pipeline_free(context, context->pipelines.rmsnorm.f16f32f32);
+    vkllm_pipeline_free(context, context->pipelines.rmsnorm.f16f32f16);
     vkllm_pipeline_free(context, context->pipelines.rmsnorm.f32f32f32);
 }
 #undef vkllm_free_op_pipelines

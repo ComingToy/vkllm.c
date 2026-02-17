@@ -38,6 +38,7 @@ struct vkllm_gpu_device
     VkInstance vk_instance;
     VkDevice vk_dev;
     struct vkllm_vk_physical_dev vk_physical_dev;
+    VkDebugUtilsMessengerEXT vk_debug_msgr;
     bool support_descriptor_templ_update;
     bool support_16bit_storage;
     bool support_8bit_storage;
