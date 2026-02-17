@@ -2,10 +2,11 @@
 #define __VKLLM_PIPELINE_H__
 
 #include "vkllm_array.h"
-#include "vkllm_gpu_device.h"
 #include <stdint.h>
 #include <vulkan/vulkan.h>
 
+struct vkllm_gpu_device;
+struct vkllm_context;
 struct vkllm_shader_info
 {
     uint32_t binding_count;
