@@ -7,6 +7,61 @@
 #include "src/core/vkllm_common.h"
 #include <math.h>
 
+vkllm_err_t vkllm_llama2_build_ffn_layer(struct vkllm_context *context, struct vkllm_graph *graph,
+                                         struct vkllm_tensor *input, struct vkllm_llama2_ffn_layer_params params)
+{
+    _CHECK_ARGS(context && graph && input && params.WD && params.WG && params.WU);
+    struct vkllm_tensor *up = NULL, *gate = NULL, *down = NULL, *gate_mul = NULL;
+    vkllm_err_t err = VKLLM_ERR_OK;
+
+    uint32_t batch = input->shapes[0];
+    uint32_t channel = input->shapes[1];
+    uint32_t seq_len = input->shapes[2];
+    uint32_t up_dim = params.WU->shapes[3];
+
+    struct vkllm_tensor *up_srcs[] = {input, params.WU};
+    uint32_t ffn_up_shapes[] = {batch, channel, seq_len, up_dim};
+    struct vkllm_op_matmul_params up_matmul_params = {.scale = 1.0, .act = 0};
+
+    _CHECK(vkllm_tensor_new(context, "ffn_up", ffn_up_shapes, input->dtype, VKLLM_OP_MATMUL, up_srcs, 2,
+                            &up_matmul_params, sizeof(up_matmul_params), false, &up));
+    _CHECK_JUMP(vkllm_graph_add_node(context, graph, up), err, fail_free_up);
+
+    struct vkllm_tensor *gate_srcs[] = {input, params.WG};
+    struct vkllm_op_matmul_params gate_matmul_params = {.scale = 1.0, .act = 1};
+    _CHECK_JUMP(vkllm_tensor_new(context, "ffn_gate", ffn_up_shapes, input->dtype, VKLLM_OP_MATMUL, gate_srcs, 2,
+                                 &gate_matmul_params, sizeof(gate_matmul_params), false, &gate),
+                err, fail_free_up);
+    _CHECK_JUMP(vkllm_graph_add_node(context, graph, gate), err, fail_free_gate);
+
+    struct vkllm_tensor *gate_mul_srcs[] = {up, gate};
+    int32_t bin_op = 2; // times
+    _CHECK_JUMP(vkllm_tensor_new(context, "ffn_gate_mul", ffn_up_shapes, gate->dtype, VKLLM_OP_BIN, gate_mul_srcs, 2,
+                                 &bin_op, sizeof(bin_op), false, &gate_mul),
+                err, fail_free_gate);
+    _CHECK_JUMP(vkllm_graph_add_node(context, graph, gate_mul), err, fail_free_gate_mul);
+
+    struct vkllm_tensor *down_srcs[] = {gate_mul, params.WD};
+    struct vkllm_op_matmul_params down_params = {.scale = 1.0, .act = 0};
+    uint32_t ffn_down_shapes[] = {batch, channel, seq_len, params.WD->shapes[3]};
+    _CHECK_JUMP(vkllm_tensor_new(context, "ffn_down", ffn_down_shapes, gate_mul->dtype, VKLLM_OP_MATMUL, down_srcs, 2,
+                                 &down_params, sizeof(down_params), false, &down),
+                err, fail_free_down);
+    _CHECK_JUMP(vkllm_graph_add_node(context, graph, down), err, fail_free_down);
+
+    return VKLLM_ERR_OK;
+
+fail_free_down:
+    vkllm_tensor_free(context, down);
+fail_free_gate_mul:
+    vkllm_tensor_free(context, gate_mul);
+fail_free_gate:
+    vkllm_tensor_free(context, gate);
+fail_free_up:
+    vkllm_tensor_free(context, up);
+    return err;
+}
+
 vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, struct vkllm_graph *graph,
                                                struct vkllm_tensor *input,
                                                struct vkllm_llama2_self_attn_layer_params params)
