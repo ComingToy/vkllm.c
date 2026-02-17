@@ -5,6 +5,8 @@ cc_library(
         "vkllm_context.c",
         "vkllm_errors.c",
         "vkllm_dtypes.c",
+        "vkllm_tensor.c",
+        "vkllm_commands.c",
     ],
     hdrs = [
         "vkllm_gpu_device.h",
@@ -16,6 +18,7 @@ cc_library(
         "vkllm_dtypes.h",
         "vkllm_common.h",
         "vkllm_tensor.h",
+        "vkllm_commands.h",
         "vkllm_ops.h",
         "vkllm_array.h",
     ],
