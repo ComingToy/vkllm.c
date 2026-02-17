@@ -4,7 +4,6 @@
 #include "vkllm_common.h"
 #include "vkllm_context.h"
 #include "vkllm_copy_shaders.h"
-#include "vkllm_dtypes.h"
 #include "vkllm_embedding_shaders.h"
 #include "vkllm_errors.h"
 #include "vkllm_gpu_device.h"
