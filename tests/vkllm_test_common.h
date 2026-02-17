@@ -3,84 +3,9 @@
 
 #include "src/vkllm_common.h"
 #include "src/vkllm_dtypes.h"
+#include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
-typedef struct fp16_pack
-{
-    unsigned short frac : 10;
-    unsigned char exp : 5;
-    unsigned char sign : 1;
-} __attribute__((packed)) vkllm_fp16_pack;
-
-struct fp32_pack
-{
-    unsigned int frac : 23;
-    unsigned char exp : 8;
-    unsigned char sign : 1;
-} __attribute__((packed));
-
-static inline float vkllm_fp16_to_fp32(vkllm_fp16_pack data)
-{
-    float f;
-    struct fp32_pack *fp32 = (struct fp32_pack *)&f;
-    struct fp16_pack *fp16 = &data;
-
-    int exp = fp16->exp;
-
-    if (exp == 31 && fp16->frac != 0)
-    {
-        // return __builtin_inf()-__builtin_inf();
-        fp32->sign = fp16->sign;
-        fp32->exp = 255;
-        fp32->frac = 1;
-
-        return f;
-    }
-
-    if (exp == 31)
-        exp = 255;
-    if (exp == 0)
-        exp = 0;
-    else
-        exp = (exp - 15) + 127;
-
-    fp32->exp = exp;
-    fp32->sign = fp16->sign;
-    fp32->frac = ((int)fp16->frac) << 13;
-
-    return f;
-}
-
-static inline vkllm_fp16_pack vkllm_fp32_to_fp16(float data)
-{
-    struct fp32_pack *fp32 = (struct fp32_pack *)&data;
-    struct fp16_pack fp16;
-
-    int exp = fp32->exp;
-
-    if (fp32->exp == 255 && fp32->frac != 0)
-    {
-        // NaN
-        fp16.exp = 31;
-        fp16.frac = 1;
-        fp16.sign = fp32->sign;
-
-        return fp16;
-    }
-
-    if ((exp - 127) < -14)
-        exp = 0;
-    else if ((exp - 127) > 15)
-        exp = 31;
-    else
-        exp = exp - 127 + 15;
-
-    fp16.exp = exp;
-    fp16.frac = fp32->frac >> 13;
-    fp16.sign = fp32->sign;
-
-    return fp16;
-}
 
 static inline void random_buf(void *a, const size_t n, vkllm_dtype_t dtype)
 {
@@ -220,6 +145,15 @@ static inline float compare_buf(const void *lhs, const void *rhs, uint32_t shape
                         float v0 = vkllm_fp16_to_fp32(lhs_fp16[i]);
                         float v1 = vkllm_fp16_to_fp32(rhs_fp16[i]);
                         err = err + alpha * (v0 - v1) * (v0 - v1);
+
+#if 0
+                        if (fabsf(v0 - v1) > 1e-1 || isnan(err))
+                        {
+                            log_error("index %u at (%u, %u, %u, %u) err lhs %f rhs %f", i, b, c, h, w, v0, v1);
+                            continue;
+                        }
+#endif
+
                         continue;
                     }
 
@@ -232,9 +166,21 @@ static inline float compare_buf(const void *lhs, const void *rhs, uint32_t shape
     return err;
 }
 
+static inline void print_n_f16(const char *prefix, const void *buf, const size_t n)
+{
+    fprintf(stderr, "%s\n", prefix);
+
+    vkllm_fp16_pack *f16 = (vkllm_fp16_pack *)buf;
+    for (size_t i = 0; i < n; ++i)
+    {
+        fprintf(stderr, "%f ", vkllm_fp16_to_fp32(f16[i]));
+    }
+    fprintf(stderr, "\n");
+}
+
 static inline void print_n(const char *prefix, const float *buf, const size_t n)
 {
-    fprintf(stderr, "%s: \n", prefix);
+    fprintf(stderr, "%s\n", prefix);
     for (size_t i = 0; i < n; ++i)
     {
         fprintf(stderr, "%f ", buf[i]);
