@@ -42,9 +42,12 @@ struct vkllm_context
 
         struct
         {
-            struct vkllm_pipeline *f32f32f32;
-            struct vkllm_pipeline *f16f32f32;
-            struct vkllm_pipeline *f16f16f32;
+            struct vkllm_pipeline *b0t0f32f32f32;
+            struct vkllm_pipeline *b0t0f16f32f32;
+            struct vkllm_pipeline *b0t0f16f16f32;
+            struct vkllm_pipeline *b0t1f32f32f32;
+            struct vkllm_pipeline *b0t1f16f32f32;
+            struct vkllm_pipeline *b0t1f16f16f32;
         } matmul;
     } pipelines;
 };

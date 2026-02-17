@@ -6,6 +6,40 @@
 #include "vkllm_gpu_device.h"
 #include "vkllm_pipeline.h"
 
+static vkllm_err_t vkllm_op_add_get_pipeline(struct vkllm_context *context, struct vkllm_tensor *tensor,
+                                             struct vkllm_pipeline **pipeline)
+{
+    _CHECK_ARGS(context && tensor && pipeline && tensor->srcs[0] && tensor->srcs[1]);
+    *pipeline = NULL;
+    if (tensor->dtype != vkllm_dtype_float32)
+    {
+        log_error("unsupported op result dtype: %s", vkllm_dtype_s(tensor->dtype));
+        return VKLLM_ERR_ARGS;
+    }
+
+    if (tensor->srcs[0]->dtype == vkllm_dtype_float16 && tensor->srcs[1]->dtype == vkllm_dtype_float16)
+    {
+        if (context->device->support_fp16_arithmetic)
+        {
+            *pipeline = context->pipelines.add.f16f16f32;
+        }
+        else
+        {
+            *pipeline = context->pipelines.add.f16f32f32;
+        }
+        return VKLLM_ERR_OK;
+    }
+    else if (tensor->srcs[0]->dtype == vkllm_dtype_float32 && tensor->srcs[1]->dtype == vkllm_dtype_float32)
+    {
+        *pipeline = context->pipelines.add.f32f32f32;
+        return VKLLM_ERR_OK;
+    }
+    else
+    {
+        return VKLLM_ERR_ARGS;
+    }
+}
+
 vkllm_err_t vkllm_op_add(struct vkllm_context *context, struct vkllm_commands *commands, struct vkllm_tensor *tensor)
 {
     _CHECK_ARGS(context && commands && tensor);
@@ -21,7 +55,9 @@ vkllm_err_t vkllm_op_add(struct vkllm_context *context, struct vkllm_commands *c
 
     vkllm_err_t err = VKLLM_ERR_OK;
 
-    struct vkllm_pipeline *pipeline = tensor->pipeline;
+    struct vkllm_pipeline *pipeline = NULL;
+    _CHECK(vkllm_op_add_get_pipeline(context, tensor, &pipeline));
+    tensor->pipeline = pipeline;
 
     struct vkllm_dtype_info dtype_info;
     uint32_t strides[4];

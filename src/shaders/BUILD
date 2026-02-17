@@ -72,8 +72,8 @@ glsl_shader(
 glsl_shader(
     name = "vkllm_matmul_shaders",
     shaders = [
-        "vkllm_matmul_align_r4_c4.comp",
-        "vkllm_matmul.comp",
+        "vkllm_matmul_b0t0.comp",
+        "vkllm_matmul_b0t1.comp",
     ],
     hdrs = COMP_SHADER_HDRS,
     extra_args = COMMON_ARGS,
@@ -84,9 +84,9 @@ glsl_shader(
         "-D_SUPPORT_16BIT_STORAGE -DIN0_DTYPE=float16_t -DIN1_DTYPE=float16_t -DSMEM_DTYPE=vec4 -DLOAD_DTYPE=float -DOUT_DTYPE=float",
     ],
     suffixes = [
-        "_f32f32f32",
-        "_f16f16f32",
-        "_f16f32f32",
+        "f32f32f32",
+        "f16f16f32",
+        "f16f32f32",
     ],
 )
 

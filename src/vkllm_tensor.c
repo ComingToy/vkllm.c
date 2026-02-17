@@ -60,141 +60,6 @@ static vkllm_err_t vkllm_create_vk_buffer(struct vkllm_tensor *tensor)
     return VKLLM_ERR_OK;
 }
 
-static vkllm_err_t vkllm_tensor_get_pipeline(struct vkllm_context *context, struct vkllm_tensor *tensor)
-{
-    _CHECK_ARGS(context && tensor);
-
-    tensor->pipeline = NULL;
-    if (tensor->op == VKLLM_OP_NONE)
-    {
-        return VKLLM_ERR_OK;
-    }
-    else if (tensor->op == VKLLM_OP_ADD)
-    {
-        _CHECK_ARGS(tensor->srcs[0] && tensor->srcs[1]);
-        if (tensor->dtype != vkllm_dtype_float32)
-        {
-            log_error("unsupported op result dtype: %s", vkllm_dtype_s(tensor->dtype));
-            return VKLLM_ERR_ARGS;
-        }
-
-        if (tensor->srcs[0]->dtype == vkllm_dtype_float16 && tensor->srcs[1]->dtype == vkllm_dtype_float16)
-        {
-            if (context->device->support_fp16_arithmetic)
-            {
-                tensor->pipeline = context->pipelines.add.f16f16f32;
-            }
-            else
-            {
-                tensor->pipeline = context->pipelines.add.f16f32f32;
-            }
-            return VKLLM_ERR_OK;
-        }
-        else if (tensor->srcs[0]->dtype == vkllm_dtype_float32 && tensor->srcs[1]->dtype == vkllm_dtype_float32)
-        {
-            tensor->pipeline = context->pipelines.add.f32f32f32;
-            return VKLLM_ERR_OK;
-        }
-        else
-        {
-            return VKLLM_ERR_ARGS;
-        }
-    }
-    else if (tensor->op == VKLLM_OP_EMBEDDING)
-    {
-        _CHECK_ARGS(tensor->srcs[0] && tensor->srcs[1]);
-        if ((tensor->dtype != vkllm_dtype_float32 && tensor->dtype != vkllm_dtype_float16) ||
-            tensor->srcs[0]->dtype != vkllm_dtype_uint32)
-        {
-            log_error("unsupported op result dtype: %s, dtype of in0: %s", vkllm_dtype_s(tensor->dtype),
-                      vkllm_dtype_s(tensor->srcs[0]->dtype));
-            return VKLLM_ERR_ARGS;
-        }
-
-        if (tensor->srcs[1]->dtype == vkllm_dtype_float16)
-        {
-            tensor->pipeline = context->pipelines.embedding.f16;
-        }
-        else if (tensor->srcs[1]->dtype == vkllm_dtype_float32)
-        {
-            tensor->pipeline = context->pipelines.embedding.f32;
-        }
-        else
-        {
-        }
-    }
-    else if (tensor->op == VKLLM_OP_RMSNORM)
-    {
-        _CHECK_ARGS(tensor->srcs[0] && tensor->srcs[1]);
-        if (tensor->dtype == vkllm_dtype_float32 && tensor->srcs[0]->dtype == vkllm_dtype_float32 &&
-            tensor->srcs[1]->dtype == vkllm_dtype_float32)
-        {
-            tensor->pipeline = context->pipelines.rmsnorm.f32f32f32;
-        }
-        else if (tensor->dtype == vkllm_dtype_float32 && tensor->srcs[0]->dtype == vkllm_dtype_float16 &&
-                 tensor->srcs[1]->dtype == vkllm_dtype_float16)
-        {
-            tensor->pipeline = context->pipelines.rmsnorm.f16f32f32;
-        }
-        else if (tensor->dtype == vkllm_dtype_float16 && tensor->srcs[0]->dtype == vkllm_dtype_float16 &&
-                 tensor->srcs[1]->dtype == vkllm_dtype_float16)
-        {
-            tensor->pipeline = context->pipelines.rmsnorm.f16f32f16;
-        }
-        else
-        {
-        }
-    }
-    else if (tensor->op == VKLLM_OP_MATMUL)
-    {
-        if (tensor->dtype != vkllm_dtype_float32)
-        {
-            log_error("tensor %s op = %s, dtype = %s, pipeline not found.", tensor->name, vkllm_op_s(tensor->op),
-                      vkllm_dtype_s(tensor->dtype));
-            return VKLLM_ERR_PIPELINE_NOT_FOUND;
-        }
-
-        if (tensor->srcs[0]->dtype == vkllm_dtype_float16 && tensor->srcs[0]->dtype == vkllm_dtype_float16)
-        {
-            if (!context->device->support_16bit_storage)
-            {
-                log_error("matmul pipeline: fp16 type inputs is unsupported.");
-                return VKLLM_ERR_PIPELINE_NOT_FOUND;
-            }
-
-            if (context->device->support_fp16_arithmetic)
-            {
-                tensor->pipeline = context->pipelines.matmul.f16f16f32;
-            }
-            else
-            {
-                tensor->pipeline = context->pipelines.matmul.f16f32f32;
-            }
-        }
-        else if (tensor->srcs[0]->dtype == vkllm_dtype_float32 && tensor->srcs[0]->dtype == vkllm_dtype_float32)
-        {
-            tensor->pipeline = context->pipelines.matmul.f32f32f32;
-        }
-        else
-        {
-        }
-    }
-    else
-    {
-        log_error("unsupported op type: %s", vkllm_op_s(tensor->op));
-        return VKLLM_ERR_ARGS;
-    }
-
-    if (!tensor->pipeline && tensor->op != VKLLM_OP_NONE)
-    {
-        log_error("tensor %s op = %s, dtype = %s, pipeline not found.", tensor->name, vkllm_op_s(tensor->op),
-                  vkllm_dtype_s(tensor->dtype));
-        return VKLLM_ERR_PIPELINE_NOT_FOUND;
-    }
-
-    return VKLLM_ERR_OK;
-}
-
 vkllm_err_t vkllm_tensor_new(struct vkllm_context *context, const char *name, const uint32_t *shapes,
                              vkllm_dtype_t dtype, vkllm_op_t op, struct vkllm_tensor **srcs, const uint32_t n_srcs,
                              const uint8_t *params, size_t params_bytes, bool mapped, struct vkllm_tensor **p)
@@ -265,15 +130,9 @@ vkllm_err_t vkllm_tensor_new(struct vkllm_context *context, const char *name, co
         goto err_create_vk_buf;
     }
 
-    err = vkllm_tensor_get_pipeline(context, t);
-    if (err != VKLLM_ERR_OK)
-    {
-        goto err_get_pipeline;
-    }
-
+    t->pipeline = NULL;
     return VKLLM_ERR_OK;
 
-err_get_pipeline:
 err_calc_strides:
 err_create_vk_buf:
     free(*p);
