@@ -85,16 +85,45 @@ void main(void)
         uint a_row = blk_x + ld_a_x;
         uint a_col = k * BK + ld_a_y;
         uint smem_a_idx = a_row * in0_stride + a_col;
-        smem_a[ld_a_x][ld_a_y / 4] =
-            vec4(in0[smem_a_idx], in0[smem_a_idx + 1], in0[smem_a_idx + 2], in0[smem_a_idx + 3]);
+
+        if (a_row < M)
+        {
+            smem_a[ld_a_x][ld_a_y / 4] =
+                vec4(in0[smem_a_idx], in0[smem_a_idx + 1], in0[smem_a_idx + 2], in0[smem_a_idx + 3]);
+        }
+        else
+        {
+            smem_a[ld_a_x][ld_a_y / 4] = vec4(0);
+        }
 
         uint b_row = k * BK + ld_b_x;
         uint b_col = blk_y + ld_b_y;
         uint smem_b_idx = b_row * in1_stride + b_col;
 
-        smem_b[ld_b_y][ld_b_x / load_n_per_thread] =
-            vec4(in1[smem_b_idx], in1[smem_b_idx + in1_stride], in1[smem_b_idx + 2 * in1_stride],
-                 in1[smem_b_idx + 3 * in1_stride]);
+        smem_b[ld_b_y][ld_b_x / load_n_per_thread] = vec4(.0);
+        if (b_col < N)
+        {
+            if (b_row + 3 < K)
+            {
+                smem_b[ld_b_y][ld_b_x / load_n_per_thread] =
+                    vec4(in1[smem_b_idx], in1[smem_b_idx + in1_stride], in1[smem_b_idx + 2 * in1_stride],
+                         in1[smem_b_idx + 3 * in1_stride]);
+            }
+            else if (b_row + 2 < K)
+            {
+                smem_b[ld_b_y][ld_b_x / load_n_per_thread] =
+                    vec4(in1[smem_b_idx], in1[smem_b_idx + in1_stride], in1[smem_b_idx + 2 * in1_stride], 0.0);
+            }
+            else if (b_row + 1 < K)
+            {
+                smem_b[ld_b_y][ld_b_x / load_n_per_thread] =
+                    vec4(in1[smem_b_idx], in1[smem_b_idx + in1_stride], 0.0, 0.0);
+            }
+            else if (b_row < K)
+            {
+                smem_b[ld_b_y][ld_b_x / load_n_per_thread] = vec4(in1[smem_b_idx], 0.0, 0.0, 0.0);
+            }
+        }
 
         memoryBarrierShared();
         barrier();
