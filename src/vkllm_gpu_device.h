@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <vulkan/vulkan.h>
 
+#include "vk_mem_alloc.h"
 #include "vkllm_context.h"
 #include "vkllm_errors.h"
 
@@ -37,6 +38,7 @@ struct vkllm_gpu_device {
     bool support_int8_arithmetic;
     bool support_pipeline_statistics;
     int subgroup_size;
+	VmaAllocator vma_allocator;
 };
 
 extern vkllm_err_t vkllm_new_gpu_device(struct vkllm_context* context,
