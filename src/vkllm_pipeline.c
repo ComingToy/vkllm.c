@@ -448,9 +448,9 @@ static vkllm_err_t vkllm_create_matmul_pipelines(struct vkllm_context *context)
         .local_z = 1,
     };
 
-    for (uint32_t a = 0; a < 3; ++a)
+    for (uint32_t a = 0; a < 4; ++a)
     {
-        for (uint32_t b = 0; b < 3; ++b)
+        for (uint32_t b = 0; b < 4; ++b)
         {
             for (uint32_t t = 0; t < 2; ++t)
             {
@@ -481,9 +481,9 @@ static vkllm_err_t vkllm_create_matmul_pipelines(struct vkllm_context *context)
     _CREATE_MATMUL_PIPELINE_T(__tag, 0);                                                                               \
     _CREATE_MATMUL_PIPELINE_T(__tag, 1)
 
-    for (uint32_t a = 0; a < 3; ++a)
+    for (uint32_t a = 0; a < 4; ++a)
     {
-        for (uint32_t b = 0; b < 3; ++b)
+        for (uint32_t b = 0; b < 4; ++b)
         {
             _CREATE_MATMUL_PIPELINE(f32f32f32);
             if (context->device->support_16bit_storage)
@@ -525,9 +525,9 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
     vkllm_pipeline_free(context, context->pipelines.rmsnorm.f16f32f16);
     vkllm_pipeline_free(context, context->pipelines.rmsnorm.f32f32f32);
 
-    for (uint32_t a = 0; a < 3; ++a)
+    for (uint32_t a = 0; a < 4; ++a)
     {
-        for (uint32_t b = 0; b < 3; ++b)
+        for (uint32_t b = 0; b < 4; ++b)
         {
             for (uint32_t t = 0; t < 2; ++t)
             {

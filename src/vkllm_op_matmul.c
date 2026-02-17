@@ -18,6 +18,31 @@ static bool is_transposed_b(struct vkllm_tensor *tensor)
     return a->shapes[2] == M && b->shapes[2] == N && a->shapes[3] == K && b->shapes[3] == K;
 }
 
+#define BOARDCAST_AXIS0 0
+#define BOARDCAST_AXIS1 1
+#define BOARDCAST_AXIS01 2
+#define BOARDCAST_NONE 3
+
+static int boardcast_type(struct vkllm_tensor *a, struct vkllm_tensor *b)
+{
+    int type = BOARDCAST_NONE;
+
+    if (a->shapes[0] == 1 && a->shapes[1] != 1 && b->shapes[0] != 1)
+    {
+        type = BOARDCAST_AXIS0;
+    }
+    else if (a->shapes[0] != 1 && a->shapes[1] == 1 && b->shapes[1] != 1)
+    {
+        type = BOARDCAST_AXIS1;
+    }
+    else if (a->shapes[0] == 1 && a->shapes[1] == 1 && b->shapes[0] != 1 && b->shapes[1] != 1)
+    {
+        type = BOARDCAST_AXIS01;
+    }
+
+    return type;
+}
+
 static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, struct vkllm_tensor *tensor,
                                                 struct vkllm_pipeline **pipeline)
 {
@@ -32,8 +57,8 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
     }
 
     int tranposed_b = (int)is_transposed_b(tensor);
-    int b_broadcast_type = 2;
-    int a_broadcast_type = 2;
+    int a_boardcast_type = boardcast_type(tensor->srcs[0], tensor->srcs[1]);
+    int b_boardcast_type = boardcast_type(tensor->srcs[1], tensor->srcs[0]);
 
     if (tensor->srcs[0]->dtype == vkllm_dtype_float16 && tensor->srcs[0]->dtype == vkllm_dtype_float16)
     {
@@ -45,16 +70,16 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
 
         if (context->device->support_fp16_arithmetic)
         {
-            *pipeline = context->pipelines.matmul.f16f16f32[a_broadcast_type][b_broadcast_type][tranposed_b];
+            *pipeline = context->pipelines.matmul.f16f16f32[a_boardcast_type][b_boardcast_type][tranposed_b];
         }
         else
         {
-            *pipeline = context->pipelines.matmul.f16f32f32[a_broadcast_type][b_broadcast_type][tranposed_b];
+            *pipeline = context->pipelines.matmul.f16f32f32[a_boardcast_type][b_boardcast_type][tranposed_b];
         }
     }
     else if (tensor->srcs[0]->dtype == vkllm_dtype_float32 && tensor->srcs[0]->dtype == vkllm_dtype_float32)
     {
-        *pipeline = context->pipelines.matmul.f32f32f32[a_broadcast_type][b_broadcast_type][tranposed_b];
+        *pipeline = context->pipelines.matmul.f32f32f32[a_boardcast_type][b_boardcast_type][tranposed_b];
     }
     else
     {

@@ -43,9 +43,9 @@ struct vkllm_context
         struct
         {
             // pipelines array size: a_boardcast_type x b_boardcast_type x transposed_b
-            struct vkllm_pipeline *f32f32f32[3][3][2];
-            struct vkllm_pipeline *f16f32f32[3][3][2];
-            struct vkllm_pipeline *f16f16f32[3][3][2];
+            struct vkllm_pipeline *f32f32f32[4][4][2];
+            struct vkllm_pipeline *f16f32f32[4][4][2];
+            struct vkllm_pipeline *f16f16f32[4][4][2];
         } matmul;
     } pipelines;
 };

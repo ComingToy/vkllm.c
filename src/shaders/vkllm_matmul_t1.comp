@@ -27,6 +27,11 @@
 #define LOAD_DTYPE
 #endif
 
+#define BOARDCAST_AXIS0 0
+#define BOARDCAST_AXIS1 1
+#define BOARDCAST_AXIS01 2
+#define BOARDCAST_NONE 3
+
 layout(binding = 0) readonly buffer in0_type
 {
     IN0_DTYPE in0[];
@@ -42,8 +47,8 @@ layout(binding = 2) writeonly buffer out0_type
     OUT_DTYPE out0[];
 };
 
-layout(constant_id = 0) const int a_broadcast_axis = 0;
-layout(constant_id = 1) const int b_broadcast_axis = 0;
+layout(constant_id = 0) const int a_boardcast_type = 0;
+layout(constant_id = 1) const int b_boardcast_type = 0;
 
 layout(push_constant) uniform constants
 {
@@ -103,30 +108,30 @@ void main(void)
     uint channel_id = glb_tid_z % C;
 
     uint a_batch_off = 0;
-    if (a_broadcast_axis == 0)
+    if (a_boardcast_type == BOARDCAST_AXIS0)
     {
         a_batch_off = channel_id * in0_cstride;
     }
-    else if (a_broadcast_axis == 1)
+    else if (a_boardcast_type == BOARDCAST_AXIS1)
     {
         a_batch_off = batch_id * in0_bstride;
     }
-    else
+    else if (a_boardcast_type == BOARDCAST_NONE)
     {
         a_batch_off = batch_id * in0_bstride + channel_id * in0_cstride;
     }
 
     uint b_batch_off = 0;
 
-    if (b_broadcast_axis == 0)
+    if (b_boardcast_type == BOARDCAST_AXIS0)
     {
         b_batch_off = channel_id * in1_cstride;
     }
-    else if (b_broadcast_axis == 1)
+    else if (b_boardcast_type == BOARDCAST_AXIS1)
     {
         b_batch_off = batch_id * in1_bstride;
     }
-    else
+    else if (b_boardcast_type == BOARDCAST_NONE)
     {
         b_batch_off = batch_id * in1_bstride + channel_id * in1_cstride;
     }
