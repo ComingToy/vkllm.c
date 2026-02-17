@@ -39,7 +39,7 @@ cc_library(
 		"vulkan_mem_allocator_imp.cpp",
 	],
 	copts = [
-		"-std=c++11",
+		"-std=c++17",
 	],
 	deps = [
 		"@vma//:vma",
