@@ -1,6 +1,10 @@
 #ifndef __VKLLM_COMMANDS_H__
 #define __VKLLM_COMMANDS_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "vkllm_array.h"
 #include <vulkan/vulkan.h>
 
@@ -50,4 +54,8 @@ extern vkllm_err_t vkllm_commands_wait_exec(struct vkllm_context *context, struc
 extern void __vkllm_commands_sync_tensor(struct vkllm_context *context, struct vkllm_commands *commands,
                                          struct vkllm_tensor *tensor, VkAccessFlagBits dst_access,
                                          VkPipelineStageFlagBits dst_stage);
+
+#ifdef __cplusplus
+}
+#endif
 #endif

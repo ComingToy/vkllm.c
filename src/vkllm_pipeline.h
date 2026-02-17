@@ -1,6 +1,10 @@
 #ifndef __VKLLM_PIPELINE_H__
 #define __VKLLM_PIPELINE_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "vkllm_array.h"
 #include <stdint.h>
 #include <vulkan/vulkan.h>
@@ -62,4 +66,8 @@ extern vkllm_err_t vkllm_pipeline_update_bindings(struct vkllm_context *context,
 extern void vkllm_pipeline_free(struct vkllm_context *context, struct vkllm_pipeline *pipeline);
 extern vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context);
 extern void vkllm_free_all_pipelines(struct vkllm_context *context);
+
+#ifdef __cplusplus
+}
+#endif
 #endif

@@ -1,5 +1,10 @@
 #ifndef __VKLLM_TENSOR_H__
 #define __VKLLM_TENSOR_H__
+
+#ifdef __cplusplus 
+extern "C" {
+#endif
+
 #include <stdint.h>
 
 #include "vk_mem_alloc.h"
@@ -47,4 +52,7 @@ extern vkllm_err_t vkllm_tensor_invalid_cache(struct vkllm_context *context, str
 extern vkllm_err_t vkllm_tensor_flush_cache(struct vkllm_context *context, struct vkllm_tensor *tensor);
 extern vkllm_err_t vkllm_tensor_new_staging(struct vkllm_context *context, struct vkllm_tensor *tensor,
                                             struct vkllm_tensor **staging);
+#ifdef __cplusplus
+}
+#endif
 #endif
