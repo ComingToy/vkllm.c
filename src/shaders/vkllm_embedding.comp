@@ -20,7 +20,7 @@ layout(binding = 0) readonly buffer Indices
 
 layout(binding = 1) readonly buffer Params
 {
-    IN_DTYPE0 params[];
+    IN_DTYPE params[];
 };
 
 layout(binding = 2) writeonly buffer Out
