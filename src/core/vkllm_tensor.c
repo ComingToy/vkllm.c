@@ -62,7 +62,7 @@ static vkllm_err_t vkllm_create_vk_buffer(struct vkllm_tensor *tensor)
 
 vkllm_err_t vkllm_tensor_new(struct vkllm_context *context, const char *name, const uint32_t *shapes,
                              vkllm_dtype_t dtype, vkllm_op_t op, struct vkllm_tensor **srcs, const uint32_t n_srcs,
-                             const uint8_t *params, size_t params_bytes, bool mapped, struct vkllm_tensor **p)
+                             const void *params, size_t params_bytes, bool mapped, struct vkllm_tensor **p)
 {
     if (!shapes)
     {
@@ -201,6 +201,10 @@ vkllm_err_t vkllm_tensor_reshape(struct vkllm_context *context, struct vkllm_ten
     tensor->shapes[1] = shapes[1];
     tensor->shapes[2] = shapes[2];
     tensor->shapes[3] = shapes[3];
+
+    // IMPORTANT: Recalculate strides for the new shape
+    // Without this, the tensor would have incorrect strides and data access would be wrong
+    _CHECK(vkllm_calc_strides(tensor->device, shapes, tensor->dtype, tensor->strides));
 
     return VKLLM_ERR_OK;
 }
