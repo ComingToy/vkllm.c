@@ -9,6 +9,12 @@ extern "C" {
 #include "vkllm_context.h"
 #include "vkllm_tensor.h"
 
+struct vkllm_op_matmul_params
+{
+    float scale;
+    int act;
+};
+
 extern vkllm_err_t vkllm_op_matmul_init(struct vkllm_context *context, struct vkllm_commands *commands,
                                         struct vkllm_tensor *tensor);
 extern vkllm_err_t vkllm_op_matmul_run(struct vkllm_context *context, struct vkllm_commands *commands,

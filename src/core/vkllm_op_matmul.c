@@ -6,6 +6,11 @@
 #include "vkllm_gpu_device.h"
 #include "vkllm_pipeline.h"
 
+static const struct vkllm_op_matmul_params *get_matmul_params(const struct vkllm_tensor *tensor)
+{
+    return (const struct vkllm_op_matmul_params *)tensor->params;
+}
+
 static bool is_transposed_b(struct vkllm_tensor *tensor)
 {
     struct vkllm_tensor *a = tensor->srcs[0];
@@ -166,7 +171,9 @@ vkllm_err_t vkllm_op_matmul_run(struct vkllm_context *context, struct vkllm_comm
     uint32_t in1_cstride = in1->strides[1] / in1_dtype_info.bytes;
     uint32_t out0_cstride = tensor->strides[1] / dtype_info.bytes;
 
-    const float scale = *(const float *)tensor->params;
+    const struct vkllm_op_matmul_params *params = get_matmul_params(tensor);
+    const float scale = params->scale;
+    const int act = params->act;
 
     struct vkllm_shader_constants *constants = NULL;
     _CHECK(vkllm_shader_constants_new(&constants, 64));
@@ -185,6 +192,7 @@ vkllm_err_t vkllm_op_matmul_run(struct vkllm_context *context, struct vkllm_comm
     vkllm_shader_constants_append(constants, N);
     vkllm_shader_constants_append(constants, K);
     vkllm_shader_constants_append(constants, scale);
+    vkllm_shader_constants_append(constants, act);
 
     struct vkllm_array_ptr *bindings = NULL;
     _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 3), err, free_constants_out);
