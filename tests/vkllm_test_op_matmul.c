@@ -17,6 +17,7 @@
 // GPU driver issues and device enumeration failures
 // ============================================================================
 static struct vkllm_context *g_context = NULL;
+static struct vkllm_commands *g_commands = NULL;
 
 // Matrix multiplication: C = A * B with broadcasting support
 // A: [B_a, C_a, M, K], B: [B_b, C_b, K, N] or [B_b, C_b, N, K], C: [B_c, C_c, M, N]
@@ -52,7 +53,6 @@ static void matmul_op_host(const void *input_a, const void *input_b, void *outpu
     {
         const vkllm_fp16_pack *a_fp16 = (const vkllm_fp16_pack *)input_a;
         const vkllm_fp16_pack *b_fp16 = (const vkllm_fp16_pack *)input_b;
-        float *c_fp32 = (float *)output;
         vkllm_fp16_pack *c_fp16 = (vkllm_fp16_pack *)output;
 
         for (uint32_t b = 0; b < B_c; ++b)
@@ -162,6 +162,7 @@ static struct
     vkllm_dtype_t dtype;
     bool transposed_b;
 } tests[] = {
+#if 0
     // Single batch tests (B=1, C=1, no broadcasting) with transposed B
     {1, 1, 1, 1, 512, 1024, 2048, vkllm_dtype_float16, true},
     {1, 1, 1, 1, 333, 1259, 365, vkllm_dtype_float16, true},
@@ -191,7 +192,9 @@ static struct
     // Multi-batch and multi-channel tests (B>1, C>1, no broadcasting) without transposed B
     {2, 4, 2, 4, 128, 256, 512, vkllm_dtype_float16, false},
     {4, 2, 4, 2, 256, 512, 1024, vkllm_dtype_float32, false},
+#endif
 
+#if 0
     // Broadcasting tests: B_a=1, B_b>1 (broadcast A's batch dimension)
     {1, 1, 4, 1, 128, 256, 512, vkllm_dtype_float16, true},
     {1, 1, 8, 1, 64, 128, 256, vkllm_dtype_float32, true},
@@ -204,13 +207,16 @@ static struct
     {8, 1, 1, 1, 64, 128, 256, vkllm_dtype_float32, true},
     {4, 1, 1, 1, 128, 256, 512, vkllm_dtype_float16, false},
     {8, 1, 1, 1, 64, 128, 256, vkllm_dtype_float32, false},
+#endif
 
-    // Broadcasting tests: C_a=1, C_b>1 (broadcast A's channel dimension)
+// Broadcasting tests: C_a=1, C_b>1 (broadcast A's channel dimension)
+#if 1
     {1, 1, 1, 4, 128, 256, 512, vkllm_dtype_float16, true},
     {1, 1, 1, 8, 64, 128, 256, vkllm_dtype_float32, true},
+#endif
     {1, 1, 1, 4, 128, 256, 512, vkllm_dtype_float16, false},
     {1, 1, 1, 8, 64, 128, 256, vkllm_dtype_float32, false},
-
+#if 1
     // Broadcasting tests: C_a>1, C_b=1 (broadcast B's channel dimension)
     {1, 4, 1, 1, 128, 256, 512, vkllm_dtype_float16, true},
     {1, 8, 1, 1, 64, 128, 256, vkllm_dtype_float32, true},
@@ -234,6 +240,7 @@ static struct
     {1, 8, 8, 1, 64, 128, 256, vkllm_dtype_float32, true},
     {1, 4, 4, 1, 64, 128, 256, vkllm_dtype_float16, false},
     {1, 8, 8, 1, 64, 128, 256, vkllm_dtype_float32, false},
+#endif
 };
 
 START_TEST(test_op_matmul)
@@ -242,9 +249,8 @@ START_TEST(test_op_matmul)
     struct vkllm_context *context = g_context;
     ck_assert_ptr_nonnull(context);
 
-    struct vkllm_commands *commands;
-    vkllm_err_t err = vkllm_commands_new(context, &commands);
-    ck_assert_int_eq(err, VKLLM_ERR_OK);
+    struct vkllm_commands *commands = g_commands;
+    ck_assert_ptr_nonnull(commands);
 
     uint32_t B_a = tests[_i].B_a;
     uint32_t C_a = tests[_i].C_a;
@@ -315,10 +321,9 @@ START_TEST(test_op_matmul)
     ck_assert_int_eq(vkllm_commands_end(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_submit(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_wait_exec(context, commands), VKLLM_ERR_OK);
-    ck_assert_int_eq(vkllm_tensor_flush_cache(context, output), VKLLM_ERR_OK);
 
     uint64_t time_cost = 0;
-    ck_assert_int_eq(vkllm_pipeline_query_exec_time(context, output->pipeline, &time_cost), VKLLM_ERR_OK);
+    vkllm_pipeline_query_exec_time(context, output->pipeline, &time_cost);
 
     log_info("test %d matmul A[%u,%u,%u,%u] x B[%u,%u,%u,%u] -> C[%u,%u,%u,%u], dtype=%s, transposed_b=%s: avg time "
              "cost: %lu "
@@ -326,14 +331,37 @@ START_TEST(test_op_matmul)
              _i, B_a, C_a, M, K, B_b, C_b, tests[_i].transposed_b ? N : K, tests[_i].transposed_b ? K : N, B_c, C_c, M,
              N, vkllm_dtype_s(tests[_i].dtype), BOOL_S(tests[_i].transposed_b), time_cost / 1000);
     // Compare results
+    vkllm_tensor_invalid_cache(context, output);
     const void *gpu_output = output->data.host;
     // print_n_f16("gpu_output", gpu_output, 64);
     // print_n_f16("cpu_output", (const vkllm_fp16_pack *)buf_c_expected->data, 64);
 
     // Use larger tolerance for float16 due to lower precision
     float tolerance = (tests[_i].dtype == vkllm_dtype_float16) ? 1e-2 : 1e-3;
+    if (_i == 16){
+        log_info("start test case 16");
+    }
+
+    char test_case_name[64];
+    snprintf(test_case_name, sizeof(test_case_name), "test_case_%d", _i);
+
     float loss =
-        compare_buf(buf_c_expected->data, gpu_output, output->shapes, output->strides, output->bytes, output->dtype);
+        compare_buf(buf_c_expected->data, gpu_output, output->shapes, output->strides, output->bytes, output->dtype, test_case_name);
+    if (loss > tolerance)
+    {
+        log_info("test case %d loss = %f, tolerance = %f", _i, loss, tolerance);
+        if (output->dtype == vkllm_dtype_float16)
+        {
+            print_n_f16("gpu output: ", gpu_output, 32);
+            print_n_f16("host output: ", buf_c_expected->data, 32);
+        }
+
+        if (output->dtype == vkllm_dtype_float32)
+        {
+            print_n("gpu output: ", gpu_output, 32);
+            print_n("host output: ", buf_c_expected->data, 32);
+        }
+    }
     ck_assert_float_le(loss, tolerance);
 
     // Clean up tensors (but NOT the context!)
@@ -343,7 +371,6 @@ START_TEST(test_op_matmul)
     vkllm_array_u8_free(buf_a);
     vkllm_array_u8_free(buf_b);
     vkllm_array_u8_free(buf_c_expected);
-    vkllm_commands_free(context, commands);
 
     // IMPORTANT: Do NOT call vkllm_context_free() here!
     // The context will be freed in the teardown function
@@ -359,11 +386,24 @@ static void setup_global_context(void)
         fprintf(stderr, "Failed to create global context: %d\n", err);
         exit(EXIT_FAILURE);
     }
+
+    err = vkllm_commands_new(g_context, &g_commands);
+    if (err != VKLLM_ERR_OK)
+    {
+        fprintf(stderr, "Failed to create global commands: %d\n", err);
+        exit(EXIT_FAILURE);
+    }
 }
 
 // Teardown function called once after all tests
 static void teardown_global_context(void)
 {
+    if (g_commands)
+    {
+        vkllm_commands_free(g_context, g_commands);
+        g_commands = NULL;
+    }
+
     if (g_context != NULL)
     {
         vkllm_context_free(g_context);

@@ -28,6 +28,7 @@ struct vkllm_vk_physical_dev
     VkPhysicalDeviceShaderFloat16Int8Features feat_shader_fp16_int8;
     VkPhysicalDevice16BitStorageFeatures feat_16bit_storage;
     VkPhysicalDevice8BitStorageFeatures feat_8bit_storage;
+	VkPhysicalDeviceShaderSubgroupExtendedTypesFeatures feat_subgroup_extended_types;
     VkPhysicalDeviceProperties2 properties2;
     VkPhysicalDeviceFeatures2 features2;
 };

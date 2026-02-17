@@ -130,7 +130,7 @@ vkllm_err_t vkllm_commands_upload(struct vkllm_context *context, struct vkllm_co
     if (tensor->data.mapped)
     {
         memcpy(tensor->data.host, data, bytes);
-        vkllm_tensor_invalid_cache(context, tensor);
+        vkllm_tensor_flush_cache(context, tensor);
         tensor->access_flags = VK_ACCESS_HOST_WRITE_BIT;
         tensor->pipeline_stage = VK_PIPELINE_STAGE_HOST_BIT;
         return VKLLM_ERR_OK;
@@ -149,7 +149,7 @@ vkllm_err_t vkllm_commands_upload(struct vkllm_context *context, struct vkllm_co
     memcpy(staging->data.host, data, bytes);
     tensor->access_flags = VK_ACCESS_HOST_WRITE_BIT;
     tensor->pipeline_stage = VK_PIPELINE_STAGE_HOST_BIT;
-    vkllm_tensor_invalid_cache(context, staging);
+    vkllm_tensor_flush_cache(context, staging);
 
     vkllm_commands_sync_tensor(context, commands, staging, VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
@@ -295,13 +295,15 @@ vkllm_err_t vkllm_commands_wait_exec(struct vkllm_context *context, struct vkllm
     uint64_t timeout = 60ul * 1000000000ul; // 60s
     _CHECK_VK(vkWaitForFences(commands->device->vk_dev, 1, &commands->vk_fence, true, timeout));
 
+    VkResult err = vkResetFences(commands->device->vk_dev, 1, &commands->vk_fence);
+
     for (uint32_t i = 0; i < commands->defer_tasks->used_n; ++i)
     {
         commands->defer_tasks->data[i].func(&commands->defer_tasks->data[i]);
     }
     commands->defer_tasks->used_n = 0;
 
-    _CHECK_VK(vkResetFences(commands->device->vk_dev, 1, &commands->vk_fence));
+    _CHECK_VK(err);
     return VKLLM_ERR_OK;
 }
 

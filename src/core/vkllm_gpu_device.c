@@ -174,8 +174,14 @@ static vkllm_err_t init_physical_device(struct vkllm_context *context)
 
     pdev->vk_physical_dev.feat_8bit_storage.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES;
     pdev->vk_physical_dev.feat_8bit_storage.pNext = &pdev->vk_physical_dev.feat_16bit_storage;
+
+    pdev->vk_physical_dev.feat_subgroup_extended_types.sType =
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SUBGROUP_EXTENDED_TYPES_FEATURES;
+    pdev->vk_physical_dev.feat_subgroup_extended_types.shaderSubgroupExtendedTypes = VK_TRUE;
+    pdev->vk_physical_dev.feat_subgroup_extended_types.pNext = &pdev->vk_physical_dev.feat_8bit_storage;
+
     pdev->vk_physical_dev.features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    pdev->vk_physical_dev.features2.pNext = &pdev->vk_physical_dev.feat_8bit_storage;
+    pdev->vk_physical_dev.features2.pNext = &pdev->vk_physical_dev.feat_subgroup_extended_types;
     vkGetPhysicalDeviceFeatures2(pdev->vk_physical_dev.dev, &pdev->vk_physical_dev.features2);
 
     pdev->vk_physical_dev.subgroup_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
@@ -231,7 +237,8 @@ static vkllm_err_t init_physical_device(struct vkllm_context *context)
         pdev->support_int8_arithmetic = pdev->vk_physical_dev.feat_shader_fp16_int8.shaderInt8;
     }
 
-    pdev->support_query_timestamp = pdev->vk_physical_dev.properties.limits.timestampComputeAndGraphics;
+    pdev->support_query_timestamp = pdev->vk_physical_dev.properties.limits.timestampComputeAndGraphics &&
+                                    pdev->vk_physical_dev.features.pipelineStatisticsQuery;
     pdev->subgroup_size = pdev->vk_physical_dev.subgroup_properties.subgroupSize;
 
     return VKLLM_ERR_OK;
@@ -301,9 +308,15 @@ static vkllm_err_t init_logical_device(struct vkllm_context *context)
         dev_exts[i_ext++] = VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME;
     }
 
+    const void *exts_list = &pdev->vk_physical_dev.feat_8bit_storage;
+    if (pdev->vk_physical_dev.feat_subgroup_extended_types.shaderSubgroupExtendedTypes)
+    {
+        exts_list = &pdev->vk_physical_dev.feat_subgroup_extended_types;
+    }
+
     VkDeviceCreateInfo dev_create_info = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pNext = &pdev->vk_physical_dev.feat_8bit_storage,
+        .pNext = exts_list,
         .flags = 0,
         .queueCreateInfoCount = n_queue,
         .pQueueCreateInfos = dev_queue_create_infos,

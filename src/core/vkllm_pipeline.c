@@ -273,16 +273,19 @@ vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, const char *name, 
         return VKLLM_ERR_VULKAN;
     }
 
-    VkQueryPoolCreateInfo query_pool_create_info = {
-        .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
-        .pNext = NULL,
-        .flags = 0,
-        .queryType = VK_QUERY_TYPE_TIMESTAMP,
-        .queryCount = 2,
-        .pipelineStatistics = 0,
-    };
+    if (p->device->support_query_timestamp)
+    {
+        VkQueryPoolCreateInfo query_pool_create_info = {
+            .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0,
+            .queryType = VK_QUERY_TYPE_TIMESTAMP,
+            .queryCount = 2,
+            .pipelineStatistics = 0,
+        };
 
-    _CHECK_VK(vkCreateQueryPool(p->device->vk_dev, &query_pool_create_info, NULL, &p->vk_query_pool));
+        _CHECK_VK(vkCreateQueryPool(p->device->vk_dev, &query_pool_create_info, NULL, &p->vk_query_pool));
+    }
     return VKLLM_ERR_OK;
 }
 
@@ -342,7 +345,10 @@ void vkllm_pipeline_free(struct vkllm_context *context, struct vkllm_pipeline *p
     vkDestroyPipelineLayout(pipeline->device->vk_dev, pipeline->vk_pipeline_layout, NULL);
     vkDestroyDescriptorSetLayout(pipeline->device->vk_dev, pipeline->vk_desc_set_layout, NULL);
     vkDestroyDescriptorPool(pipeline->device->vk_dev, pipeline->vk_desc_pool, NULL);
-    vkDestroyQueryPool(pipeline->device->vk_dev, pipeline->vk_query_pool, NULL);
+    if (pipeline->device->support_query_timestamp)
+    {
+        vkDestroyQueryPool(pipeline->device->vk_dev, pipeline->vk_query_pool, NULL);
+    }
     free(pipeline);
 }
 
@@ -607,8 +613,8 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
 {
     for (uint32_t i = 0; i < 4; ++i)
     {
-
         vkllm_pipeline_free(context, context->pipelines.bin.f16f16f16[i]);
+        vkllm_pipeline_free(context, context->pipelines.bin.f16f16f32[i]);
         vkllm_pipeline_free(context, context->pipelines.bin.f16f32f32[i]);
         vkllm_pipeline_free(context, context->pipelines.bin.f32f32f32[i]);
     }
