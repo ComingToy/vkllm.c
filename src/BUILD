@@ -15,6 +15,7 @@ cc_library(
         "vkllm_op_matmul.c",
         "vkllm_op_rope.c",
         "vkllm_op_softmax.c",
+        "vkllm_hashset.c",
         "vkllm_graph.c",
     ],
     hdrs = [
