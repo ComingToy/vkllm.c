@@ -67,6 +67,13 @@ struct vkllm_context
             struct vkllm_pipeline *f16;
             struct vkllm_pipeline *f32;
         } copy;
+
+        struct
+        {
+            struct vkllm_pipeline *f16f32f16;
+            struct vkllm_pipeline *f16f32f32;
+            struct vkllm_pipeline *f32f32f32;
+        } ffn;
     } pipelines;
 
     struct
