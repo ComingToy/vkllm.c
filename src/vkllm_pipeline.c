@@ -442,68 +442,63 @@ static vkllm_err_t vkllm_create_matmul_pipelines(struct vkllm_context *context)
 
     struct vkllm_shader_info shader_info = {
         .binding_count = 3,
-        .push_constant_bytes = sizeof(uint32_t) * 9,
+        .push_constant_bytes = sizeof(uint32_t) * 14,
         .local_x = 16,
         .local_y = 16,
         .local_z = 1,
     };
 
-    context->pipelines.matmul.b0t0f32f32f32 = NULL;
-    context->pipelines.matmul.b0t0f16f32f32 = NULL;
-    context->pipelines.matmul.b0t0f16f16f32 = NULL;
-    context->pipelines.matmul.b0t1f32f32f32 = NULL;
-    context->pipelines.matmul.b0t1f16f32f32 = NULL;
-    context->pipelines.matmul.b0t1f16f16f32 = NULL;
-
-    context->pipelines.matmul.b1t0f32f32f32 = NULL;
-    context->pipelines.matmul.b1t0f16f32f32 = NULL;
-    context->pipelines.matmul.b1t0f16f16f32 = NULL;
-    context->pipelines.matmul.b1t1f32f32f32 = NULL;
-    context->pipelines.matmul.b1t1f16f32f32 = NULL;
-    context->pipelines.matmul.b1t1f16f16f32 = NULL;
-
-    _CHECK(vkllm_pipeline_new(context, "matmul_b0t0f32f32f32", shader_info, _vkllm_matmul_t0b0f32f32f32_spv(),
-                              _vkllm_matmul_t0b0f32f32f32_size(), NULL, &context->pipelines.matmul.b0t0f32f32f32));
-    _CHECK(vkllm_pipeline_new(context, "matmul_b0t1f32f32f32", shader_info, _vkllm_matmul_t1b0f32f32f32_spv(),
-                              _vkllm_matmul_t1b0f32f32f32_size(), NULL, &context->pipelines.matmul.b0t1f32f32f32));
-
-    _CHECK(vkllm_pipeline_new(context, "matmul_b1t0f32f32f32", shader_info, _vkllm_matmul_t0b1f32f32f32_spv(),
-                              _vkllm_matmul_t0b1f32f32f32_size(), NULL, &context->pipelines.matmul.b1t0f32f32f32));
-    _CHECK(vkllm_pipeline_new(context, "matmul_b1t1f32f32f32", shader_info, _vkllm_matmul_t1b1f32f32f32_spv(),
-                              _vkllm_matmul_t1b1f32f32f32_size(), NULL, &context->pipelines.matmul.b1t1f32f32f32));
-
-    if (context->device->support_16bit_storage)
+    for (uint32_t a = 0; a < 3; ++a)
     {
-        _CHECK(vkllm_pipeline_new(context, "matmul_b0t1f16f32f32", shader_info, _vkllm_matmul_t1b0f16f32f32_spv(),
-                                  _vkllm_matmul_t1b0f16f32f32_size(), NULL, &context->pipelines.matmul.b0t1f16f32f32));
-        _CHECK(vkllm_pipeline_new(context, "matmul_b0t0f16f32f32", shader_info, _vkllm_matmul_t0b0f16f32f32_spv(),
-                                  _vkllm_matmul_t0b0f16f32f32_size(), NULL, &context->pipelines.matmul.b0t0f16f32f32));
-
-        _CHECK(vkllm_pipeline_new(context, "matmul_b1t1f16f32f32", shader_info, _vkllm_matmul_t1b1f16f32f32_spv(),
-                                  _vkllm_matmul_t1b1f16f32f32_size(), NULL, &context->pipelines.matmul.b1t1f16f32f32));
-        _CHECK(vkllm_pipeline_new(context, "matmul_b1t0f16f32f32", shader_info, _vkllm_matmul_t0b1f16f32f32_spv(),
-                                  _vkllm_matmul_t0b1f16f32f32_size(), NULL, &context->pipelines.matmul.b1t0f16f32f32));
-
-        if (context->device->support_fp16_arithmetic)
+        for (uint32_t b = 0; b < 3; ++b)
         {
-
-            _CHECK(vkllm_pipeline_new(context, "matmul_b0t0f16f16f32", shader_info, _vkllm_matmul_t0b0f16f16f32_spv(),
-                                      _vkllm_matmul_t0b0f16f16f32_size(), NULL,
-                                      &context->pipelines.matmul.b0t0f16f16f32));
-
-            _CHECK(vkllm_pipeline_new(context, "matmul_b0t1f16f16f32", shader_info, _vkllm_matmul_t1b0f16f16f32_spv(),
-                                      _vkllm_matmul_t1b0f16f16f32_size(), NULL,
-                                      &context->pipelines.matmul.b0t1f16f16f32));
-
-            _CHECK(vkllm_pipeline_new(context, "matmul_b1t0f16f16f32", shader_info, _vkllm_matmul_t0b1f16f16f32_spv(),
-                                      _vkllm_matmul_t0b1f16f16f32_size(), NULL,
-                                      &context->pipelines.matmul.b1t0f16f16f32));
-
-            _CHECK(vkllm_pipeline_new(context, "matmul_b1t1f16f16f32", shader_info, _vkllm_matmul_t1b1f16f16f32_spv(),
-                                      _vkllm_matmul_t1b1f16f16f32_size(), NULL,
-                                      &context->pipelines.matmul.b1t1f16f16f32));
+            for (uint32_t t = 0; t < 2; ++t)
+            {
+                context->pipelines.matmul.f16f16f32[a][b][t] = NULL;
+                context->pipelines.matmul.f16f32f32[a][b][t] = NULL;
+                context->pipelines.matmul.f32f32f32[a][b][t] = NULL;
+            }
         }
     }
+
+    vkllm_err_t err = VKLLM_ERR_OK;
+
+#define _CREATE_MATMUL_PIPELINE_T(__tag, __t)                                                                          \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        struct vkllm_shader_constants *specializations = NULL;                                                         \
+        _CHECK(vkllm_shader_constants_new(&specializations, sizeof(int) * 2 + sizeof(uint32_t) * 3));                  \
+        vkllm_shader_constants_append(specializations, a);                                                             \
+        vkllm_shader_constants_append(specializations, b);                                                             \
+        err = vkllm_pipeline_new(context, "matmul_" #__tag "t" #__t, shader_info, _vkllm_matmul_t##__t##__tag##_spv(), \
+                                 _vkllm_matmul_t##__t##__tag##_size(), specializations,                                \
+                                 &context->pipelines.matmul.__tag[a][b][__t]);                                         \
+        vkllm_shader_constants_free(specializations);                                                                  \
+        _CHECK(err);                                                                                                   \
+    } while (0)
+
+#define _CREATE_MATMUL_PIPELINE(__tag)                                                                                 \
+    _CREATE_MATMUL_PIPELINE_T(__tag, 0);                                                                               \
+    _CREATE_MATMUL_PIPELINE_T(__tag, 1)
+
+    for (uint32_t a = 0; a < 3; ++a)
+    {
+        for (uint32_t b = 0; b < 3; ++b)
+        {
+            _CREATE_MATMUL_PIPELINE(f32f32f32);
+            if (context->device->support_16bit_storage)
+            {
+                _CREATE_MATMUL_PIPELINE(f16f32f32);
+                if (context->device->support_fp16_arithmetic)
+                {
+                    _CREATE_MATMUL_PIPELINE(f16f16f32);
+                }
+            }
+        }
+    }
+
+#undef _CREATE_MATMUL_PIPELINE
+#undef _CREATE_MATMUL_PIPELINE_T
 
     return VKLLM_ERR_OK;
 }
@@ -530,18 +525,18 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
     vkllm_pipeline_free(context, context->pipelines.rmsnorm.f16f32f16);
     vkllm_pipeline_free(context, context->pipelines.rmsnorm.f32f32f32);
 
-    vkllm_pipeline_free(context, context->pipelines.matmul.b0t0f32f32f32);
-    vkllm_pipeline_free(context, context->pipelines.matmul.b0t0f16f32f32);
-    vkllm_pipeline_free(context, context->pipelines.matmul.b0t0f16f16f32);
-    vkllm_pipeline_free(context, context->pipelines.matmul.b0t1f32f32f32);
-    vkllm_pipeline_free(context, context->pipelines.matmul.b0t1f16f32f32);
-    vkllm_pipeline_free(context, context->pipelines.matmul.b0t1f16f16f32);
-    vkllm_pipeline_free(context, context->pipelines.matmul.b1t0f32f32f32);
-    vkllm_pipeline_free(context, context->pipelines.matmul.b1t0f16f32f32);
-    vkllm_pipeline_free(context, context->pipelines.matmul.b1t0f16f16f32);
-    vkllm_pipeline_free(context, context->pipelines.matmul.b1t1f32f32f32);
-    vkllm_pipeline_free(context, context->pipelines.matmul.b1t1f16f32f32);
-    vkllm_pipeline_free(context, context->pipelines.matmul.b1t1f16f16f32);
+    for (uint32_t a = 0; a < 3; ++a)
+    {
+        for (uint32_t b = 0; b < 3; ++b)
+        {
+            for (uint32_t t = 0; t < 2; ++t)
+            {
+                vkllm_pipeline_free(context, context->pipelines.matmul.f32f32f32[a][b][t]);
+                vkllm_pipeline_free(context, context->pipelines.matmul.f16f32f32[a][b][t]);
+                vkllm_pipeline_free(context, context->pipelines.matmul.f16f16f32[a][b][t]);
+            }
+        }
+    }
 }
 #undef vkllm_free_op_pipelines
 #undef _vkllm_free_op_pipeline

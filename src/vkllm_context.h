@@ -42,20 +42,10 @@ struct vkllm_context
 
         struct
         {
-            struct vkllm_pipeline *b0t0f32f32f32;
-            struct vkllm_pipeline *b0t0f16f32f32;
-            struct vkllm_pipeline *b0t0f16f16f32;
-            struct vkllm_pipeline *b0t1f32f32f32;
-            struct vkllm_pipeline *b0t1f16f32f32;
-            struct vkllm_pipeline *b0t1f16f16f32;
-
-            struct vkllm_pipeline *b1t0f32f32f32;
-            struct vkllm_pipeline *b1t0f16f32f32;
-            struct vkllm_pipeline *b1t0f16f16f32;
-            struct vkllm_pipeline *b1t1f32f32f32;
-            struct vkllm_pipeline *b1t1f16f32f32;
-            struct vkllm_pipeline *b1t1f16f16f32;
-
+            // pipelines array size: a_boardcast_type x b_boardcast_type x transposed_b
+            struct vkllm_pipeline *f32f32f32[3][3][2];
+            struct vkllm_pipeline *f16f32f32[3][3][2];
+            struct vkllm_pipeline *f16f16f32[3][3][2];
         } matmul;
     } pipelines;
 };
