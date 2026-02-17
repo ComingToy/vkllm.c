@@ -119,6 +119,7 @@ static struct
     {512, 1024, 2048, vkllm_dtype_float32, true},    {333, 1259, 365, vkllm_dtype_float32, true},
     {2048, 1024, 10240, vkllm_dtype_float32, true},
 
+    {512, 1024, 2048, vkllm_dtype_float16, false},   {333, 1259, 365, vkllm_dtype_float16, false},
     {512, 1024, 2048, vkllm_dtype_float32, false},   {333, 1259, 365, vkllm_dtype_float32, false},
     {2048, 1024, 10240, vkllm_dtype_float32, false},
 };
