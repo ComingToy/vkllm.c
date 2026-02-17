@@ -40,7 +40,8 @@ extern void vkllm_commands_sync_tensor(struct vkllm_context *context, struct vkl
                                        struct vkllm_tensor *tensor, VkAccessFlagBits dst_access,
                                        VkPipelineStageFlagBits dst_stage);
 extern vkllm_err_t vkllm_commands_pipeline(struct vkllm_context *context, struct vkllm_commands *commands,
-                                           struct vkllm_pipeline *pipeline, struct vkllm_shader_constants *constants,
+                                           struct vkllm_pipeline *pipeline, struct vkllm_array_ptr *bindings,
+                                           struct vkllm_array_u32 *indices, struct vkllm_shader_constants *constants,
                                            uint32_t group_x, uint32_t group_y, uint32_t group_z);
 extern vkllm_err_t vkllm_commands_submit(struct vkllm_context *context, struct vkllm_commands *commands);
 extern vkllm_err_t vkllm_commands_wait_exec(struct vkllm_context *context, struct vkllm_commands *commands);

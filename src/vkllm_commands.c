@@ -2,6 +2,7 @@
 #include "log.h"
 #include "src/vkllm_common.h"
 #include "src/vkllm_gpu_device.h"
+#include "src/vkllm_pipeline.h"
 #include "src/vkllm_tensor.h"
 #include <string.h>
 #include <vulkan/vulkan.h>
@@ -213,10 +214,12 @@ vkllm_err_t vkllm_commands_download(struct vkllm_context *context, struct vkllm_
 }
 
 vkllm_err_t vkllm_commands_pipeline(struct vkllm_context *context, struct vkllm_commands *commands,
-                                    struct vkllm_pipeline *pipeline, struct vkllm_shader_constants *constants,
+                                    struct vkllm_pipeline *pipeline, struct vkllm_array_ptr *bindings,
+                                    struct vkllm_array_u32 *indices, struct vkllm_shader_constants *constants,
                                     uint32_t group_x, uint32_t group_y, uint32_t group_z)
 {
-    _CHECK_ARGS(context && pipeline && constants);
+    _CHECK_ARGS(context && pipeline && bindings && indices && constants);
+    _CHECK_ARGS(bindings->used_n == indices->used_n);
 
     const VkPhysicalDeviceLimits *limits = &pipeline->device->vk_physical_dev.properties.limits;
     if (group_x > limits->maxComputeWorkGroupCount[0] || group_y > limits->maxComputeWorkGroupCount[1] ||
@@ -229,7 +232,16 @@ vkllm_err_t vkllm_commands_pipeline(struct vkllm_context *context, struct vkllm_
         return VKLLM_ERR_ARGS;
     }
 
-    // sync
+    for (uint32_t i = 0; i < bindings->used_n; ++i)
+    {
+        struct vkllm_tensor *tensor = (struct vkllm_tensor *)bindings->data[i];
+        vkllm_commands_sync_tensor(context, commands, tensor, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+    }
+
+    _CHECK(vkllm_pipeline_update_bindings(context, pipeline, bindings, indices));
+
+	// push constants
     vkCmdBindPipeline(commands->vk_command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->vk_pipeline);
     return VKLLM_ERR_OK;
 }
