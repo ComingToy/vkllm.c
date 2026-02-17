@@ -1,13 +1,18 @@
 #include "vkllm_models_llama2.h"
 #include "../core/vkllm_commands.h"
+#include "../core/vkllm_graph.h"
+#include "../core/vkllm_op_embedding.h"
+#include "../core/vkllm_op_matmul.h"
+#include "../core/vkllm_op_rmsnorm.h"
 #include "../core/vkllm_tensor.h"
 #include "gguflib.h"
+#include "vkllm_llama2_layers.h"
 #include <log.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-static vkllm_err_t parse_meta_kv(gguf_ctx *ctx, gguf_key *key, struct vkllm_models_llama2_weights *model)
+static vkllm_err_t parse_meta_kv(gguf_ctx *ctx, gguf_key *key, struct vkllm_models_llama2 *model)
 {
     const char *name = key->name;
     size_t namelen = key->namelen;
@@ -39,7 +44,7 @@ static vkllm_err_t parse_meta_kv(gguf_ctx *ctx, gguf_key *key, struct vkllm_mode
         if (type == GGUF_VALUE_TYPE_FLOAT32)
             model->meta.layer_norm_rms_epsilon = val->float32;
     }
-    else if (strncmp(name, "llama.attention.head_count_kv", namelen) == 0)
+    else if (strncmp(name, "llama.attention.key_length", namelen) == 0)
     {
         if (type == GGUF_VALUE_TYPE_UINT32)
             model->meta.key_length = val->uint32;
@@ -53,6 +58,20 @@ static vkllm_err_t parse_meta_kv(gguf_ctx *ctx, gguf_key *key, struct vkllm_mode
     {
         if (type == GGUF_VALUE_TYPE_UINT32)
             model->meta.vocab_size = val->uint32;
+    }
+    else if (strncmp(name, "llama.attention.head_count", namelen) == 0)
+    {
+        if (type == GGUF_VALUE_TYPE_UINT32)
+        {
+            model->meta.head_count = val->uint32;
+        }
+    }
+    else if (strncmp(name, "llama.attention.head_count_kv", namelen) == 0)
+    {
+        if (type == GGUF_VALUE_TYPE_UINT32)
+        {
+            model->meta.head_count_kv = val->uint32;
+        }
     }
 
     return VKLLM_ERR_OK;
@@ -78,7 +97,7 @@ static vkllm_err_t create_tensor_from_gguf(struct vkllm_context *context, struct
     memcpy(name_buf, gguf_t->name, gguf_t->namelen);
 
     vkllm_err_t err =
-        vkllm_tensor_new(context, name_buf, shapes, dtype, VKLLM_OP_COPY, NULL, 0, NULL, 0, false, ptensor);
+        vkllm_tensor_new(context, name_buf, shapes, dtype, VKLLM_OP_NONE, NULL, 0, NULL, 0, false, ptensor);
     free(name_buf);
 
     if (err != VKLLM_ERR_OK)
@@ -93,8 +112,7 @@ static vkllm_err_t create_tensor_from_gguf(struct vkllm_context *context, struct
     return VKLLM_ERR_OK;
 }
 
-vkllm_err_t vkllm_models_llama2_load_weights(struct vkllm_context *context, struct vkllm_models_llama2_weights *model,
-                                             const char *file)
+vkllm_err_t vkllm_models_llama2_load(struct vkllm_context *context, struct vkllm_models_llama2 *model, const char *file)
 {
     _CHECK_ARGS(context && model && file);
 
@@ -232,9 +250,14 @@ cleanup_gguf:
     return err;
 }
 
-vkllm_err_t vkllm_models_llama2_free_weights(struct vkllm_context *context, struct vkllm_models_llama2_weights *model)
+vkllm_err_t vkllm_models_llama2_free(struct vkllm_context *context, struct vkllm_models_llama2 *model)
 {
     _CHECK_ARGS(context && model);
+
+    if (model->graph)
+    {
+        vkllm_graph_free(context, model->graph);
+    }
 
     if (model->weights.tok_embed_weights)
     {
@@ -290,11 +313,109 @@ vkllm_err_t vkllm_models_llama2_free_weights(struct vkllm_context *context, stru
     return VKLLM_ERR_OK;
 }
 
-vkllm_err_t vkllm_models_llama2_build_layers(struct vkllm_context *context, struct vkllm_models_llama2_weights *model)
+vkllm_err_t vkllm_models_llama2_build_model(struct vkllm_context *context, struct vkllm_models_llama2 *model,
+                                            struct vkllm_tensor *input_toks)
 {
-	// build input layer
-	
-	// build transformer blocks
-	
-	// build output layer
+    _CHECK_ARGS(context && model);
+    _CHECK_ARGS(model->weights.tok_embed_weights && model->weights.output_norm_weight && model->weights.output_weight);
+    _CHECK_ARGS(model->weights.blocks && model->weights.blocks->used_n > 0);
+
+    vkllm_err_t err = VKLLM_ERR_OK;
+    struct vkllm_graph *graph = NULL;
+    struct vkllm_tensor *embedded = NULL;
+    struct vkllm_tensor *hidden = NULL;
+
+    _CHECK_JUMP(vkllm_graph_new(context, &graph), err, fail);
+
+    uint32_t batch = input_toks->shapes[0];
+    uint32_t seq_len = input_toks->shapes[3];
+    uint32_t hidden_dim = model->meta.embedding_length;
+    uint32_t vocab_size = model->meta.vocab_size;
+
+    _CHECK_JUMP(vkllm_graph_add_input(context, graph, input_toks), err, fail_free_graph);
+
+    uint32_t embed_shapes[4] = {batch, 1, seq_len, hidden_dim};
+    struct vkllm_tensor *embed_srcs[] = {input_toks, model->weights.tok_embed_weights};
+    _CHECK_JUMP(vkllm_tensor_new(context, "embedded", embed_shapes, vkllm_dtype_float16, VKLLM_OP_EMBEDDING, embed_srcs,
+                                 2, NULL, 0, false, &embedded),
+                err, fail_free_graph);
+    _CHECK_JUMP(vkllm_graph_add_node(context, graph, embedded), err, fail_free_embedded);
+
+    hidden = embedded;
+
+    for (uint32_t i = 0; i < model->meta.block_count && i < model->weights.blocks->used_n; i++)
+    {
+        struct block_weights *bw = model->weights.blocks->data[i];
+        if (!bw)
+        {
+            err = VKLLM_ERR_ARGS;
+            goto fail_free_embedded;
+        }
+
+        struct vkllm_llama2_self_attn_layer_params attn_params = {
+            .WK = bw->WK,
+            .WQ = bw->WQ,
+            .WV = bw->WV,
+            .WO = bw->WO,
+            .norm_weight = bw->attn_norm_weight,
+            .norm_power = 2.0f,
+            .norm_eps = model->meta.layer_norm_rms_epsilon,
+            .freq_base = model->meta.rope_freq_base,
+            .offsets = 0,
+            .num_head = model->meta.head_count,
+        };
+
+        struct vkllm_llama2_ffn_layer_params ffn_params = {
+            .WU = bw->WU,
+            .WG = bw->WG,
+            .WD = bw->WD,
+            .norm_weight = bw->ffn_norm_weight,
+            .norm_power = 2.0f,
+            .norm_eps = model->meta.layer_norm_rms_epsilon,
+        };
+
+        struct vkllm_llama2_transformer_block_params block_params = {
+            .attn = attn_params,
+            .ffn = ffn_params,
+        };
+
+        char block_name[64];
+        snprintf(block_name, sizeof(block_name), "block.%u", i);
+        _CHECK_JUMP(vkllm_llama2_build_transformer_block(context, graph, hidden, block_params, block_name), err,
+                    fail_free_embedded);
+        hidden = graph->nodes->data[graph->nodes->used_n - 1];
+    }
+
+    struct vkllm_tensor *output_norm = NULL;
+    struct vkllm_tensor *norm_srcs[] = {hidden, model->weights.output_norm_weight};
+    struct vkllm_op_rmsnorm_params norm_params = {.power = 2.0f, .eps = model->meta.layer_norm_rms_epsilon};
+    _CHECK_JUMP(vkllm_tensor_new(context, "output_norm", hidden->shapes, hidden->dtype, VKLLM_OP_RMSNORM, norm_srcs, 2,
+                                 &norm_params, sizeof(norm_params), false, &output_norm),
+                err, fail_free_embedded);
+    _CHECK_JUMP(vkllm_graph_add_node(context, graph, output_norm), err, fail_free_output_norm);
+
+    uint32_t logits_shapes[4] = {batch, 1, seq_len, vocab_size};
+    struct vkllm_tensor *logits_srcs[] = {output_norm, model->weights.output_weight};
+    struct vkllm_op_matmul_params matmul_params = {.scale = 1.0f, .act = 0};
+    struct vkllm_tensor *logits = NULL;
+    _CHECK_JUMP(vkllm_tensor_new(context, "logits", logits_shapes, output_norm->dtype, VKLLM_OP_MATMUL, logits_srcs, 2,
+                                 &matmul_params, sizeof(matmul_params), false, &logits),
+                err, fail_free_output_norm);
+    _CHECK_JUMP(vkllm_graph_add_node(context, graph, logits), err, fail_free_logits);
+    _CHECK_JUMP(vkllm_graph_set_output(context, graph, logits), err, fail_free_logits);
+
+    model->graph = graph;
+
+    return VKLLM_ERR_OK;
+
+fail_free_logits:
+    vkllm_tensor_free(context, logits);
+fail_free_output_norm:
+    vkllm_tensor_free(context, output_norm);
+fail_free_embedded:
+    vkllm_tensor_free(context, embedded);
+fail_free_graph:
+    vkllm_graph_free(context, graph);
+fail:
+    return err;
 }

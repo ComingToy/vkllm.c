@@ -18,7 +18,9 @@ struct block_weights
 
 VKLLM_DEF_ARRAY(block_weights, struct block_weights *);
 
-struct vkllm_models_llama2_weights
+struct vkllm_graph;
+
+struct vkllm_models_llama2
 {
     struct
     {
@@ -30,6 +32,8 @@ struct vkllm_models_llama2_weights
         uint32_t key_length;
         uint32_t value_length;
         uint32_t vocab_size;
+        uint32_t head_count;
+        uint32_t head_count_kv;
     } meta;
 
     struct
@@ -39,14 +43,15 @@ struct vkllm_models_llama2_weights
         struct vkllm_tensor *output_norm_weight;
         struct vkllm_tensor *output_weight;
     } weights;
+
+    struct vkllm_graph *graph;
 };
 
-extern vkllm_err_t vkllm_models_llama2_load_weights(struct vkllm_context *context,
-                                                    struct vkllm_models_llama2_weights *model, const char *file);
-extern vkllm_err_t vkllm_models_llama2_free_weights(struct vkllm_context *context,
-                                                    struct vkllm_models_llama2_weights *model);
+extern vkllm_err_t vkllm_models_llama2_load(struct vkllm_context *context, struct vkllm_models_llama2 *model,
+                                            const char *file);
+extern vkllm_err_t vkllm_models_llama2_free(struct vkllm_context *context, struct vkllm_models_llama2 *model);
 
-extern vkllm_err_t vkllm_models_llama2_build_layers(struct vkllm_context *context,
-                                                    struct vkllm_models_llama2_weights *model);
+extern vkllm_err_t vkllm_models_llama2_build_model(struct vkllm_context *context, struct vkllm_models_llama2 *model,
+                                                   struct vkllm_tensor *input_toks);
 
 #endif
