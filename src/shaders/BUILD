@@ -130,6 +130,24 @@ glsl_shader(
     ],
 )
 
+glsl_shader(
+    name = "vkllm_copy_shaders",
+    shaders = [
+        "vkllm_copy.comp",
+    ],
+    hdrs = COMP_SHADER_HDRS,
+    extra_args = COMMON_ARGS,
+    tool = "//tools:binary_to_array",
+    macros = [
+        "-D_SUPPORT_16BIT_STORAGE -DDTYPE=float16_t",
+        "-DDTYPE=float",
+    ],
+    suffixes = [
+        "_f16",
+        "_f32",
+    ],
+)
+
 cc_shader_library(
     name = "vkllm_shaders",
     deps = [
@@ -139,6 +157,7 @@ cc_shader_library(
         ":vkllm_matmul_shaders",
         ":vkllm_rope_shaders",
         ":vkllm_softmax_shaders",
+        ":vkllm_copy_shaders",
     ],
     visibility = ["//visibility:public"]
 )
