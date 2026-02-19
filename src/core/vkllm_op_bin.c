@@ -13,9 +13,9 @@ static vkllm_err_t vkllm_op_bin_get_pipeline(struct vkllm_context *context, stru
     *pipeline = NULL;
 
     const int32_t op = *(const int32_t *)tensor->params;
-    if (tensor->dtype != vkllm_dtype_float32)
+    if (tensor->dtype != vkllm_dtype_float32 && tensor->dtype != vkllm_dtype_float16)
     {
-        log_error("unsupported op result dtype: %s", vkllm_dtype_s(tensor->dtype));
+        log_error("tensor: %s unsupported op result dtype: %s", tensor->name, vkllm_dtype_s(tensor->dtype));
         return VKLLM_ERR_ARGS;
     }
 
@@ -23,11 +23,11 @@ static vkllm_err_t vkllm_op_bin_get_pipeline(struct vkllm_context *context, stru
     {
         if (context->device->support_fp16_arithmetic)
         {
-            *pipeline = context->pipelines.bin.f16f16f32[op];
+            *pipeline = context->pipelines.bin.f16f16f16[op];
         }
         else
         {
-            *pipeline = context->pipelines.bin.f16f32f32[op];
+            *pipeline = context->pipelines.bin.f16f32f16[op];
         }
         return VKLLM_ERR_OK;
     }

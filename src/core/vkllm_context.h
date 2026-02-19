@@ -26,6 +26,7 @@ struct vkllm_context
             struct vkllm_pipeline *f16f32f32[4];
             struct vkllm_pipeline *f16f16f32[4];
             struct vkllm_pipeline *f16f16f16[4];
+            struct vkllm_pipeline *f16f32f16[4];
         } bin;
         struct
         {

@@ -408,6 +408,7 @@ static vkllm_err_t vkllm_create_all_bin_pipeline(struct vkllm_context *context)
         if (context->device->support_16bit_storage)
         {
             _CREATE_BIN_PIPELINE(f16f32f32);
+            _CREATE_BIN_PIPELINE(f16f32f16);
             if (context->device->support_fp16_arithmetic)
             {
                 _CREATE_BIN_PIPELINE(f16f16f32);
@@ -659,6 +660,7 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
     for (uint32_t i = 0; i < 4; ++i)
     {
         vkllm_pipeline_free(context, context->pipelines.bin.f16f16f16[i]);
+        vkllm_pipeline_free(context, context->pipelines.bin.f16f32f16[i]);
         vkllm_pipeline_free(context, context->pipelines.bin.f16f16f32[i]);
         vkllm_pipeline_free(context, context->pipelines.bin.f16f32f32[i]);
         vkllm_pipeline_free(context, context->pipelines.bin.f32f32f32[i]);

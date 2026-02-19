@@ -22,12 +22,14 @@ glsl_shader(
         "-D_SUPPORT_16BIT_STORAGE -DIN_DTYPE=float16_t -DLOAD_DTYPE=float -DOUT_DTYPE=float",
         "-D_SUPPORT_16BIT_STORAGE -D_SUPPORT_FLOAT16_ARITHMETIC -DIN_DTYPE=float16_t -DLOAD_DTYPE=float16_t -DOUT_DTYPE=float",
         "-D_SUPPORT_16BIT_STORAGE -D_SUPPORT_FLOAT16_ARITHMETIC -DIN_DTYPE=float16_t -DLOAD_DTYPE=float16_t -DOUT_DTYPE=float16_t",
+        "-D_SUPPORT_16BIT_STORAGE -DIN_DTYPE=float16_t -DLOAD_DTYPE=float -DOUT_DTYPE=float16_t",
     ],
     suffixes = [
         "_f32f32f32",
         "_f16f32f32",
         "_f16f16f32",
         "_f16f16f16",
+        "_f16f32f16",
     ],
 )
 
