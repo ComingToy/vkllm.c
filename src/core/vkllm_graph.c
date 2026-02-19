@@ -220,6 +220,7 @@ static vkllm_err_t vkllm_graph_run_tensor(struct vkllm_context *context, struct 
 vkllm_err_t vkllm_graph_run(struct vkllm_context *context, struct vkllm_graph *graph)
 {
     _CHECK_ARGS(context && graph && graph->output_node && graph->commands);
+    _CHECK(vkllm_commands_begin(context, graph->commands));
 
     // Create a hash set to track visited tensors for O(1) lookup
     struct vkllm_hashset *visited = NULL;
@@ -235,6 +236,9 @@ vkllm_err_t vkllm_graph_run(struct vkllm_context *context, struct vkllm_graph *g
     // Clean up the visited hash set
     vkllm_hashset_free(visited);
 
+    _CHECK(vkllm_commands_end(context, graph->commands));
+    _CHECK(vkllm_commands_submit(context, graph->commands));
+    _CHECK(vkllm_commands_wait_exec(context, graph->commands));
     return err;
 }
 
