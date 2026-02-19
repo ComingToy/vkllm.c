@@ -289,3 +289,19 @@ vkllm_err_t vkllm_tensor_copy_ref(struct vkllm_context *context, struct vkllm_te
     context->stats.tensor_alloc_counts += 1;
     return VKLLM_ERR_OK;
 }
+
+vkllm_err_t vkllm_tensor_s(struct vkllm_context *context, struct vkllm_tensor *tensor, char *buf, size_t len)
+{
+    _CHECK_ARGS(context && tensor && buf && len > 0);
+
+    const char *dtype_str = vkllm_dtype_s(tensor->dtype);
+    int written = snprintf(buf, len, "%s<%s>[%u, %u, %u, %u]", tensor->name, dtype_str, tensor->shapes[0],
+                           tensor->shapes[1], tensor->shapes[2], tensor->shapes[3]);
+
+    if (written < 0 || (size_t)written >= len)
+    {
+        return VKLLM_ERR_ARGS;
+    }
+
+    return VKLLM_ERR_OK;
+}
