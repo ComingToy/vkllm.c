@@ -8,6 +8,7 @@
 #include "gguflib.h"
 #include "vkllm_llama2_layers.h"
 #include <log.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -157,7 +158,7 @@ static vkllm_err_t parse_meta_kv(gguf_ctx *ctx, gguf_key *key, struct vkllm_mode
         {
             tok_ctx->count = val->array.len;
             tok_ctx->token_texts = (char **)calloc(val->array.len, sizeof(char *));
-            callback = tokenizer_scores_callback;
+            callback = tokenizer_tokens_callback;
         }
     }
     else if (strncmp(name, "tokenizer.ggml.scores", namelen) == 0)
@@ -175,6 +176,7 @@ static vkllm_err_t parse_meta_kv(gguf_ctx *ctx, gguf_key *key, struct vkllm_mode
         {
             tok_ctx->count = val->array.len;
             tok_ctx->token_types = (int32_t *)calloc(val->array.len, sizeof(int32_t));
+            callback = tokenizer_token_type_callback;
         }
     }
 
@@ -552,4 +554,218 @@ fail_free_graph:
     vkllm_graph_free(context, graph);
 fail:
     return err;
+}
+
+static int find_token_by_text(struct vkllm_models_llama2 *model, const char *text, size_t len)
+{
+    for (size_t i = 0; i < model->meta.tokens->used_n; i++)
+    {
+        struct vkllm_token *tok = &model->meta.tokens->data[i];
+        size_t tok_len = strlen(tok->text);
+        if (tok_len == len && memcmp(tok->text, text, len) == 0)
+            return (int)i;
+    }
+    return -1;
+}
+
+static int find_best_merge(struct vkllm_models_llama2 *model, char **pieces, size_t *piece_lens, size_t npieces,
+                           size_t *merge_idx)
+{
+    float best_score = -INFINITY;
+    int best_token = -1;
+    *merge_idx = 0;
+
+    for (size_t i = 0; i + 1 < npieces; i++)
+    {
+        if (pieces[i] == NULL)
+            continue;
+
+        size_t merged_len = piece_lens[i] + piece_lens[i + 1];
+        char *merged = (char *)malloc(merged_len + 1);
+        if (!merged)
+            continue;
+        memcpy(merged, pieces[i], piece_lens[i]);
+        memcpy(merged + piece_lens[i], pieces[i + 1], piece_lens[i + 1]);
+        merged[merged_len] = '\0';
+
+        int token_id = find_token_by_text(model, merged, merged_len);
+        if (token_id >= 0)
+        {
+            float score = model->meta.tokens->data[token_id].score;
+            if (score > best_score)
+            {
+                best_score = score;
+                best_token = token_id;
+                *merge_idx = i;
+            }
+        }
+        free(merged);
+    }
+    return best_token;
+}
+
+vkllm_err_t vkllm_models_llama2_tokenize(struct vkllm_models_llama2 *model, const char *sentence,
+                                         struct vkllm_array_token_id **token_ids)
+{
+    _CHECK_ARGS(model && sentence && token_ids);
+    _CHECK_ARGS(model->meta.tokens && model->meta.tokens->used_n > 0);
+
+    vkllm_err_t err = VKLLM_ERR_OK;
+    size_t sentence_len = strlen(sentence);
+
+    if (sentence_len == 0)
+    {
+        _CHECK(vkllm_array_token_id_new(token_ids, 1));
+        return VKLLM_ERR_OK;
+    }
+
+    size_t max_pieces = sentence_len * 3 + 3;
+    char *processed = (char *)malloc(max_pieces + 1);
+    if (!processed)
+        return VKLLM_ERR_ALLOC;
+
+    size_t processed_len = 0;
+    processed[processed_len++] = (char)0xE2;
+    processed[processed_len++] = (char)0x96;
+    processed[processed_len++] = (char)0x81;
+
+    for (size_t i = 0; i < sentence_len; i++)
+    {
+        if (sentence[i] == ' ')
+        {
+            processed[processed_len++] = (char)0xE2;
+            processed[processed_len++] = (char)0x96;
+            processed[processed_len++] = (char)0x81;
+        }
+        else
+        {
+            processed[processed_len++] = sentence[i];
+        }
+    }
+    processed[processed_len] = '\0';
+
+    size_t npieces = 0;
+    char **pieces = (char **)calloc(processed_len, sizeof(char *));
+    size_t *piece_lens = (size_t *)calloc(processed_len, sizeof(size_t));
+    if (!pieces || !piece_lens)
+    {
+        err = VKLLM_ERR_ALLOC;
+        free(processed);
+        goto cleanup;
+    }
+
+    for (size_t i = 0; i < processed_len; i++)
+    {
+        unsigned char c = (unsigned char)processed[i];
+        if (c >= 0x80)
+        {
+            size_t char_len = 1;
+            if ((c & 0xE0) == 0xC0)
+                char_len = 2;
+            else if ((c & 0xF0) == 0xE0)
+                char_len = 3;
+            else if ((c & 0xF8) == 0xF0)
+                char_len = 4;
+
+            pieces[npieces] = (char *)malloc(char_len + 1);
+            if (!pieces[npieces])
+            {
+                err = VKLLM_ERR_ALLOC;
+                free(processed);
+                goto cleanup;
+            }
+            memcpy(pieces[npieces], processed + i, char_len);
+            pieces[npieces][char_len] = '\0';
+            piece_lens[npieces] = char_len;
+            i += char_len - 1;
+        }
+        else
+        {
+            pieces[npieces] = (char *)malloc(2);
+            if (!pieces[npieces])
+            {
+                err = VKLLM_ERR_ALLOC;
+                free(processed);
+                goto cleanup;
+            }
+            pieces[npieces][0] = (char)c;
+            pieces[npieces][1] = '\0';
+            piece_lens[npieces] = 1;
+        }
+        npieces++;
+    }
+    free(processed);
+
+    while (npieces > 1)
+    {
+        size_t merge_idx;
+        int best_token = find_best_merge(model, pieces, piece_lens, npieces, &merge_idx);
+        if (best_token < 0)
+            break;
+
+        size_t merged_len = piece_lens[merge_idx] + piece_lens[merge_idx + 1];
+        char *merged = (char *)malloc(merged_len + 1);
+        if (!merged)
+        {
+            err = VKLLM_ERR_ALLOC;
+            goto cleanup;
+        }
+        memcpy(merged, pieces[merge_idx], piece_lens[merge_idx]);
+        memcpy(merged + piece_lens[merge_idx], pieces[merge_idx + 1], piece_lens[merge_idx + 1]);
+        merged[merged_len] = '\0';
+
+        free(pieces[merge_idx]);
+        free(pieces[merge_idx + 1]);
+        pieces[merge_idx] = merged;
+        piece_lens[merge_idx] = merged_len;
+
+        for (size_t i = merge_idx + 1; i + 1 < npieces; i++)
+        {
+            pieces[i] = pieces[i + 1];
+            piece_lens[i] = piece_lens[i + 1];
+        }
+        pieces[npieces - 1] = NULL;
+        npieces--;
+    }
+
+    _CHECK_JUMP(vkllm_array_token_id_new(token_ids, npieces + 2), err, cleanup);
+
+    if (model->meta.add_bos_token)
+    {
+        _CHECK_JUMP(vkllm_array_token_id_append(*token_ids, model->meta.bos_token_id), err, cleanup_tokens);
+    }
+
+    for (size_t i = 0; i < npieces; i++)
+    {
+        int token_id = find_token_by_text(model, pieces[i], piece_lens[i]);
+        if (token_id >= 0)
+        {
+            _CHECK_JUMP(vkllm_array_token_id_append(*token_ids, (uint32_t)token_id), err, cleanup_tokens);
+        }
+    }
+
+    if (model->meta.add_eos_token)
+    {
+        _CHECK_JUMP(vkllm_array_token_id_append(*token_ids, model->meta.eos_token_id), err, cleanup_tokens);
+    }
+
+cleanup:
+    if (pieces)
+    {
+        for (size_t i = 0; i < npieces; i++)
+            if (pieces[i])
+                free(pieces[i]);
+        free(pieces);
+    }
+    if (piece_lens)
+        free(piece_lens);
+    return err;
+
+cleanup_tokens:
+    if (*token_ids)
+    {
+        vkllm_array_token_id_free(*token_ids);
+        *token_ids = NULL;
+    }
+    goto cleanup;
 }

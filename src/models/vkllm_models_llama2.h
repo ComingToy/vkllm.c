@@ -28,6 +28,79 @@ struct vkllm_token
 };
 
 VKLLM_DEF_ARRAY(token, struct vkllm_token);
+struct vkllm_array_token_id
+{
+    size_t alloc_n;
+    size_t used_n;
+    uint32_t *data;
+};
+static inline vkllm_err_t vkllm_array_token_id_new(struct vkllm_array_token_id **arr, size_t init)
+{
+    size_t alloc_bytes = sizeof(**arr);
+    *arr = (struct vkllm_array_token_id *)malloc(alloc_bytes);
+    if (*arr == ((void *)0))
+    {
+        return VKLLM_ERR_ALLOC;
+    }
+    (*arr)->data = ((void *)0);
+    (*arr)->alloc_n = init;
+    (*arr)->used_n = 0;
+    if (init > 0)
+    {
+        do
+        {
+            ((*arr)->data) = (uint32_t *)malloc(sizeof(uint32_t) * (init));
+            if (!((*arr)->data))
+                return VKLLM_ERR_ALLOC;
+        } while (0);
+    }
+    return VKLLM_ERR_OK;
+}
+static inline vkllm_err_t vkllm_array_token_id_copy(struct vkllm_array_token_id *src, struct vkllm_array_token_id **dst)
+{
+    *dst = (struct vkllm_array_token_id *)malloc(sizeof(*src));
+    if (*dst == ((void *)0))
+    {
+        return VKLLM_ERR_ALLOC;
+    }
+    do
+    {
+        ((*dst)->data) = (uint32_t *)malloc(sizeof(uint32_t) * (src->alloc_n));
+        if (!((*dst)->data))
+            return VKLLM_ERR_ALLOC;
+    } while (0);
+    (*dst)->alloc_n = src->alloc_n;
+    (*dst)->used_n = src->used_n;
+    memcpy((*dst)->data, src->data, sizeof(uint32_t) * src->used_n);
+    return VKLLM_ERR_OK;
+}
+static inline vkllm_err_t vkllm_array_token_id_append(struct vkllm_array_token_id *arr, uint32_t element)
+{
+    if (arr->used_n >= arr->alloc_n)
+    {
+        uint32_t *data = ((void *)0);
+        do
+        {
+            (data) = (uint32_t *)malloc(sizeof(uint32_t) * (arr->alloc_n * 2));
+            if (!(data))
+                return VKLLM_ERR_ALLOC;
+        } while (0);
+        memcpy(data, arr->data, arr->alloc_n * sizeof(uint32_t));
+        free(arr->data);
+        arr->data = data;
+        arr->alloc_n *= 2;
+    }
+    arr->data[arr->used_n++] = element;
+    return VKLLM_ERR_OK;
+}
+static inline void vkllm_array_token_id_free(struct vkllm_array_token_id *arr)
+{
+    if (!arr)
+        return;
+    if (arr->data)
+        free(arr->data);
+    free(arr);
+};
 
 struct vkllm_models_llama2
 {
@@ -68,5 +141,7 @@ extern vkllm_err_t vkllm_models_llama2_free(struct vkllm_context *context, struc
 
 extern vkllm_err_t vkllm_models_llama2_build_model(struct vkllm_context *context, struct vkllm_models_llama2 *model,
                                                    struct vkllm_tensor *input_toks);
+extern vkllm_err_t vkllm_models_llama2_tokenize(struct vkllm_models_llama2 *model, const char *sentence,
+                                                struct vkllm_array_token_id **token_ids);
 
 #endif
