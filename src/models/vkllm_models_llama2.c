@@ -12,12 +12,65 @@
 #include <stdlib.h>
 #include <string.h>
 
-static vkllm_err_t parse_meta_kv(gguf_ctx *ctx, gguf_key *key, struct vkllm_models_llama2 *model)
+struct tokenizer_parse_ctx
+{
+    struct vkllm_array_token *tokens;
+    char **token_texts;
+    float *scores;
+    int32_t *token_types;
+    uint64_t count;
+};
+
+static void tokenizer_tokens_callback(void *privdata, uint32_t type, union gguf_value *val, uint64_t in_array,
+                                      uint64_t array_len)
+{
+    struct tokenizer_parse_ctx *ctx = (struct tokenizer_parse_ctx *)privdata;
+    if (type == GGUF_VALUE_TYPE_STRING && in_array > 0)
+    {
+        uint64_t idx = in_array - 1;
+        if (idx < ctx->count)
+        {
+            ctx->token_texts[idx] = (char *)malloc(val->string.len + 1);
+            memcpy(ctx->token_texts[idx], val->string.string, val->string.len);
+            ctx->token_texts[idx][val->string.len] = '\0';
+        }
+    }
+}
+
+static void tokenizer_scores_callback(void *privdata, uint32_t type, union gguf_value *val, uint64_t in_array,
+                                      uint64_t array_len)
+{
+    struct tokenizer_parse_ctx *ctx = (struct tokenizer_parse_ctx *)privdata;
+    if (type == GGUF_VALUE_TYPE_FLOAT32 && in_array > 0)
+    {
+        uint64_t idx = in_array - 1;
+        if (idx < ctx->count)
+            ctx->scores[idx] = val->float32;
+    }
+}
+
+static void tokenizer_token_type_callback(void *privdata, uint32_t type, union gguf_value *val, uint64_t in_array,
+                                          uint64_t array_len)
+{
+    struct tokenizer_parse_ctx *ctx = (struct tokenizer_parse_ctx *)privdata;
+    if (type == GGUF_VALUE_TYPE_INT32 && in_array > 0)
+    {
+        uint64_t idx = in_array - 1;
+        if (idx < ctx->count)
+            ctx->token_types[idx] = val->int32;
+    }
+}
+
+static vkllm_err_t parse_meta_kv(gguf_ctx *ctx, gguf_key *key, struct vkllm_models_llama2 *model,
+                                 struct tokenizer_parse_ctx *tok_ctx)
 {
     const char *name = key->name;
     size_t namelen = key->namelen;
     union gguf_value *val = key->val;
     uint32_t type = key->type;
+
+    void (*callback)(void *, uint32_t, union gguf_value *, uint64_t, uint64_t);
+    callback = NULL;
 
     if (strncmp(name, "llama.block_count", namelen) == 0)
     {
@@ -73,7 +126,59 @@ static vkllm_err_t parse_meta_kv(gguf_ctx *ctx, gguf_key *key, struct vkllm_mode
             model->meta.head_count_kv = val->uint32;
         }
     }
+    else if (strncmp(name, "tokenizer.ggml.bos_token_id", namelen) == 0)
+    {
+        if (type == GGUF_VALUE_TYPE_UINT32)
+            model->meta.bos_token_id = val->uint32;
+    }
+    else if (strncmp(name, "tokenizer.ggml.eos_token_id", namelen) == 0)
+    {
+        if (type == GGUF_VALUE_TYPE_UINT32)
+            model->meta.eos_token_id = val->uint32;
+    }
+    else if (strncmp(name, "tokenizer.ggml.padding_token_id", namelen) == 0)
+    {
+        if (type == GGUF_VALUE_TYPE_UINT32)
+            model->meta.padding_token_id = val->uint32;
+    }
+    else if (strncmp(name, "tokenizer.ggml.add_bos_token", namelen) == 0)
+    {
+        if (type == GGUF_VALUE_TYPE_BOOL)
+            model->meta.add_bos_token = val->boolval;
+    }
+    else if (strncmp(name, "tokenizer.ggml.add_eos_token", namelen) == 0)
+    {
+        if (type == GGUF_VALUE_TYPE_BOOL)
+            model->meta.add_eos_token = val->boolval;
+    }
+    else if (strncmp(name, "tokenizer.ggml.tokens", namelen) == 0)
+    {
+        if (type == GGUF_VALUE_TYPE_ARRAY && val->array.type == GGUF_VALUE_TYPE_STRING)
+        {
+            tok_ctx->count = val->array.len;
+            tok_ctx->token_texts = (char **)calloc(val->array.len, sizeof(char *));
+            callback = tokenizer_scores_callback;
+        }
+    }
+    else if (strncmp(name, "tokenizer.ggml.scores", namelen) == 0)
+    {
+        if (type == GGUF_VALUE_TYPE_ARRAY && val->array.type == GGUF_VALUE_TYPE_FLOAT32)
+        {
+            tok_ctx->count = val->array.len;
+            tok_ctx->scores = (float *)calloc(val->array.len, sizeof(float));
+            callback = tokenizer_scores_callback;
+        }
+    }
+    else if (strncmp(name, "tokenizer.ggml.token_type", namelen) == 0)
+    {
+        if (type == GGUF_VALUE_TYPE_ARRAY && val->array.type == GGUF_VALUE_TYPE_INT32)
+        {
+            tok_ctx->count = val->array.len;
+            tok_ctx->token_types = (int32_t *)calloc(val->array.len, sizeof(int32_t));
+        }
+    }
 
+    gguf_do_with_value(ctx, type, val, tok_ctx, 0, 0, callback);
     return VKLLM_ERR_OK;
 }
 
@@ -119,6 +224,8 @@ vkllm_err_t vkllm_models_llama2_load(struct vkllm_context *context, struct vkllm
     memset(model, 0, sizeof(*model));
     vkllm_err_t err = VKLLM_ERR_OK;
 
+    struct tokenizer_parse_ctx tok_ctx = {0};
+
     gguf_ctx *gguf = gguf_open(file);
     if (!gguf)
     {
@@ -132,10 +239,25 @@ vkllm_err_t vkllm_models_llama2_load(struct vkllm_context *context, struct vkllm
     gguf_key key;
     while (gguf_get_key(gguf, &key))
     {
-        parse_meta_kv(gguf, &key, model);
-        printf("%.*s: [%s] ", (int)key.namelen, key.name, gguf_get_value_type_name(key.type));
-        gguf_print_value(gguf, key.type, key.val, 0);
-        printf("\n");
+        parse_meta_kv(gguf, &key, model, &tok_ctx);
+    }
+
+    if (tok_ctx.count > 0 && tok_ctx.token_texts)
+    {
+        _CHECK_JUMP(vkllm_array_token_new(&model->meta.tokens, tok_ctx.count), err, cleanup_commands);
+        for (uint64_t i = 0; i < tok_ctx.count; i++)
+        {
+            struct vkllm_token tok;
+            tok.text = tok_ctx.token_texts[i];
+            tok.score = tok_ctx.scores ? tok_ctx.scores[i] : 0.0f;
+            tok.type = tok_ctx.token_types ? tok_ctx.token_types[i] : 0;
+            _CHECK_JUMP(vkllm_array_token_append(model->meta.tokens, tok), err, cleanup_commands);
+        }
+        free(tok_ctx.token_texts);
+        if (tok_ctx.scores)
+            free(tok_ctx.scores);
+        if (tok_ctx.token_types)
+            free(tok_ctx.token_types);
     }
 
     _CHECK(vkllm_array_block_weights_new(&model->weights.blocks, model->meta.block_count));
@@ -259,6 +381,17 @@ vkllm_err_t vkllm_models_llama2_free(struct vkllm_context *context, struct vkllm
         vkllm_graph_free(context, model->graph);
     }
 
+    if (model->meta.tokens)
+    {
+        for (size_t i = 0; i < model->meta.tokens->used_n; i++)
+        {
+            if (model->meta.tokens->data[i].text)
+                free(model->meta.tokens->data[i].text);
+        }
+        vkllm_array_token_free(model->meta.tokens);
+        model->meta.tokens = NULL;
+    }
+
     if (model->weights.tok_embed_weights)
     {
         vkllm_tensor_free(context, model->weights.tok_embed_weights);
@@ -336,8 +469,9 @@ vkllm_err_t vkllm_models_llama2_build_model(struct vkllm_context *context, struc
 
     uint32_t embed_shapes[4] = {batch, 1, seq_len, hidden_dim};
     struct vkllm_tensor *embed_srcs[] = {input_toks, model->weights.tok_embed_weights};
+    uint32_t unk_tok = model->meta.padding_token_id;
     _CHECK_JUMP(vkllm_tensor_new(context, "embedded", embed_shapes, vkllm_dtype_float16, VKLLM_OP_EMBEDDING, embed_srcs,
-                                 2, NULL, 0, false, &embedded),
+                                 2, &unk_tok, sizeof(unk_tok), false, &embedded),
                 err, fail_free_graph);
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, embedded), err, fail_free_embedded);
 

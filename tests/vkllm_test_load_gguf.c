@@ -1,6 +1,7 @@
 #include "src/core/vkllm_common.h"
 #include "src/core/vkllm_context.h"
 #include "src/core/vkllm_errors.h"
+#include "src/core/vkllm_graph.h"
 #include "src/core/vkllm_tensor.h"
 #include "src/models/vkllm_models_llama2.h"
 
@@ -36,12 +37,13 @@ int main(const int argc, const char *argv[])
                                  0, true, &input_toks),
                 err, cleanup_context);
 
-    _CHECK_JUMP(vkllm_models_llama2_build_model(context, &model, input_toks), err, cleanup_input);
-    _CHECK_JUMP(vkllm_models_llama2_free(context, &model), err, cleanup_input);
-    return VKLLM_ERR_OK;
+    _CHECK_JUMP(vkllm_models_llama2_build_model(context, &model, input_toks), err, cleanup_model);
+    _CHECK_JUMP(vkllm_graph_init(context, model.graph), err, cleanup_model);
+    _CHECK_JUMP(vkllm_graph_run(context, model.graph), err, cleanup_model);
+    _CHECK_JUMP(vkllm_graph_post_run(context, model.graph), err, cleanup_model);
 
-cleanup_input:
-    vkllm_tensor_free(context, input_toks);
+cleanup_model:
+    vkllm_models_llama2_free(context, &model);
 cleanup_context:
     vkllm_context_free(context);
     return err;

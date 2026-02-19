@@ -20,6 +20,15 @@ VKLLM_DEF_ARRAY(block_weights, struct block_weights *);
 
 struct vkllm_graph;
 
+struct vkllm_token
+{
+    char *text;
+    float score;
+    int32_t type;
+};
+
+VKLLM_DEF_ARRAY(token, struct vkllm_token);
+
 struct vkllm_models_llama2
 {
     struct
@@ -34,6 +43,12 @@ struct vkllm_models_llama2
         uint32_t vocab_size;
         uint32_t head_count;
         uint32_t head_count_kv;
+        uint32_t bos_token_id;
+        uint32_t eos_token_id;
+        uint32_t padding_token_id;
+        bool add_bos_token;
+        bool add_eos_token;
+        struct vkllm_array_token *tokens;
     } meta;
 
     struct

@@ -20,13 +20,14 @@ vkllm_err_t vkllm_llama2_build_ffn_layer(struct vkllm_context *context, struct v
     uint32_t batch = input->shapes[0];
     uint32_t channel = input->shapes[1];
     uint32_t seq_len = input->shapes[2];
-    uint32_t up_dim = params.WU->shapes[3];
+    uint32_t up_dim = params.WU->shapes[2];
 
     struct vkllm_tensor *norm_srcs[] = {input, params.norm_weight};
     struct vkllm_op_rmsnorm_params norm_params = {.power = params.norm_power, .eps = params.norm_eps};
     snprintf(scope_buf, sizeof(scope_buf), "%s.norm", name);
     _CHECK(vkllm_tensor_new(context, scope_buf, input->shapes, input->dtype, VKLLM_OP_RMSNORM, norm_srcs, 2,
                             &norm_params, sizeof(norm_params), false, &norm));
+    _CHECK_JUMP(vkllm_graph_add_node(context, graph, norm), err, fail_free_norm);
 
     struct vkllm_tensor *up_srcs[] = {norm, params.WU};
     uint32_t ffn_up_shapes[] = {batch, channel, seq_len, up_dim};
@@ -56,7 +57,7 @@ vkllm_err_t vkllm_llama2_build_ffn_layer(struct vkllm_context *context, struct v
 
     struct vkllm_tensor *down_srcs[] = {gate_mul, params.WD};
     struct vkllm_op_matmul_params down_params = {.scale = 1.0, .act = 0};
-    uint32_t ffn_down_shapes[] = {batch, channel, seq_len, params.WD->shapes[3]};
+    uint32_t ffn_down_shapes[] = {batch, channel, seq_len, params.WD->shapes[2]};
     snprintf(scope_buf, sizeof(scope_buf), "%s.down", name);
     _CHECK_JUMP(vkllm_tensor_new(context, scope_buf, ffn_down_shapes, gate_mul->dtype, VKLLM_OP_MATMUL, down_srcs, 2,
                                  &down_params, sizeof(down_params), false, &down),
@@ -167,6 +168,7 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     struct vkllm_tensor *Q_ref = NULL;
     _CHECK_JUMP(vkllm_tensor_copy_ref(context, Q, &Q_ref), err, fail_free_V);
     _CHECK_JUMP(vkllm_tensor_reshape(context, Q_ref, Q_reshaped_shapes), err, fail_free_Q_ref);
+    _CHECK_JUMP(vkllm_graph_add_node(context, graph, Q_ref), err, fail_free_Q_ref);
 
     // Then permute Q to [batch, num_head, seq_len, head_dim]
     uint32_t Q_permute_axis[4] = {0, 2, 1,
@@ -178,6 +180,7 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     struct vkllm_tensor *K_ref = NULL;
     _CHECK_JUMP(vkllm_tensor_copy_ref(context, K, &K_ref), err, fail_free_Q_ref);
     _CHECK_JUMP(vkllm_tensor_reshape(context, K_ref, K_reshaped_shapes), err, fail_free_K_ref);
+    _CHECK_JUMP(vkllm_graph_add_node(context, graph, K_ref), err, fail_free_K_ref);
 
     // Then permute K to [batch, num_head, seq_len, head_dim]
     uint32_t K_permute_axis[4] = {0, 2, 1,
@@ -189,6 +192,7 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     struct vkllm_tensor *V_ref = NULL;
     _CHECK_JUMP(vkllm_tensor_copy_ref(context, V, &V_ref), err, fail_free_K_ref);
     _CHECK_JUMP(vkllm_tensor_reshape(context, V_ref, V_reshaped_shapes), err, fail_free_V_ref);
+    _CHECK_JUMP(vkllm_graph_add_node(context, graph, V_ref), err, fail_free_V_ref);
 
     // Then permute V to [batch, num_head, seq_len, head_dim]
     uint32_t V_permute_axis[4] = {0, 2, 1,
@@ -249,6 +253,7 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     struct vkllm_tensor *output_ref = NULL;
     _CHECK_JUMP(vkllm_tensor_copy_ref(context, output, &output_ref), err, fail_free_attn_output);
     _CHECK_JUMP(vkllm_tensor_permute(context, output_ref, output_permute_axis), err, fail_free_output_ref);
+    _CHECK_JUMP(vkllm_graph_add_node(context, graph, output_ref), err, fail_free_output_ref);
 
     struct vkllm_tensor *concated_heads = NULL;
     struct vkllm_tensor *concated_heads_ref = NULL;
@@ -257,7 +262,6 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
                                  1, NULL, 0, false, &concated_heads),
                 err, fail_free_cocnated_heads);
     _CHECK_JUMP(vkllm_tensor_copy_ref(context, concated_heads, &concated_heads_ref), err, fail_free_cocnated_heads);
-
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, concated_heads), err, fail_free_cocnated_heads);
 
     // Then reshape to [batch, 1, seq_len, num_head*head_dim]
