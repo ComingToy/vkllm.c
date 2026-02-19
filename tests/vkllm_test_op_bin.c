@@ -23,23 +23,26 @@ static struct vkllm_context *g_context = NULL;
 // A: [B, C, H, W], B: [B, C, H, W], C: [B, C, H, W]
 static void bin_op_host(const void *input_a, const void *input_b, void *output, const uint32_t shapes[4],
                         const uint32_t strides_a[4], const uint32_t strides_b[4], const uint32_t strides_c[4],
-                        vkllm_dtype_t dtype_a, vkllm_dtype_t dtype_b, int32_t op)
+                        vkllm_dtype_t dtype_a, vkllm_dtype_t dtype_b, vkllm_dtype_t dtype_c, int32_t op)
 {
-    struct vkllm_dtype_info info_a, info_b;
+    struct vkllm_dtype_info info_a, info_b, info_c;
     vkllm_get_dtype_info(dtype_a, &info_a);
     vkllm_get_dtype_info(dtype_b, &info_b);
+    vkllm_get_dtype_info(dtype_c, &info_c);
 
     // Convert byte strides to element strides
     uint32_t es_a[4] = {strides_a[0] / info_a.bytes, strides_a[1] / info_a.bytes, strides_a[2] / info_a.bytes,
                         strides_a[3] / info_a.bytes};
     uint32_t es_b[4] = {strides_b[0] / info_b.bytes, strides_b[1] / info_b.bytes, strides_b[2] / info_b.bytes,
                         strides_b[3] / info_b.bytes};
-    uint32_t es_c[4] = {strides_c[0] / 4, strides_c[1] / 4, strides_c[2] / 4, strides_c[3] / 4};
+    uint32_t es_c[4] = {strides_c[0] / info_c.bytes, strides_c[1] / info_c.bytes, strides_c[2] / info_c.bytes,
+                        strides_c[3] / info_c.bytes};
 
     const vkllm_fp16_pack *a_fp16 = (const vkllm_fp16_pack *)input_a;
     const vkllm_fp16_pack *b_fp16 = (const vkllm_fp16_pack *)input_b;
     const float *a_fp32 = (const float *)input_a;
     const float *b_fp32 = (const float *)input_b;
+    vkllm_fp16_pack *c_fp16 = (vkllm_fp16_pack *)output;
     float *c_fp32 = (float *)output;
 
     for (uint32_t b = 0; b < shapes[0]; ++b)
@@ -96,7 +99,14 @@ static void bin_op_host(const void *input_a, const void *input_b, void *output, 
                         break;
                     }
 
-                    c_fp32[idx_c] = result;
+                    if (dtype_c == vkllm_dtype_float16)
+                    {
+                        c_fp16[idx_c] = vkllm_fp32_to_fp16(result);
+                    }
+                    else
+                    {
+                        c_fp32[idx_c] = result;
+                    }
                 }
             }
         }
@@ -191,9 +201,11 @@ START_TEST(test_op_bin)
                      VKLLM_ERR_OK);
 
     // Create output tensor C with op parameter
+    // Output dtype matches input dtype: fp16 inputs -> fp16 output, fp32 inputs -> fp32 output
+    vkllm_dtype_t dtype_c = tests[_i].dtype_a;
     struct vkllm_tensor *srcs[] = {input_a, input_b};
     struct vkllm_tensor *output;
-    ck_assert_int_eq(vkllm_tensor_new(context, "output", tests[_i].shapes, vkllm_dtype_float32, VKLLM_OP_BIN, srcs, 2,
+    ck_assert_int_eq(vkllm_tensor_new(context, "output", tests[_i].shapes, dtype_c, VKLLM_OP_BIN, srcs, 2,
                                       (const uint8_t *)&op, sizeof(op), true, &output),
                      VKLLM_ERR_OK);
 
@@ -214,7 +226,7 @@ START_TEST(test_op_bin)
 
     // Compute expected result on CPU
     bin_op_host(buf_a->data, buf_b->data, buf_c_expected->data, tests[_i].shapes, input_a->strides, input_b->strides,
-                output->strides, tests[_i].dtype_a, tests[_i].dtype_b, op);
+                output->strides, tests[_i].dtype_a, tests[_i].dtype_b, dtype_c, op);
 
     // Execute on GPU
     ck_assert_int_eq(vkllm_commands_begin(context, commands), VKLLM_ERR_OK);
