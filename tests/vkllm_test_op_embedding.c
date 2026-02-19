@@ -119,7 +119,7 @@ START_TEST(test_embedding_op_f32)
 
     uint32_t UNK_TOK = 0;
     ck_assert_int_eq(vkllm_tensor_new(context, "out0", shapes_out, tests_f32[_i].dtype, VKLLM_OP_EMBEDDING, srcs, 2,
-                                      (const uint8_t *)&UNK_TOK, sizeof(UNK_TOK), true, &out0),
+                                      (const uint32_t *)&UNK_TOK, sizeof(UNK_TOK), true, &out0),
                      VKLLM_ERR_OK);
 
     struct vkllm_array_u8 *indices_host = NULL, *params_host = NULL, *out0_host = NULL;
