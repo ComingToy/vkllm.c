@@ -535,7 +535,7 @@ vkllm_err_t vkllm_models_llama2_build_model(struct vkllm_context *context, struc
     struct vkllm_op_matmul_params matmul_params = {.scale = 1.0f, .act = 0};
     struct vkllm_tensor *logits = NULL;
     _CHECK_JUMP(vkllm_tensor_new(context, "logits", logits_shapes, output_norm->dtype, VKLLM_OP_MATMUL, logits_srcs, 2,
-                                 &matmul_params, sizeof(matmul_params), false, &logits),
+                                 &matmul_params, sizeof(matmul_params), true, &logits),
                 err, fail_free_output_norm);
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, logits), err, fail_free_logits);
     _CHECK_JUMP(vkllm_graph_set_output(context, graph, logits), err, fail_free_logits);
