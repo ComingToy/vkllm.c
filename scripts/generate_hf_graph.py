@@ -1,15 +1,6 @@
 import torch
 import argparse
 from transformers import LlamaTokenizer, LlamaForCausalLM
-import pudb as pdb
-
-qkv_outputs = {}
-
-def make_hook(name):
-    def hook(module, input, output):
-        qkv_outputs[name] = output.detach()
-        print(f"{name} shape: {output.shape}, mean: {output.mean():.9f}, 64n\n: {output[0, :2, :64]}")
-    return hook
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -36,22 +27,12 @@ def main():
         model_path, torch_dtype=torch.float16, device_map='auto',
     )
 
-    for i, layer in enumerate(model.model.layers):
-        layer.input_layernorm.register_forward_hook(make_hook(f"layer{i}_input_layernorm"))
-        layer.self_attn.q_proj.register_forward_hook(make_hook(f"layer{i}_q_proj"))
-        layer.self_attn.k_proj.register_forward_hook(make_hook(f"layer{i}_k_proj"))
-        layer.self_attn.v_proj.register_forward_hook(make_hook(f"layer{i}_v_proj"))
-
-    # prompt = 'Q: What is the largest animal? A:'
     prompt = args.sentence
     input_ids = tokenizer(prompt, return_tensors="pt").input_ids
     input_ids = input_ids.to(dev)
+    generation_output = model.generate(input_ids=input_ids, max_new_tokens=32, do_sample=False)
+    print(tokenizer.decode(generation_output[0]))
 
-    print(f'input ids: {input_ids}')
-    outputs = model(input_ids, output_hidden_states=True)
-    for i, out in enumerate(outputs.hidden_states):
-        print(f'layer {i} output mean: {out.mean()}')
-    pass
 
 if __name__ == "__main__":
     main()

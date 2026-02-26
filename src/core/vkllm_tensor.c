@@ -5,6 +5,7 @@
 #include "vkllm_ops.h"
 
 #include "vkllm_common.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -257,7 +258,7 @@ vkllm_err_t vkllm_tensor_copy_ref(struct vkllm_context *context, struct vkllm_te
     *p = (struct vkllm_tensor *)malloc(sizeof(struct vkllm_tensor));
     struct vkllm_tensor *t = *p;
 
-    strncpy((char *)t->name, tensor->name, sizeof(t->name));
+    snprintf((char *)t->name, sizeof(t->name), "%s_ref", tensor->name);
     t->dtype = tensor->dtype;
     for (uint32_t i = 0; i < 4; ++i)
     {
