@@ -145,8 +145,8 @@ cc_test(
 )
 
 cc_test(
-    name = "vkllm_test_load_gguf",
-    srcs = ["vkllm_test_load_gguf.c"],
+    name = "vkllm_test_infer_gguf",
+    srcs = ["vkllm_test_infer_gguf.c"],
     deps = DEPS,
     copts = COPTS,
     linkopts = LINK_OPTS,
