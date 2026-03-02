@@ -15,7 +15,7 @@ A high-performance Vulkan-based Large Language Model inference library written i
 
 ### System Requirements
 - **Vulkan SDK**: Version 1.2 or higher
-- **Bazel**: Version 7.x (build system)
+- **Bazelisk**: Manages Bazel version (8.4.0)
 - **C Compiler**: GCC or Clang with C11 support
 - **Python**: 3.13 (for tooling)
 
@@ -33,8 +33,8 @@ brew install vulkan-tools vulkan-headers vulkan-loader spirv-tools
 
 ## Building
 
-### 1. Install Bazel
-Follow instructions at [bazel.build](https://bazel.build/install) for your platform.
+### 1. Install Bazelisk
+Install [bazelisk](https://github.com/bazelbuild/bazelisk) to manage the Bazel version. Bazelisk will automatically use the correct Bazel version (8.4.0) as specified in `.bazelversion`.
 
 ### 2. Clone the Repository
 ```bash
