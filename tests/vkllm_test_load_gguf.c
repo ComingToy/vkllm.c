@@ -6,9 +6,8 @@
 #include "src/core/vkllm_tensor.h"
 #include "src/models/vkllm_models_llama2.h"
 #include "tests/vkllm_test_common.h"
+#include <stdio.h>
 #include <string.h>
-
-
 
 static vkllm_err_t print_tensor_mean(struct vkllm_context *context, struct vkllm_commands *commands,
                                      struct vkllm_tensor *tensor)
@@ -93,9 +92,9 @@ static vkllm_err_t print_tensor_mean(struct vkllm_context *context, struct vkllm
     return VKLLM_ERR_OK;
 }
 
-static uint32_t extract_output_tok(struct vkllm_models_llama2 *model)
+static uint32_t extract_output_tok(struct vkllm_graph *graph)
 {
-    struct vkllm_tensor *node = model->graph->output_node;
+    struct vkllm_tensor *node = graph->output_node;
     if (!node->data.mapped)
     {
         return 0;
@@ -119,7 +118,6 @@ static uint32_t extract_output_tok(struct vkllm_models_llama2 *model)
         }
     }
 
-    log_info("max logits: %f, pred tok: %u", max_logits, max_index);
     return max_index;
 }
 
@@ -153,7 +151,7 @@ int main(const int argc, const char *argv[])
     if (err != VKLLM_ERR_OK)
     {
         log_error("failed at tokenize: %s", vkllm_err_s(err));
-        goto cleanup_context;
+        goto cleanup_model;
     }
 
     fprintf(stderr, "input ids: ");
@@ -162,21 +160,25 @@ int main(const int argc, const char *argv[])
         fprintf(stderr, "%u ", token_ids->data[i]);
     }
 
-    struct vkllm_tensor *input_toks = NULL;
-    uint32_t input_shapes[] = {1, 1, 1, token_ids->used_n};
+    struct vkllm_graph *graph = NULL;
+    for (uint32_t i = 0; i < 32; ++i)
+    {
+        struct vkllm_tensor *input_toks = NULL;
+        uint32_t input_shapes[] = {1, 1, 1, token_ids->used_n};
 
-    _CHECK_JUMP(vkllm_tensor_new(context, "input_toks", input_shapes, vkllm_dtype_uint32, VKLLM_OP_NONE, NULL, 0, NULL,
-                                 0, true, &input_toks),
-                err, cleanup_context);
+        _CHECK_JUMP(vkllm_tensor_new(context, "input_toks", input_shapes, vkllm_dtype_uint32, VKLLM_OP_NONE, NULL, 0,
+                                     NULL, 0, true, &input_toks),
+                    err, cleanup_model);
+        _CHECK_JUMP(vkllm_graph_new(context, &graph), err, cleanup_model);
 
-    _CHECK_JUMP(vkllm_models_llama2_build_model(context, &model, input_toks), err, cleanup_model);
-    _CHECK_JUMP(vkllm_graph_init(context, model.graph), err, cleanup_model);
-    _CHECK_JUMP(vkllm_commands_upload(context, model.graph->commands, input_toks, (const uint8_t *)token_ids->data,
-                                      sizeof(uint32_t) * token_ids->used_n),
-                err, cleanup_model);
+        _CHECK_JUMP(vkllm_models_llama2_build_graph(context, &model, input_toks, graph), err, cleanup_graph);
+        _CHECK_JUMP(vkllm_graph_init(context, graph), err, cleanup_model);
+        _CHECK_JUMP(vkllm_commands_upload(context, graph->commands, input_toks, (const uint8_t *)token_ids->data,
+                                          sizeof(uint32_t) * token_ids->used_n),
+                    err, cleanup_model);
 
-    _CHECK_JUMP(vkllm_graph_run(context, model.graph), err, cleanup_model);
-    _CHECK_JUMP(vkllm_graph_post_run(context, model.graph), err, cleanup_model);
+        _CHECK_JUMP(vkllm_graph_run(context, graph), err, cleanup_model);
+        _CHECK_JUMP(vkllm_graph_post_run(context, graph), err, cleanup_model);
 
 #if 0
     for (uint32_t i = 0; i < model.graph->nodes->used_n; ++i)
@@ -204,10 +206,23 @@ int main(const int argc, const char *argv[])
     }
 #endif
 
-    uint32_t pred_tok = extract_output_tok(&model);
+        uint32_t pred_tok = extract_output_tok(graph);
+        vkllm_array_token_id_append(token_ids, pred_tok);
+        vkllm_graph_free(context, graph);
+        graph = NULL;
+    }
 
-    log_info("pred tok: %u, piece: %s", pred_tok, model.meta.tokens->data[pred_tok].text);
+    log_info("genereate sentence: ");
+    for (uint32_t i = 0; i < token_ids->used_n; ++i)
+    {
+        uint32_t pred_tok = token_ids->data[i];
+        // log_info("pred tok: %u, piece: %s", pred_tok, model.meta.tokens->data[pred_tok].text);
+        fprintf(stdout, "%s", model.meta.tokens->data[pred_tok].text);
+    }
 
+cleanup_graph:
+    if (graph)
+        vkllm_graph_free(context, graph);
 cleanup_model:
     vkllm_models_llama2_free(context, &model);
 cleanup_context:

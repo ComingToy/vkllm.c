@@ -131,16 +131,14 @@ struct vkllm_models_llama2
         struct vkllm_tensor *output_norm_weight;
         struct vkllm_tensor *output_weight;
     } weights;
-
-    struct vkllm_graph *graph;
 };
 
 extern vkllm_err_t vkllm_models_llama2_load(struct vkllm_context *context, struct vkllm_models_llama2 *model,
                                             const char *file);
 extern vkllm_err_t vkllm_models_llama2_free(struct vkllm_context *context, struct vkllm_models_llama2 *model);
 
-extern vkllm_err_t vkllm_models_llama2_build_model(struct vkllm_context *context, struct vkllm_models_llama2 *model,
-                                                   struct vkllm_tensor *input_toks);
+extern vkllm_err_t vkllm_models_llama2_build_graph(struct vkllm_context *context, struct vkllm_models_llama2 *model,
+                                                   struct vkllm_tensor *input_toks, struct vkllm_graph *graph);
 extern vkllm_err_t vkllm_models_llama2_tokenize(struct vkllm_models_llama2 *model, const char *sentence,
                                                 struct vkllm_array_token_id **token_ids);
 

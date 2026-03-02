@@ -31,6 +31,7 @@ def main():
     input_ids = tokenizer(prompt, return_tensors="pt").input_ids
     input_ids = input_ids.to(dev)
     generation_output = model.generate(input_ids=input_ids, max_new_tokens=32, do_sample=False)
+    print(f'generate output: {generation_output[0]}')
     print(tokenizer.decode(generation_output[0]))
 
 

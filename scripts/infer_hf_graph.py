@@ -22,8 +22,8 @@ def my_rope_impl(q: torch.Tensor):
                 for w in range(W//2):
                     alpha = 2.0*w / W
                     f = float(h) / (10000.0 ** alpha)
-                    i0 = 2*w
-                    i1 = i0 + 1 
+                    i0 = w
+                    i1 = i0 + W//2
 
                     cos_theta = cos(f)
                     sin_theta = sin(f)

@@ -378,11 +378,6 @@ vkllm_err_t vkllm_models_llama2_free(struct vkllm_context *context, struct vkllm
 {
     _CHECK_ARGS(context && model);
 
-    if (model->graph)
-    {
-        vkllm_graph_free(context, model->graph);
-    }
-
     if (model->meta.tokens)
     {
         for (size_t i = 0; i < model->meta.tokens->used_n; i++)
@@ -448,19 +443,16 @@ vkllm_err_t vkllm_models_llama2_free(struct vkllm_context *context, struct vkllm
     return VKLLM_ERR_OK;
 }
 
-vkllm_err_t vkllm_models_llama2_build_model(struct vkllm_context *context, struct vkllm_models_llama2 *model,
-                                            struct vkllm_tensor *input_toks)
+vkllm_err_t vkllm_models_llama2_build_graph(struct vkllm_context *context, struct vkllm_models_llama2 *model,
+                                            struct vkllm_tensor *input_toks, struct vkllm_graph *graph)
 {
     _CHECK_ARGS(context && model);
     _CHECK_ARGS(model->weights.tok_embed_weights && model->weights.output_norm_weight && model->weights.output_weight);
     _CHECK_ARGS(model->weights.blocks && model->weights.blocks->used_n > 0);
 
     vkllm_err_t err = VKLLM_ERR_OK;
-    struct vkllm_graph *graph = NULL;
     struct vkllm_tensor *embedded = NULL;
     struct vkllm_tensor *hidden = NULL;
-
-    _CHECK_JUMP(vkllm_graph_new(context, &graph), err, fail);
 
     uint32_t batch = input_toks->shapes[0];
     uint32_t seq_len = input_toks->shapes[3];
@@ -539,8 +531,6 @@ vkllm_err_t vkllm_models_llama2_build_model(struct vkllm_context *context, struc
                 err, fail_free_output_norm);
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, logits), err, fail_free_logits);
     _CHECK_JUMP(vkllm_graph_set_output(context, graph, logits), err, fail_free_logits);
-
-    model->graph = graph;
 
     return VKLLM_ERR_OK;
 
