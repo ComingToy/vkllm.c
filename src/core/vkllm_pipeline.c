@@ -567,6 +567,7 @@ static vkllm_err_t vkllm_create_rope_pipelines(struct vkllm_context *context)
 
         _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f32f32", shader_info, _vkllm_rope_f32f32_spv(),
                                   _vkllm_rope_f32f32_size(), specializations, &context->pipelines.rope.f32f32[i]));
+        vkllm_shader_constants_free(specializations);
     }
 
     return VKLLM_ERR_OK;

@@ -168,17 +168,17 @@ int main(const int argc, const char *argv[])
 
         _CHECK_JUMP(vkllm_tensor_new(context, "input_toks", input_shapes, vkllm_dtype_uint32, VKLLM_OP_NONE, NULL, 0,
                                      NULL, 0, true, &input_toks),
-                    err, cleanup_model);
-        _CHECK_JUMP(vkllm_graph_new(context, &graph), err, cleanup_model);
+                    err, cleanup_token_ids);
+        _CHECK_JUMP(vkllm_graph_new(context, &graph), err, cleanup_token_ids);
 
         _CHECK_JUMP(vkllm_models_llama2_build_graph(context, &model, input_toks, graph), err, cleanup_graph);
-        _CHECK_JUMP(vkllm_graph_init(context, graph), err, cleanup_model);
+        _CHECK_JUMP(vkllm_graph_init(context, graph), err, cleanup_graph);
         _CHECK_JUMP(vkllm_commands_upload(context, graph->commands, input_toks, (const uint8_t *)token_ids->data,
                                           sizeof(uint32_t) * token_ids->used_n),
-                    err, cleanup_model);
+                    err, cleanup_graph);
 
-        _CHECK_JUMP(vkllm_graph_run(context, graph), err, cleanup_model);
-        _CHECK_JUMP(vkllm_graph_post_run(context, graph), err, cleanup_model);
+        _CHECK_JUMP(vkllm_graph_run(context, graph), err, cleanup_graph);
+        _CHECK_JUMP(vkllm_graph_post_run(context, graph), err, cleanup_graph);
 
 #if 0
     for (uint32_t i = 0; i < model.graph->nodes->used_n; ++i)
@@ -223,6 +223,8 @@ int main(const int argc, const char *argv[])
 cleanup_graph:
     if (graph)
         vkllm_graph_free(context, graph);
+cleanup_token_ids:
+    vkllm_array_token_id_free(token_ids);
 cleanup_model:
     vkllm_models_llama2_free(context, &model);
 cleanup_context:

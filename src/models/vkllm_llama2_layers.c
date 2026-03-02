@@ -261,8 +261,9 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     _CHECK_JUMP(vkllm_tensor_new(context, scope_buf, output_ref->shapes, output_ref->dtype, VKLLM_OP_COPY, &output_ref,
                                  1, NULL, 0, false, &concated_heads),
                 err, fail_free_cocnated_heads);
-    _CHECK_JUMP(vkllm_tensor_copy_ref(context, concated_heads, &concated_heads_ref), err, fail_free_cocnated_heads);
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, concated_heads), err, fail_free_cocnated_heads);
+    _CHECK_JUMP(vkllm_tensor_copy_ref(context, concated_heads, &concated_heads_ref), err, fail_free_cocnated_heads);
+    _CHECK_JUMP(vkllm_graph_add_node(context, graph, concated_heads_ref), err, fail_free_cocnated_heads);
 
     // Then reshape to [batch, 1, seq_len, num_head*head_dim]
     uint32_t concated_heads_shapes[4] = {batch, 1, seq_len, num_head_times_head_dim};
