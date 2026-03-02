@@ -100,14 +100,10 @@ static struct
     float base;
     vkllm_dtype_t dtype;
 } tests[] = {
-    {{1, 1, 11, 3200}, 0, 10000.0f, vkllm_dtype_float16},
-    {{1, 1, 10, 128}, 0, 10000.0f, vkllm_dtype_float32},
-    {{2, 1, 5, 64}, 0, 10000.0f, vkllm_dtype_float32},
-    {{1, 2, 8, 256}, 5, 10000.0f, vkllm_dtype_float32},
-    {{3, 4, 6, 32}, 10, 10000.0f, vkllm_dtype_float32},
-    {{8, 32, 32, 128}, 0, 10000.0f, vkllm_dtype_float16},
-    {{2, 1, 5, 64}, 0, 10000.0f, vkllm_dtype_float16},
-    {{1, 2, 8, 256}, 5, 10000.0f, vkllm_dtype_float16},
+    {{1, 1, 11, 3200}, 0, 10000.0f, vkllm_dtype_float16}, {{1, 1, 10, 128}, 0, 10000.0f, vkllm_dtype_float32},
+    {{2, 1, 5, 64}, 0, 10000.0f, vkllm_dtype_float32},    {{1, 2, 8, 256}, 5, 10000.0f, vkllm_dtype_float32},
+    {{3, 4, 6, 32}, 10, 10000.0f, vkllm_dtype_float32},   {{8, 32, 32, 128}, 0, 10000.0f, vkllm_dtype_float16},
+    {{2, 1, 5, 64}, 0, 10000.0f, vkllm_dtype_float16},    {{1, 2, 8, 256}, 5, 10000.0f, vkllm_dtype_float16},
     {{3, 4, 6, 32}, 10, 10000.0f, vkllm_dtype_float16},
 };
 
@@ -136,10 +132,7 @@ START_TEST(test_op_rope)
     }
 
     // Create RoPE parameters
-    struct vkllm_op_rope_params params = {
-        .offset = tests[_i].offset,
-        .base = tests[_i].base,
-    };
+    struct vkllm_op_rope_params params = {.offset = tests[_i].offset, .base = tests[_i].base, .neox_style = false};
 
     // Create output tensor with RoPE operation
     struct vkllm_tensor *srcs[] = {input};

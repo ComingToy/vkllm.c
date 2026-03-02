@@ -14,22 +14,24 @@ static vkllm_err_t vkllm_op_rope_get_pipeline(struct vkllm_context *context, str
 
     // RoPE operates in-place on the input tensor
     struct vkllm_tensor *in0 = tensor->srcs[0];
+    struct vkllm_op_rope_params *params = (struct vkllm_op_rope_params *)tensor->params;
+    int neox_style = (int)params->neox_style;
 
     if (in0->dtype == vkllm_dtype_float16)
     {
         if (context->device->support_fp16_arithmetic)
         {
-            *pipeline = context->pipelines.rope.f16f16;
+            *pipeline = context->pipelines.rope.f16f16[neox_style];
         }
         else
         {
-            *pipeline = context->pipelines.rope.f16f32;
+            *pipeline = context->pipelines.rope.f16f32[neox_style];
         }
         return VKLLM_ERR_OK;
     }
     else if (in0->dtype == vkllm_dtype_float32)
     {
-        *pipeline = context->pipelines.rope.f32f32;
+        *pipeline = context->pipelines.rope.f32f32[neox_style];
         return VKLLM_ERR_OK;
     }
     else

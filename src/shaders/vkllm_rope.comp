@@ -19,6 +19,8 @@ layout(push_constant) uniform constants
     LOAD_DTYPE base;
 };
 
+layout(constant_id = 0) const int neox_style = 0;
+
 void get_indices(uint tid, out uint b, out uint c, out uint h, out uint w)
 {
     uint shape3 = in_shape.shapes[3] / 2;
@@ -45,8 +47,23 @@ void main(void)
         return;
     }
 
-    uint i0 = b * in_shape.strides[0] + c * in_shape.strides[1] + h * in_shape.strides[2] + w * in_shape.strides[3];
-    uint i1 = i0 + in_shape.strides[3] * in_shape.shapes[3] / 2;
+    uint i0 = 0, i1 = 0, o0 = 0, o1 = 0;
+
+    if (neox_style > 0)
+    {
+        i0 = b * in_shape.strides[0] + c * in_shape.strides[1] + h * in_shape.strides[2] + w * in_shape.strides[3];
+        i1 = i0 + in_shape.strides[3] * in_shape.shapes[3] / 2;
+        o0 = b * out_shape.strides[0] + c * out_shape.strides[1] + h * out_shape.strides[2] + w * out_shape.strides[3];
+        o1 = o0 + out_shape.strides[3] * out_shape.shapes[3] / 2;
+    }
+    else
+    {
+        i0 = b * in_shape.strides[0] + c * in_shape.strides[1] + h * in_shape.strides[2] + 2 * w * in_shape.strides[3];
+        i1 = i0 + in_shape.strides[3];
+        o0 = b * out_shape.strides[0] + c * out_shape.strides[1] + h * out_shape.strides[2] +
+             2 * w * out_shape.strides[3];
+        o1 = o0 + out_shape.strides[3];
+    }
 
     LOAD_DTYPE f = LOAD_DTYPE(offsets + h) / pow(base, LOAD_DTYPE(2 * w) / LOAD_DTYPE(in_shape.shapes[3]));
     LOAD_DTYPE freqc = cos(f);
@@ -56,10 +73,6 @@ void main(void)
     LOAD_DTYPE v1 = LOAD_DTYPE(kv[i1]);
     LOAD_DTYPE q0 = freqc * v0 - freqs * v1;
     LOAD_DTYPE q1 = freqs * v0 + freqc * v1;
-
-    uint o0 =
-        b * out_shape.strides[0] + c * out_shape.strides[1] + h * out_shape.strides[2] + w * out_shape.strides[3];
-    uint o1 = o0 + out_shape.strides[3] * out_shape.shapes[3] / 2;
 
     kv_out[o0] = DTYPE(q0);
     kv_out[o1] = DTYPE(q1);

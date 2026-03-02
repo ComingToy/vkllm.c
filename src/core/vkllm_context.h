@@ -49,9 +49,10 @@ struct vkllm_context
 
         struct
         {
-            struct vkllm_pipeline *f16f16;
-            struct vkllm_pipeline *f16f32;
-            struct vkllm_pipeline *f32f32;
+            // 0: for normal style 1: for neox style
+            struct vkllm_pipeline *f16f16[2];
+            struct vkllm_pipeline *f16f32[2];
+            struct vkllm_pipeline *f32f32[2];
         } rope;
 
         struct

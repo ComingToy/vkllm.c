@@ -539,23 +539,35 @@ static vkllm_err_t vkllm_create_rope_pipelines(struct vkllm_context *context)
                                             .local_y = 1,
                                             .local_z = 1};
 
-    context->pipelines.rope.f16f16 = NULL;
-    context->pipelines.rope.f16f32 = NULL;
-    if (context->device->support_16bit_storage)
+    for (uint32_t i = 0; i < 2; ++i)
     {
-        _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f16f32", shader_info, _vkllm_rope_f16f32_spv(),
-                                  _vkllm_rope_f16f32_size(), NULL, &context->pipelines.rope.f16f32));
-
-        if (context->device->support_fp16_arithmetic)
-        {
-            shader_info.push_constant_bytes = sizeof(uint32_t) * 9 + 2 * sizeof(uint16_t);
-            _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f16f16", shader_info, _vkllm_rope_f16f16_spv(),
-                                      _vkllm_rope_f16f16_size(), NULL, &context->pipelines.rope.f16f16));
-        }
+        context->pipelines.rope.f16f16[i] = NULL;
+        context->pipelines.rope.f16f32[i] = NULL;
+        context->pipelines.rope.f32f32[i] = NULL;
     }
 
-    _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f32f32", shader_info, _vkllm_rope_f32f32_spv(),
-                              _vkllm_rope_f32f32_size(), NULL, &context->pipelines.rope.f32f32));
+    for (int32_t i = 0; i < 2; ++i)
+    {
+        struct vkllm_shader_constants *specializations = NULL;
+        vkllm_shader_constants_new(&specializations, 16);
+        vkllm_shader_constants_append(specializations, i);
+        if (context->device->support_16bit_storage)
+        {
+            _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f16f32", shader_info, _vkllm_rope_f16f32_spv(),
+                                      _vkllm_rope_f16f32_size(), specializations, &context->pipelines.rope.f16f32[i]));
+
+            if (context->device->support_fp16_arithmetic)
+            {
+                shader_info.push_constant_bytes = sizeof(uint32_t) * 9 + 2 * sizeof(uint16_t);
+                _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f16f16", shader_info, _vkllm_rope_f16f16_spv(),
+                                          _vkllm_rope_f16f16_size(), specializations,
+                                          &context->pipelines.rope.f16f16[i]));
+            }
+        }
+
+        _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f32f32", shader_info, _vkllm_rope_f32f32_spv(),
+                                  _vkllm_rope_f32f32_size(), specializations, &context->pipelines.rope.f32f32[i]));
+    }
 
     return VKLLM_ERR_OK;
 }
@@ -684,9 +696,12 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
         }
     }
 
-    vkllm_pipeline_free(context, context->pipelines.rope.f16f16);
-    vkllm_pipeline_free(context, context->pipelines.rope.f16f32);
-    vkllm_pipeline_free(context, context->pipelines.rope.f32f32);
+    for (uint32_t i = 0; i < 2; ++i)
+    {
+        vkllm_pipeline_free(context, context->pipelines.rope.f16f16[i]);
+        vkllm_pipeline_free(context, context->pipelines.rope.f16f32[i]);
+        vkllm_pipeline_free(context, context->pipelines.rope.f32f32[i]);
+    }
 
     vkllm_pipeline_free(context, context->pipelines.softmax.f16f16);
     vkllm_pipeline_free(context, context->pipelines.softmax.f16f32);
