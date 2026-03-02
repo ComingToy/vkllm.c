@@ -97,7 +97,7 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
 {
     _CHECK_ARGS(context && graph && input && params.WQ && params.WK && params.WV);
 
-    struct vkllm_op_rope_params rope_params = {.base = params.freq_base, .offset = params.offsets, .neox_style = true};
+    struct vkllm_op_rope_params rope_params = {.base = params.freq_base, .offset = params.offsets, .neox_style = false};
 
     uint32_t hidden_dim = params.WQ->shapes[3];              // hidden_dim from weight matrix
     uint32_t num_head_times_head_dim = params.WQ->shapes[2]; // num_head * head_dim
