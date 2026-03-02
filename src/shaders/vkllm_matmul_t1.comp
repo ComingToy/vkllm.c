@@ -1,0 +1,278 @@
+#version 450 core
+#extension GL_EXT_control_flow_attributes : require
+
+#include "vkllm_shader_header.comp.h"
+
+#ifndef IN0_DTYPE
+#define IN0_DTYPE float
+#endif
+
+#ifndef IN1_DTYPE
+#define IN1_DTYPE float
+#endif
+
+#ifndef OUT_DTYPE
+#define OUT_DTYPE float
+#endif
+
+#ifndef SMEM_DTYPE
+#define SMEM_DTYPE vec4
+#endif
+
+#ifndef LOAD_DTYPE
+#define LOAD_DTYPE
+#endif
+
+#define BOARDCAST_AXIS0 0
+#define BOARDCAST_AXIS1 1
+#define BOARDCAST_AXIS01 2
+#define BOARDCAST_NONE 3
+
+layout(binding = 0) readonly buffer in0_type
+{
+    IN0_DTYPE in0[];
+};
+
+layout(binding = 1) readonly buffer in1_type
+{
+    IN1_DTYPE in1[];
+};
+
+layout(binding = 2) writeonly buffer out0_type
+{
+    OUT_DTYPE out0[];
+};
+
+layout(constant_id = 0) const int a_boardcast_type = 0;
+layout(constant_id = 1) const int b_boardcast_type = 0;
+layout(constant_id = 2) const uint BM = 128;
+layout(constant_id = 3) const uint BN = 128;
+layout(constant_id = 4) const uint BK = 8;
+layout(constant_id = 5) const uint TM = 8;
+layout(constant_id = 6) const uint TN = 8;
+layout(constant_id = 7) const uint load_n_per_thread = 4;
+
+layout(push_constant) uniform constants
+{
+    uint in0_stride;
+    uint in1_stride;
+    uint out0_stride;
+
+    uint in0_bstride;
+    uint in1_bstride;
+    uint out0_bstride;
+
+    uint in0_cstride;
+    uint in1_cstride;
+    uint out0_cstride;
+
+    uint B;
+    uint C;
+    uint M; // in0.shape = [M, K], in1.shape = [N, K], out0.shape = [M, N]
+    uint N;
+    uint K;
+
+    float scale;
+    int act;
+};
+
+// 每个workgroup计算一个C矩阵中的[BM, BN]块
+// 每轮迭代计算一个 [BM, BK] * [BK, BN]的块，一共计算 K / BK轮迭代
+// 即，每轮迭代加载 [BM, BK]个A矩阵，和[BN, BK]个B矩阵元素
+// 每个thread计算一个 [TM, TN]块
+// 也就是一个workgroup中包含 BM / TM * BN/TN个线程, work group size设置成(16, 16)
+
+#define SMEM_BK (BK / 4)
+
+shared SMEM_DTYPE smem_a[BM][SMEM_BK + 1];
+shared SMEM_DTYPE smem_b[BN][SMEM_BK + 1];
+
+void main(void)
+{
+    // workgroup size = 256, smem_a.size = 1024
+    // 每个线程加载4个元素
+    uint blk_id_x = gl_WorkGroupID.x;
+    uint blk_id_y = gl_WorkGroupID.y;
+
+    uint local_tid_x = gl_LocalInvocationID.x;
+    uint local_tid_y = gl_LocalInvocationID.y;
+    uint tid = local_tid_x * gl_WorkGroupSize.y + local_tid_y;
+
+    uint glb_tid_z = gl_GlobalInvocationID.z;
+    uint batch_id = glb_tid_z / C;
+    uint channel_id = glb_tid_z % C;
+
+    uint a_batch_off = 0;
+    if (a_boardcast_type == BOARDCAST_AXIS0)
+    {
+        a_batch_off = channel_id * in0_cstride;
+    }
+    else if (a_boardcast_type == BOARDCAST_AXIS1)
+    {
+        a_batch_off = batch_id * in0_bstride;
+    }
+    else if (a_boardcast_type == BOARDCAST_NONE)
+    {
+        a_batch_off = batch_id * in0_bstride + channel_id * in0_cstride;
+    }
+
+    uint b_batch_off = 0;
+
+    if (b_boardcast_type == BOARDCAST_AXIS0)
+    {
+        b_batch_off = channel_id * in1_cstride;
+    }
+    else if (b_boardcast_type == BOARDCAST_AXIS1)
+    {
+        b_batch_off = batch_id * in1_bstride;
+    }
+    else if (b_boardcast_type == BOARDCAST_NONE)
+    {
+        b_batch_off = batch_id * in1_bstride + channel_id * in1_cstride;
+    }
+
+    uint out_batch_off = batch_id * out0_bstride + channel_id * out0_cstride;
+
+    uint blk_tid = tid * load_n_per_thread;
+    uint ld_a_x = blk_tid / BK; // tid * 4 / BK
+    uint ld_a_y = blk_tid % BK;
+
+    uint ld_b_x = ld_a_x;
+    uint ld_b_y = ld_a_y;
+
+    float thread_results[TM][TN]; // FIXME: clean
+
+    [[unroll]] for (uint i = 0; i < TM; ++i)
+    {
+        [[unroll]] for (uint j = 0; j < TN; ++j)
+        {
+            thread_results[i][j] = .0;
+        }
+    }
+
+    uint blk_x = blk_id_x * BM;
+    uint blk_y = blk_id_y * BN;
+
+    for (uint k = 0; k < (K + BK - 1) / BK; k += 1)
+    {
+        // Load data from global memory to shared memory
+        uint a_row = blk_x + ld_a_x;
+        uint a_col = k * BK + ld_a_y;
+        uint smem_a_idx = a_batch_off + a_row * in0_stride + a_col;
+
+        smem_a[ld_a_x][ld_a_y / 4] = SMEM_DTYPE(0.0);
+        if (a_row < M)
+        {
+            if (a_col + 3 < K)
+            {
+                smem_a[ld_a_x][ld_a_y / 4] =
+                    SMEM_DTYPE(LOAD_DTYPE(in0[smem_a_idx]), LOAD_DTYPE(in0[smem_a_idx + 1]),
+                               LOAD_DTYPE(in0[smem_a_idx + 2]), LOAD_DTYPE(in0[smem_a_idx + 3]));
+            }
+            else if (a_col + 2 < K)
+            {
+                smem_a[ld_a_x][ld_a_y / 4] = SMEM_DTYPE(LOAD_DTYPE(in0[smem_a_idx]), LOAD_DTYPE(in0[smem_a_idx + 1]),
+                                                        LOAD_DTYPE(in0[smem_a_idx + 2]), LOAD_DTYPE(0));
+            }
+            else if (a_col + 1 < K)
+            {
+                smem_a[ld_a_x][ld_a_y / 4] = SMEM_DTYPE(LOAD_DTYPE(in0[smem_a_idx]), LOAD_DTYPE(in0[smem_a_idx + 1]),
+                                                        LOAD_DTYPE(0), LOAD_DTYPE(0));
+            }
+            else if (a_col < K)
+            {
+                smem_a[ld_a_x][ld_a_y / 4] =
+                    SMEM_DTYPE(LOAD_DTYPE(in0[smem_a_idx]), LOAD_DTYPE(0), LOAD_DTYPE(0), LOAD_DTYPE(0));
+            }
+        }
+
+        uint b_row = blk_y + ld_b_x;
+        uint b_col = a_col;
+        uint smem_b_idx = b_batch_off + b_row * in1_stride + b_col;
+
+        smem_b[ld_b_x][ld_b_y / load_n_per_thread] = SMEM_DTYPE(0.0);
+        if (b_row < N)
+        {
+            if (b_col + 3 < K)
+            {
+                smem_b[ld_b_x][ld_b_y / load_n_per_thread] =
+                    SMEM_DTYPE(LOAD_DTYPE(in1[smem_b_idx]), LOAD_DTYPE(in1[smem_b_idx + 1]),
+                               LOAD_DTYPE(in1[smem_b_idx + 2]), LOAD_DTYPE(in1[smem_b_idx + 3]));
+            }
+            else if (b_col + 2 < K)
+            {
+                smem_b[ld_b_x][ld_b_y / load_n_per_thread] =
+                    SMEM_DTYPE(LOAD_DTYPE(in1[smem_b_idx]), LOAD_DTYPE(in1[smem_b_idx + 1]),
+                               LOAD_DTYPE(in1[smem_b_idx + 2]), LOAD_DTYPE(0));
+            }
+            else if (b_col + 1 < K)
+            {
+                smem_b[ld_b_x][ld_b_y / load_n_per_thread] = SMEM_DTYPE(
+                    LOAD_DTYPE(in1[smem_b_idx]), LOAD_DTYPE(in1[smem_b_idx + 1]), LOAD_DTYPE(0), LOAD_DTYPE(0));
+            }
+            else if (b_col < K)
+            {
+                smem_b[ld_b_x][ld_b_y / load_n_per_thread] =
+                    SMEM_DTYPE(LOAD_DTYPE(in1[smem_b_idx]), LOAD_DTYPE(0), LOAD_DTYPE(0), LOAD_DTYPE(0));
+            }
+        }
+
+        memoryBarrierShared();
+        barrier();
+
+        // 检查当前线程是否在有效的矩阵范围内
+        uint out_row_start = blk_x + local_tid_x * TM;
+        uint out_col_start = blk_y + local_tid_y * TN;
+        bool is_thread_valid = (out_row_start < M) && (out_col_start < N);
+
+        // 每个线程使用smem中的[TM, BK]和smem_b中的[BK, TN]个元素计算得到[TM, TN]个结果;
+
+        [[unroll]] for (uint tk = 0; tk < SMEM_BK; ++tk)
+        {
+
+            [[unroll]] for (uint tr = 0; tr < 2; ++tr)
+            {
+                SMEM_DTYPE cache_a[TM / 2];
+                uint smem_b_off = local_tid_y * TN;
+                uint R = tr * TM / 2;
+                uint smem_a_off = local_tid_x * TM + R;
+
+                [[unroll]] for (uint r = 0; r < TM / 2; ++r)
+                {
+                    cache_a[r] = smem_a[smem_a_off + r][tk];
+                }
+
+                [[unroll]] for (uint r = 0; r < TM / 2; ++r)
+                {
+                    [[unroll]] for (uint c = 0; c < TN; ++c)
+                    {
+                        thread_results[R + r][c] += float(dot(cache_a[r], smem_b[smem_b_off + c][tk]));
+                    }
+                }
+            }
+        }
+
+        memoryBarrierShared();
+        barrier();
+    }
+
+    // Write results back to global memory
+    uint out_row_off = blk_x + local_tid_x * TM;
+    uint out_col_off = blk_y + local_tid_y * TN;
+    [[unroll]] for (uint tm = 0; tm < TM; ++tm)
+    {
+        [[unroll]] for (uint tn = 0; tn < TN; ++tn)
+        {
+            uint out_row = out_row_off + tm;
+            uint out_col = out_col_off + tn;
+            uint off = out_batch_off + out_row * out0_stride;
+            float val = thread_results[tm][tn] * scale;
+            val = act == 1 ? val / (1.0 + exp(-val)) : val;
+            if (out_row < M && out_col < N)
+            {
+                out0[off + out_col] = OUT_DTYPE(val);
+            }
+        }
+    }
+}
+

@@ -1,0 +1,82 @@
+#version 450 core
+
+#include "vkllm_shader_header.comp.h"
+
+layout(push_constant) uniform constants
+{
+    ShapeConstant in_shape;
+    ShapeConstant w_shape;
+    float power;
+    float eps;
+};
+
+layout(binding = 0) readonly buffer in0_buffer_type
+{
+    IN0_DTYPE in0[];
+};
+
+layout(binding = 1) readonly buffer in1_buffer_type
+{
+    IN1_DTYPE in1[];
+};
+
+layout(binding = 2) writeonly buffer out0_buffer_type
+{
+    OUT_DTYPE out0[];
+};
+
+#define _RMS_NORM_BLOCK_X 512
+shared LOAD_DTYPE sum[_RMS_NORM_BLOCK_X];
+
+void main(void)
+{
+    uint tid_x = gl_GlobalInvocationID.x;
+    uint row_id = gl_WorkGroupID.z * gl_NumWorkGroups.y + gl_WorkGroupID.y;
+
+    uint bn = in_shape.shapes[1] * in_shape.shapes[2];
+    uint b = row_id / bn;
+    uint c = (row_id - b * bn) / in_shape.shapes[2];
+    uint h = row_id - b * bn - c * in_shape.shapes[2];
+
+    if (b >= in_shape.shapes[0] || c >= in_shape.shapes[1] || h >= in_shape.shapes[2])
+    {
+        return;
+    }
+
+    uint row_offset = b * in_shape.strides[0] + c * in_shape.strides[1] + h * in_shape.strides[2];
+
+    sum[tid_x] = LOAD_DTYPE(0);
+    uint W = in_shape.shapes[3];
+
+    for (uint i = tid_x; i < W; i += _RMS_NORM_BLOCK_X)
+    {
+        LOAD_DTYPE v = LOAD_DTYPE(in0[row_offset + i]);
+        sum[tid_x] += (v * v);
+    }
+
+    barrier();
+    memoryBarrierShared();
+
+    for (int i = _RMS_NORM_BLOCK_X / 2; i > 0; i >>= 1)
+    {
+        if (tid_x < i)
+        {
+            sum[tid_x] += sum[tid_x + i];
+        }
+        barrier();
+        memoryBarrierShared();
+    }
+
+    barrier();
+    memoryBarrierShared();
+
+    LOAD_DTYPE mean = sum[0] / LOAD_DTYPE(W);
+    LOAD_DTYPE alpha = inversesqrt(mean + eps);
+
+    for (uint i = tid_x; i < W; i += _RMS_NORM_BLOCK_X)
+    {
+        LOAD_DTYPE v0 = LOAD_DTYPE(in0[row_offset + i]);
+        LOAD_DTYPE v1 = LOAD_DTYPE(in1[i]);
+        out0[row_offset + i] = OUT_DTYPE(v0 * v1 * alpha);
+    }
+}
