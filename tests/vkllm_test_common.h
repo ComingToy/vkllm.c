@@ -3,6 +3,8 @@
 
 #include "src/core/vkllm_common.h"
 #include "src/core/vkllm_dtypes.h"
+#include "src/core/vkllm_tensor.h"
+#include "src/core/vkllm_context.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -141,8 +143,8 @@ static inline float compare_buf(const void *lhs, const void *rhs, uint32_t shape
                         float v1 = vkllm_fp16_to_fp32(rhs_fp16[i]);
                         err = err + alpha * (v0 - v1) * (v0 - v1);
 
-#if 0
-                        if (fabsf(v0 - v1) > 1e-1 || isnan(err))
+#if 1
+                        if (fabsf(v0 - v1) > 1e-2 || isnan(err))
                         {
                             log_error("%s index %u at (%u, %u, %u, %u) err lhs %f rhs %f", name, i, b, c, h, w, v0, v1);
                             continue;
@@ -153,7 +155,7 @@ static inline float compare_buf(const void *lhs, const void *rhs, uint32_t shape
                     }
 
                     err = err + alpha * (lhs_fp32[i] - rhs_fp32[i]) * (lhs_fp32[i] - rhs_fp32[i]);
-#if 0
+#if 1
                     if (fabsf(lhs_fp32[i] - rhs_fp32[i]) > 1e-3 || isnan(err))
                     {
                         log_error("index %u at (%u, %u, %u, %u) err lhs %f rhs %f", i, b, c, h, w, lhs_fp32[i],
@@ -191,4 +193,70 @@ static inline void print_n(const char *prefix, const float *buf, const size_t n)
     fprintf(stderr, "\n");
 }
 
+static inline vkllm_err_t print_first_n(struct vkllm_context *context, struct vkllm_commands *commands,
+                                 struct vkllm_tensor *tensor, uint32_t b, uint32_t c, uint32_t h, uint32_t n)
+{
+    if (!tensor->data.mapped)
+    {
+        return VKLLM_ERR_ARGS;
+    }
+
+    uint8_t *data = (uint8_t *)tensor->data.host;
+    uint32_t count = n < tensor->shapes[3] ? n : tensor->shapes[3];
+
+    fprintf(stderr, "%s [%u,%u,%u,:%u]: ", tensor->name, b, c, h, count);
+
+    switch (tensor->dtype)
+    {
+    case vkllm_dtype_float32: {
+        float *base = (float *)data;
+        uint32_t stride0 = tensor->strides[0] / sizeof(float);
+        uint32_t stride1 = tensor->strides[1] / sizeof(float);
+        uint32_t stride2 = tensor->strides[2] / sizeof(float);
+        uint32_t stride3 = tensor->strides[3] / sizeof(float);
+        float *p = base + b * stride0 + c * stride1 + h * stride2;
+        for (uint32_t w = 0; w < count; ++w)
+            fprintf(stderr, "%f ", p[w * stride3]);
+        break;
+    }
+    case vkllm_dtype_float16: {
+        vkllm_fp16_pack *base = (vkllm_fp16_pack *)data;
+        uint32_t stride0 = tensor->strides[0] / sizeof(vkllm_fp16_pack);
+        uint32_t stride1 = tensor->strides[1] / sizeof(vkllm_fp16_pack);
+        uint32_t stride2 = tensor->strides[2] / sizeof(vkllm_fp16_pack);
+        uint32_t stride3 = tensor->strides[3] / sizeof(vkllm_fp16_pack);
+        vkllm_fp16_pack *p = base + b * stride0 + c * stride1 + h * stride2;
+        for (uint32_t w = 0; w < count; ++w)
+            fprintf(stderr, "%f ", vkllm_fp16_to_fp32(p[w * stride3]));
+        break;
+    }
+    case vkllm_dtype_int8: {
+        int8_t *base = (int8_t *)data;
+        uint32_t stride0 = tensor->strides[0] / sizeof(int8_t);
+        uint32_t stride1 = tensor->strides[1] / sizeof(int8_t);
+        uint32_t stride2 = tensor->strides[2] / sizeof(int8_t);
+        uint32_t stride3 = tensor->strides[3] / sizeof(int8_t);
+        int8_t *p = base + b * stride0 + c * stride1 + h * stride2;
+        for (uint32_t w = 0; w < count; ++w)
+            fprintf(stderr, "%d ", p[w * stride3]);
+        break;
+    }
+    case vkllm_dtype_uint32: {
+        uint32_t *base = (uint32_t *)data;
+        uint32_t stride0 = tensor->strides[0] / sizeof(uint32_t);
+        uint32_t stride1 = tensor->strides[1] / sizeof(uint32_t);
+        uint32_t stride2 = tensor->strides[2] / sizeof(uint32_t);
+        uint32_t stride3 = tensor->strides[3] / sizeof(uint32_t);
+        uint32_t *p = base + b * stride0 + c * stride1 + h * stride2;
+        for (uint32_t w = 0; w < count; ++w)
+            fprintf(stderr, "%u ", p[w * stride3]);
+        break;
+    }
+    default:
+        return VKLLM_ERR_ARGS;
+    }
+
+    fprintf(stderr, "\n");
+    return VKLLM_ERR_OK;
+}
 #endif

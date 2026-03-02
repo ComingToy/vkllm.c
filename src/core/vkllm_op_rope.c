@@ -78,14 +78,17 @@ vkllm_err_t vkllm_op_rope_run(struct vkllm_context *context, struct vkllm_comman
     float base = params ? params->base : 10000.0f;
 
     struct vkllm_dtype_info dtype_info;
-    uint32_t strides[4];
+    uint32_t out_strides[4], in_strides[4];
     _CHECK(vkllm_get_dtype_info(tensor->dtype, &dtype_info));
-    _DIV4_S(tensor->strides, dtype_info.bytes, strides);
+    _DIV4_S(in0->strides, dtype_info.bytes, in_strides);
+    _DIV4_S(tensor->strides, dtype_info.bytes, out_strides);
 
     struct vkllm_shader_constants *constants = NULL;
-    _CHECK(vkllm_shader_constants_new(&constants, 40));
+    _CHECK(vkllm_shader_constants_new(&constants, 128));
+    vkllm_shader_constants_append_n(constants, in0->shapes, 4);
+    vkllm_shader_constants_append_n(constants, in_strides, 4);
     vkllm_shader_constants_append_n(constants, tensor->shapes, 4);
-    vkllm_shader_constants_append_n(constants, strides, 4);
+    vkllm_shader_constants_append_n(constants, out_strides, 4);
     vkllm_shader_constants_append(constants, offset);
     if (tensor->dtype == vkllm_dtype_float16)
     {

@@ -338,7 +338,9 @@ vkllm_err_t vkllm_llama2_build_transformer_block(struct vkllm_context *context, 
     snprintf(scope_buf, sizeof(scope_buf), "%s.attn", name);
     _CHECK(vkllm_llama2_build_self_attn_layer(context, graph, input, params.attn, scope_buf));
     snprintf(scope_buf, sizeof(scope_buf), "%s.ffn", name);
-    _CHECK(vkllm_llama2_build_ffn_layer(context, graph, input, params.ffn, scope_buf));
+
+    struct vkllm_tensor *attn_output = graph->nodes->data[graph->nodes->used_n - 1];
+    _CHECK(vkllm_llama2_build_ffn_layer(context, graph, attn_output, params.ffn, scope_buf));
 
     return VKLLM_ERR_OK;
 }

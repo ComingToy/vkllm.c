@@ -8,72 +8,7 @@
 #include "tests/vkllm_test_common.h"
 #include <string.h>
 
-static vkllm_err_t print_first_n(struct vkllm_context *context, struct vkllm_commands *commands,
-                                 struct vkllm_tensor *tensor, uint32_t b, uint32_t c, uint32_t h, uint32_t n)
-{
-    if (!tensor->data.mapped)
-    {
-        return VKLLM_ERR_ARGS;
-    }
 
-    uint8_t *data = (uint8_t *)tensor->data.host;
-    uint32_t count = n < tensor->shapes[3] ? n : tensor->shapes[3];
-
-    fprintf(stderr, "%s [%u,%u,%u,:%u]: ", tensor->name, b, c, h, count);
-
-    switch (tensor->dtype)
-    {
-    case vkllm_dtype_float32: {
-        float *base = (float *)data;
-        uint32_t stride0 = tensor->strides[0] / sizeof(float);
-        uint32_t stride1 = tensor->strides[1] / sizeof(float);
-        uint32_t stride2 = tensor->strides[2] / sizeof(float);
-        uint32_t stride3 = tensor->strides[3] / sizeof(float);
-        float *p = base + b * stride0 + c * stride1 + h * stride2;
-        for (uint32_t w = 0; w < count; ++w)
-            fprintf(stderr, "%f ", p[w * stride3]);
-        break;
-    }
-    case vkllm_dtype_float16: {
-        vkllm_fp16_pack *base = (vkllm_fp16_pack *)data;
-        uint32_t stride0 = tensor->strides[0] / sizeof(vkllm_fp16_pack);
-        uint32_t stride1 = tensor->strides[1] / sizeof(vkllm_fp16_pack);
-        uint32_t stride2 = tensor->strides[2] / sizeof(vkllm_fp16_pack);
-        uint32_t stride3 = tensor->strides[3] / sizeof(vkllm_fp16_pack);
-        vkllm_fp16_pack *p = base + b * stride0 + c * stride1 + h * stride2;
-        for (uint32_t w = 0; w < count; ++w)
-            fprintf(stderr, "%f ", vkllm_fp16_to_fp32(p[w * stride3]));
-        break;
-    }
-    case vkllm_dtype_int8: {
-        int8_t *base = (int8_t *)data;
-        uint32_t stride0 = tensor->strides[0] / sizeof(int8_t);
-        uint32_t stride1 = tensor->strides[1] / sizeof(int8_t);
-        uint32_t stride2 = tensor->strides[2] / sizeof(int8_t);
-        uint32_t stride3 = tensor->strides[3] / sizeof(int8_t);
-        int8_t *p = base + b * stride0 + c * stride1 + h * stride2;
-        for (uint32_t w = 0; w < count; ++w)
-            fprintf(stderr, "%d ", p[w * stride3]);
-        break;
-    }
-    case vkllm_dtype_uint32: {
-        uint32_t *base = (uint32_t *)data;
-        uint32_t stride0 = tensor->strides[0] / sizeof(uint32_t);
-        uint32_t stride1 = tensor->strides[1] / sizeof(uint32_t);
-        uint32_t stride2 = tensor->strides[2] / sizeof(uint32_t);
-        uint32_t stride3 = tensor->strides[3] / sizeof(uint32_t);
-        uint32_t *p = base + b * stride0 + c * stride1 + h * stride2;
-        for (uint32_t w = 0; w < count; ++w)
-            fprintf(stderr, "%u ", p[w * stride3]);
-        break;
-    }
-    default:
-        return VKLLM_ERR_ARGS;
-    }
-
-    fprintf(stderr, "\n");
-    return VKLLM_ERR_OK;
-}
 
 static vkllm_err_t print_tensor_mean(struct vkllm_context *context, struct vkllm_commands *commands,
                                      struct vkllm_tensor *tensor)
@@ -243,15 +178,21 @@ int main(const int argc, const char *argv[])
     _CHECK_JUMP(vkllm_graph_run(context, model.graph), err, cleanup_model);
     _CHECK_JUMP(vkllm_graph_post_run(context, model.graph), err, cleanup_model);
 
+#if 0
     for (uint32_t i = 0; i < model.graph->nodes->used_n; ++i)
     {
         struct vkllm_tensor *node = model.graph->nodes->data[i];
-        if (strcmp(node->name, "block.0.attn.Q") == 0 || strcmp(node->name, "block.0.attn.K") == 0 ||
-            strcmp(node->name, "block.0.attn.V") == 0 || strcmp(node->name, "block.0.attn.norm") == 0)
+        if (strcmp(node->name, "block.0.attn.Q_ref") == 0 || strcmp(node->name, "block.0.attn.RQ") == 0)
         {
             print_tensor_mean(context, model.graph->commands, node);
-            print_first_n(context, model.graph->commands, node, 0, 0, 0, 64);
-            print_first_n(context, model.graph->commands, node, 0, 0, 1, 64);
+            uint32_t seq_len = node->shapes[2], num_head = model.meta.head_count,
+                     hiddden = node->shapes[3] / model.meta.head_count;
+            uint32_t shape[] = {1, seq_len, num_head, hiddden};
+            // _CHECK_JUMP(vkllm_tensor_reshape(context, node, shape), err, cleanup_model);
+            log_info("tensor %s shape = [%u, %u, %u, %u]", node->name, node->shapes[0], node->shapes[1], node->shapes[2], node->shapes[3]);
+            print_first_n(context, model.graph->commands, node, 0, 0, 0, 32);
+            print_first_n(context, model.graph->commands, node, 0, 0, 1, 32);
+            // print_first_n(context, model.graph->commands, node, 0, 0, 1, 100);
         }
     }
 
@@ -261,9 +202,11 @@ int main(const int argc, const char *argv[])
         print_first_n(context, model.graph->commands, node, 0, 0, 0, 64);
         print_first_n(context, model.graph->commands, node, 0, 0, 1, 64);
     }
+#endif
 
     uint32_t pred_tok = extract_output_tok(&model);
-    log_info("pred tok: %u", pred_tok);
+
+    log_info("pred tok: %u, piece: %s", pred_tok, model.meta.tokens->data[pred_tok].text);
 
 cleanup_model:
     vkllm_models_llama2_free(context, &model);

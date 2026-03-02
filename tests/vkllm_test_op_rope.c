@@ -15,7 +15,8 @@
 // x'[2i]   = cos(theta) * x[2i]   - sin(theta) * x[2i+1]
 // x'[2i+1] = sin(theta) * x[2i]   + cos(theta) * x[2i+1]
 static void rope_op_host(const void *input, void *output, const uint32_t shapes[4], const uint32_t strides[4],
-                         uint32_t offset, float base, vkllm_dtype_t dtype)
+                         const uint32_t out_shapes[4], const uint32_t out_strides[4], uint32_t offset, float base,
+                         vkllm_dtype_t dtype)
 {
     struct vkllm_dtype_info info;
     vkllm_get_dtype_info(dtype, &info);
@@ -28,6 +29,8 @@ static void rope_op_host(const void *input, void *output, const uint32_t shapes[
     vkllm_fp16_pack *output_fp16 = (vkllm_fp16_pack *)output;
 
     uint32_t es[4] = {strides[0] / dsize, strides[1] / dsize, strides[2] / dsize, strides[3] / dsize};
+    uint32_t out_es[4] = {out_strides[0] / dsize, out_strides[1] / dsize, out_strides[2] / dsize,
+                          out_strides[3] / dsize};
 
     uint32_t B = shapes[0];
     uint32_t C = shapes[1];
@@ -46,6 +49,9 @@ static void rope_op_host(const void *input, void *output, const uint32_t shapes[
                     // Calculate indices for the pair
                     uint32_t idx0 = b * es[0] + c * es[1] + h * es[2] + (2 * w) * es[3];
                     uint32_t idx1 = idx0 + es[3];
+
+                    uint32_t o0 = b * out_es[0] + c * out_es[1] + h * out_es[2] + 2 * w * out_es[3];
+                    uint32_t o1 = o0 + out_es[3];
 
                     // Get input values
                     float v0 = 0.0f, v1 = 0.0f;
@@ -73,13 +79,13 @@ static void rope_op_host(const void *input, void *output, const uint32_t shapes[
                     // Write output
                     if (dtype == vkllm_dtype_float32)
                     {
-                        output_fp32[idx0] = out0;
-                        output_fp32[idx1] = out1;
+                        output_fp32[o0] = out0;
+                        output_fp32[o1] = out1;
                     }
                     else if (dtype == vkllm_dtype_float16)
                     {
-                        output_fp16[idx0] = vkllm_fp32_to_fp16(out0);
-                        output_fp16[idx1] = vkllm_fp32_to_fp16(out1);
+                        output_fp16[o0] = vkllm_fp32_to_fp16(out0);
+                        output_fp16[o1] = vkllm_fp32_to_fp16(out1);
                     }
                 }
             }
@@ -94,12 +100,11 @@ static struct
     float base;
     vkllm_dtype_t dtype;
 } tests[] = {
-    // Float32 tests
+    {{1, 1, 11, 3200}, 0, 10000.0f, vkllm_dtype_float16},
     {{1, 1, 10, 128}, 0, 10000.0f, vkllm_dtype_float32},
     {{2, 1, 5, 64}, 0, 10000.0f, vkllm_dtype_float32},
     {{1, 2, 8, 256}, 5, 10000.0f, vkllm_dtype_float32},
     {{3, 4, 6, 32}, 10, 10000.0f, vkllm_dtype_float32},
-    // Float16 tests
     {{8, 32, 32, 128}, 0, 10000.0f, vkllm_dtype_float16},
     {{2, 1, 5, 64}, 0, 10000.0f, vkllm_dtype_float16},
     {{1, 2, 8, 256}, 5, 10000.0f, vkllm_dtype_float16},
@@ -119,8 +124,16 @@ START_TEST(test_op_rope)
     // Create input tensor
     struct vkllm_tensor *input;
     ck_assert_int_eq(vkllm_tensor_new(context, "input", tests[_i].shapes, tests[_i].dtype, VKLLM_OP_NONE, NULL, 0, NULL,
-                                      0, false, &input),
+                                      0, true, &input),
                      VKLLM_ERR_OK);
+
+    if (_i == 0)
+    {
+        uint32_t shapes[] = {1, 11, 32, 100};
+        ck_assert_int_eq(vkllm_tensor_reshape(context, input, shapes), VKLLM_ERR_OK);
+        uint32_t axis[] = {0, 2, 1, 3};
+        ck_assert_int_eq(vkllm_tensor_permute(context, input, axis), VKLLM_ERR_OK);
+    }
 
     // Create RoPE parameters
     struct vkllm_op_rope_params params = {
@@ -131,7 +144,7 @@ START_TEST(test_op_rope)
     // Create output tensor with RoPE operation
     struct vkllm_tensor *srcs[] = {input};
     struct vkllm_tensor *output;
-    ck_assert_int_eq(vkllm_tensor_new(context, "output", tests[_i].shapes, tests[_i].dtype, VKLLM_OP_ROPE, srcs, 1,
+    ck_assert_int_eq(vkllm_tensor_new(context, "output", input->shapes, input->dtype, VKLLM_OP_ROPE, srcs, 1,
                                       (const uint8_t *)&params, sizeof(params), true, &output),
                      VKLLM_ERR_OK);
 
@@ -145,6 +158,7 @@ START_TEST(test_op_rope)
 
     // Generate random data
     random_tensor(input_host->data, input->shapes, input->strides, input->dtype, -1.0, 1.0);
+
     // print_n_f16("input host: ", input_host->data, 64);
 
     // Upload data and execute
@@ -160,12 +174,18 @@ START_TEST(test_op_rope)
     ck_assert_int_eq(vkllm_op_rope_post_run(context, commands, output), VKLLM_ERR_OK);
 
     // Compute expected result on CPU
-    rope_op_host(input_host->data, output_host->data, input->shapes, input->strides, tests[_i].offset, tests[_i].base,
-                 input->dtype);
+    rope_op_host(input_host->data, output_host->data, input->shapes, input->strides, output->shapes, output->strides,
+                 tests[_i].offset, tests[_i].base, input->dtype);
 
     const void *gpu_output = output->data.host;
     // print_n("gpu output: ", gpu_output, 32);
     // print_n("host output: ", (float*)output_host->data, 32);
+#if 0
+    print_first_n(context, commands, input, 0, 0, 0, 32);
+    print_first_n(context, commands, input, 0, 0, 1, 32);
+    print_first_n(context, commands, output, 0, 0, 0, 32);
+    print_first_n(context, commands, output, 0, 0, 1, 32);
+#endif
 
     // Compare results (allow slightly larger tolerance for fp16)
     float tolerance = (tests[_i].dtype == vkllm_dtype_float16) ? 1e-2 : 1e-4;

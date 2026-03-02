@@ -13,16 +13,17 @@ layout(binding = 1) writeonly buffer kv_type1
 
 layout(push_constant) uniform constants
 {
-    ShapeConstant kv_shape;
+    ShapeConstant in_shape;
+    ShapeConstant out_shape;
     uint offsets;
     LOAD_DTYPE base;
 };
 
 void get_indices(uint tid, out uint b, out uint c, out uint h, out uint w)
 {
-    uint shape3 = kv_shape.shapes[3] / 2;
-    uint cn = kv_shape.shapes[2] * shape3;
-    uint bn = kv_shape.shapes[1] * cn;
+    uint shape3 = in_shape.shapes[3] / 2;
+    uint cn = in_shape.shapes[2] * shape3;
+    uint bn = in_shape.shapes[1] * cn;
     b = tid / bn;
     uint b_offset = b * bn;
 
@@ -39,23 +40,27 @@ void main(void)
     uint b = 0, c = 0, h = 0, w = 0;
     get_indices(tid, b, c, h, w);
 
-    if (b >= kv_shape.shapes[0] || c >= kv_shape.shapes[1] || h >= kv_shape.shapes[2] || 2 * w >= kv_shape.shapes[3])
+    if (b >= in_shape.shapes[0] || c >= in_shape.shapes[1] || h >= in_shape.shapes[2] || 2 * w >= in_shape.shapes[3])
     {
         return;
     }
 
-    uint i0 = b * kv_shape.strides[0] + c * kv_shape.strides[1] + h * kv_shape.strides[2] + 2 * w * kv_shape.strides[3];
-    uint i1 = i0 + 1;
+    uint i0 = b * in_shape.strides[0] + c * in_shape.strides[1] + h * in_shape.strides[2] + 2 * w * in_shape.strides[3];
+    uint i1 = i0 + in_shape.strides[3];
 
-    LOAD_DTYPE f = LOAD_DTYPE(offsets + h) / pow(base, LOAD_DTYPE(2 * w) / LOAD_DTYPE(kv_shape.shapes[3]));
+    LOAD_DTYPE f = LOAD_DTYPE(offsets + h) / pow(base, LOAD_DTYPE(2 * w) / LOAD_DTYPE(in_shape.shapes[3]));
     LOAD_DTYPE freqc = cos(f);
     LOAD_DTYPE freqs = sin(f);
 
     LOAD_DTYPE v0 = LOAD_DTYPE(kv[i0]);
     LOAD_DTYPE v1 = LOAD_DTYPE(kv[i1]);
-    LOAD_DTYPE o0 = freqc * v0 - freqs * v1;
-    LOAD_DTYPE o1 = freqs * v0 + freqc * v1;
+    LOAD_DTYPE q0 = freqc * v0 - freqs * v1;
+    LOAD_DTYPE q1 = freqs * v0 + freqc * v1;
 
-    kv_out[i0] = DTYPE(o0);
-    kv_out[i1] = DTYPE(o1);
+    uint o0 =
+        b * out_shape.strides[0] + c * out_shape.strides[1] + h * out_shape.strides[2] + 2 * w * out_shape.strides[3];
+    uint o1 = o0 + out_shape.strides[3];
+
+    kv_out[o0] = DTYPE(q0);
+    kv_out[o1] = DTYPE(q1);
 }
