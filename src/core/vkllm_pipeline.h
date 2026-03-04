@@ -37,7 +37,7 @@ struct vkllm_pipeline
     VkDescriptorSetLayout vk_desc_set_layout;
     VkDescriptorPool vk_desc_pool;
     VkQueryPool vk_query_pool;
-    const char *name[];
+    char *name[];
 };
 
 extern vkllm_err_t vkllm_shader_constants_new(struct vkllm_shader_constants **constants, uint32_t init_bytes);
