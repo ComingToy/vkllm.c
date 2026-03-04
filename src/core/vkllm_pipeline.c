@@ -181,7 +181,7 @@ vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, const char *name, 
         return VKLLM_ERR_ARGS;
     }
 
-    size_t name_len = name ? strlen(name) : 0;
+    size_t name_len = name ? strlen(name) + 1 : 0;
     *pipeline = (struct vkllm_pipeline *)malloc(sizeof(struct vkllm_pipeline) + name_len);
 
     struct vkllm_pipeline *p = *pipeline;
