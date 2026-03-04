@@ -80,6 +80,7 @@ vkllm_err_t vkllm_op_ffn_up_and_gate_init(struct vkllm_context *context, struct 
     struct vkllm_pipeline *pipeline = NULL;
     _CHECK(vkllm_op_ffn_up_and_gate_get_pipeline(context, tensor, &pipeline));
     tensor->pipeline = pipeline;
+    _CHECK(vkllm_pipeline_alloc_desc_set(context, tensor->pipeline, &tensor->vk_desc_set));
 
     return VKLLM_ERR_OK;
 }

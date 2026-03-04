@@ -111,6 +111,7 @@ vkllm_err_t vkllm_op_matmul_init(struct vkllm_context *context, struct vkllm_com
     struct vkllm_tensor *in0 = tensor->srcs[0], *in1 = tensor->srcs[1];
     _CHECK_ARGS(in0 && in1);
     _CHECK(vkllm_op_matmul_get_pipeline(context, tensor, &tensor->pipeline));
+    _CHECK(vkllm_pipeline_alloc_desc_set(context, tensor->pipeline, &tensor->vk_desc_set));
 
     return VKLLM_ERR_OK;
 }

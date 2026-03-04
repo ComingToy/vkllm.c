@@ -8,6 +8,53 @@
 #include <string.h>
 #include <vulkan/vulkan.h>
 
+static vkllm_err_t vkllm_commands_update_bindings(struct vkllm_context *context, VkDescriptorSet vk_desc_set,
+                                                  struct vkllm_array_ptr *bindings, struct vkllm_array_u32 *indices)
+{
+    VkDescriptorBufferInfo *buffer_infos = NULL;
+    _NEW_N_AND_CHECK(buffer_infos, VkDescriptorBufferInfo, bindings->used_n);
+    if (indices && (bindings->used_n != indices->used_n))
+    {
+        log_error("input bindings.size != indices.size");
+        return VKLLM_ERR_ARGS;
+    }
+
+    for (uint32_t i = 0; i < bindings->used_n; ++i)
+    {
+        struct vkllm_tensor *binding = (struct vkllm_tensor *)bindings->data[i];
+        buffer_infos[i].buffer = binding->data.vk_buf;
+        buffer_infos[i].offset = 0;
+        buffer_infos[i].range = VK_WHOLE_SIZE;
+    }
+
+    VkWriteDescriptorSet *writers = (VkWriteDescriptorSet *)malloc(sizeof(VkWriteDescriptorSet) * bindings->used_n);
+    if (!writers)
+    {
+        free(buffer_infos);
+        return VKLLM_ERR_ALLOC;
+    }
+
+    for (uint32_t i = 0; i < bindings->used_n; ++i)
+    {
+        VkWriteDescriptorSet writer = {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                                       .pNext = NULL,
+                                       .dstSet = vk_desc_set,
+                                       .dstBinding = indices ? indices->data[i] : i,
+                                       .dstArrayElement = 0,
+                                       .descriptorCount = 1,
+                                       .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                                       .pImageInfo = NULL,
+                                       .pBufferInfo = &buffer_infos[i],
+                                       .pTexelBufferView = NULL};
+        writers[i] = writer;
+    }
+
+    vkUpdateDescriptorSets(context->device->vk_dev, bindings->used_n, writers, 0, NULL);
+    free(buffer_infos);
+    free(writers);
+    return VKLLM_ERR_OK;
+}
+
 static vkllm_err_t vkllm_create_command_buffer(struct vkllm_commands *commands)
 {
     VkCommandPoolCreateInfo command_pool_create_info = {.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -222,12 +269,14 @@ vkllm_err_t vkllm_commands_download(struct vkllm_context *context, struct vkllm_
 }
 
 vkllm_err_t vkllm_commands_pipeline(struct vkllm_context *context, struct vkllm_commands *commands,
-                                    struct vkllm_pipeline *pipeline, struct vkllm_array_ptr *bindings,
+                                    struct vkllm_tensor *tensor, struct vkllm_array_ptr *bindings,
                                     struct vkllm_array_u32 *indices, struct vkllm_shader_constants *constants,
                                     uint32_t group_x, uint32_t group_y, uint32_t group_z)
 {
-    _CHECK_ARGS(context && pipeline && bindings && constants);
+    _CHECK_ARGS(context && tensor->pipeline && bindings && constants);
     _CHECK_ARGS(!indices || (bindings->used_n == indices->used_n));
+
+    struct vkllm_pipeline *pipeline = tensor->pipeline;
 
     const VkPhysicalDeviceLimits *limits = &pipeline->device->vk_physical_dev.properties.limits;
     if (group_x > limits->maxComputeWorkGroupCount[0] || group_y > limits->maxComputeWorkGroupCount[1] ||
@@ -247,7 +296,7 @@ vkllm_err_t vkllm_commands_pipeline(struct vkllm_context *context, struct vkllm_
                                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     }
 
-    _CHECK(vkllm_pipeline_update_bindings(context, pipeline, bindings, indices));
+    _CHECK(vkllm_commands_update_bindings(context, tensor->vk_desc_set, bindings, indices));
 
     vkCmdBindPipeline(commands->vk_command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->vk_pipeline);
 
@@ -258,7 +307,7 @@ vkllm_err_t vkllm_commands_pipeline(struct vkllm_context *context, struct vkllm_
     }
 
     vkCmdBindDescriptorSets(commands->vk_command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->vk_pipeline_layout,
-                            0, 1, &pipeline->vk_desc_set, 0, NULL);
+                            0, 1, &tensor->vk_desc_set, 0, NULL);
 
     if (context->device->support_query_timestamp)
     {

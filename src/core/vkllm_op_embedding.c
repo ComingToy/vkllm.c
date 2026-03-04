@@ -1,10 +1,10 @@
 #include "vkllm_op_embedding.h"
 #include "vkllm_array.h"
+#include "vkllm_commands.h"
 #include "vkllm_common.h"
+#include "vkllm_context.h"
 #include "vkllm_dtypes.h"
 #include "vkllm_pipeline.h"
-#include "vkllm_commands.h"
-#include "vkllm_context.h"
 #include "vkllm_tensor.h"
 
 static vkllm_err_t vkllm_op_embedding_get_pipeline(struct vkllm_context *context, struct vkllm_tensor *tensor,
@@ -52,6 +52,7 @@ vkllm_err_t vkllm_op_embedding_init(struct vkllm_context *context, struct vkllm_
     _CHECK_ARGS(in0->shapes[0] == 1 && in1->shapes[0] == 1 && in1->shapes[1] == 1);
 
     _CHECK(vkllm_op_embedding_get_pipeline(context, tensor, &tensor->pipeline));
+    _CHECK(vkllm_pipeline_alloc_desc_set(context, tensor->pipeline, &tensor->vk_desc_set));
 
     return VKLLM_ERR_OK;
 }

@@ -36,7 +36,6 @@ struct vkllm_pipeline
     VkPipelineLayout vk_pipeline_layout;
     VkDescriptorSetLayout vk_desc_set_layout;
     VkDescriptorPool vk_desc_pool;
-    VkDescriptorSet vk_desc_set;
     VkQueryPool vk_query_pool;
     const char *name[];
 };
@@ -69,6 +68,8 @@ extern vkllm_err_t vkllm_pipeline_update_bindings(struct vkllm_context *context,
 extern void vkllm_pipeline_free(struct vkllm_context *context, struct vkllm_pipeline *pipeline);
 extern vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context);
 extern void vkllm_free_all_pipelines(struct vkllm_context *context);
+extern vkllm_err_t vkllm_pipeline_alloc_desc_set(struct vkllm_context *context, struct vkllm_pipeline *pipeline,
+                                                 VkDescriptorSet *vk_desc_set);
 extern vkllm_err_t vkllm_pipeline_query_exec_time(struct vkllm_context *context, struct vkllm_pipeline *pipeline,
                                                   uint64_t *cost);
 

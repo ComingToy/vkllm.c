@@ -59,6 +59,7 @@ vkllm_err_t vkllm_op_bin_init(struct vkllm_context *context, struct vkllm_comman
     struct vkllm_pipeline *pipeline = NULL;
     _CHECK(vkllm_op_bin_get_pipeline(context, tensor, &pipeline));
     tensor->pipeline = pipeline;
+    _CHECK(vkllm_pipeline_alloc_desc_set(context, pipeline, &tensor->vk_desc_set));
 
     return VKLLM_ERR_OK;
 }
