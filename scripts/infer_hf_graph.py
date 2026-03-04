@@ -53,7 +53,7 @@ qkv_outputs = {}
 
 def make_hook(name):
     def hook(module, input, output):
-        output = output[0]
+        # output = output[0]
         # seq_len = output.shape[1]
         # hidden_dim = output.shape[2]//32
         # output = output.reshape(seq_len, 32, hidden_dim)
@@ -86,11 +86,11 @@ def main():
     )
 
     for i, layer in enumerate(model.model.layers):
-        # layer.input_layernorm.register_forward_hook(make_hook(f"layer{i}_input_layernorm"))
-        # layer.self_attn.q_proj.register_forward_hook(make_hook(f"layer{i}_q_proj"))
+        layer.input_layernorm.register_forward_hook(make_hook(f"layer{i}_input_layernorm"))
+        layer.self_attn.q_proj.register_forward_hook(make_hook(f"layer{i}_q_proj"))
         # layer.self_attn.k_proj.register_forward_hook(make_hook(f"layer{i}_k_proj"))
         # layer.self_attn.v_proj.register_forward_hook(make_hook(f"layer{i}_v_proj"))
-        layer.self_attn.register_forward_hook(make_hook(f"layer{i}_self_attn"))
+        # layer.self_attn.register_forward_hook(make_hook(f"layer{i}_self_attn"))
 
     # prompt = 'Q: What is the largest animal? A:'
     prompt = args.sentence
@@ -102,7 +102,7 @@ def main():
         with torch.no_grad():
             outputs = model(input_ids, output_hidden_states=True)
             for i, out in enumerate(outputs.hidden_states):
-                print(f'layer {i} output mean: {out.mean()}')
+                print(f'layer {i} output shape: {out.shape} output mean: {out.mean()}, \n0n: {out[0, 0, :32]}\n1n: {out[0, 1, :32]}')
 
     for i, (q, q_in) in enumerate(zip(captured_q, captured_q_in)):
         print(f"layer_{i}_rope_q shape: {q.shape}, mean: {q.mean():.9f}, 0n\n: {q[0, 0, 0, :32]}, 1n\n: {q[0, 0, 1, :32]}")

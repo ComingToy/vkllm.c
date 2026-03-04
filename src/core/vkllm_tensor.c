@@ -5,6 +5,7 @@
 #include "vkllm_ops.h"
 
 #include "vkllm_common.h"
+#include "vkllm_pipeline.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -125,6 +126,7 @@ vkllm_err_t vkllm_tensor_new(struct vkllm_context *context, const char *name, co
     t->data.mapped = mapped;
     t->access_flags = 0;
     t->pipeline_stage = 0;
+    t->vk_desc_set = VK_NULL_HANDLE;
 
     err = vkllm_create_vk_buffer(t);
     if (err != VKLLM_ERR_OK)
@@ -147,6 +149,11 @@ void vkllm_tensor_free(struct vkllm_context *context, struct vkllm_tensor *tenso
     if (!tensor->data.is_ref)
     {
         vmaDestroyBuffer(tensor->device->vma_allocator, tensor->data.vk_buf, tensor->data.allocation);
+    }
+
+    if (tensor->vk_desc_set != VK_NULL_HANDLE && tensor->pipeline)
+    {
+        vkFreeDescriptorSets(context->device->vk_dev, tensor->pipeline->vk_desc_pool, 1, &tensor->vk_desc_set);
     }
     free(tensor);
     context->stats.tensor_free_counts += 1;

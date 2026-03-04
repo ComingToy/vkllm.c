@@ -1,10 +1,10 @@
 #include "vkllm_op_embedding.h"
 #include "vkllm_array.h"
+#include "vkllm_commands.h"
 #include "vkllm_common.h"
+#include "vkllm_context.h"
 #include "vkllm_dtypes.h"
 #include "vkllm_pipeline.h"
-#include "vkllm_commands.h"
-#include "vkllm_context.h"
 #include "vkllm_tensor.h"
 
 static vkllm_err_t vkllm_op_embedding_get_pipeline(struct vkllm_context *context, struct vkllm_tensor *tensor,
@@ -52,6 +52,7 @@ vkllm_err_t vkllm_op_embedding_init(struct vkllm_context *context, struct vkllm_
     _CHECK_ARGS(in0->shapes[0] == 1 && in1->shapes[0] == 1 && in1->shapes[1] == 1);
 
     _CHECK(vkllm_op_embedding_get_pipeline(context, tensor, &tensor->pipeline));
+    _CHECK(vkllm_pipeline_alloc_desc_set(context, tensor->pipeline, &tensor->vk_desc_set));
 
     return VKLLM_ERR_OK;
 }
@@ -99,7 +100,7 @@ vkllm_err_t vkllm_op_embedding_run(struct vkllm_context *context, struct vkllm_c
     struct vkllm_pipeline *pipeline = tensor->pipeline;
     uint32_t N = _MUL4(in0->shapes);
     uint32_t group_x = (N + pipeline->shader_info.local_x - 1) / pipeline->shader_info.local_x;
-    vkllm_err_t err = vkllm_commands_pipeline(context, commands, pipeline, bindings, NULL, constants, group_x, 1, 1);
+    vkllm_err_t err = vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, constants, group_x, 1, 1);
 
     vkllm_shader_constants_free(constants);
     vkllm_array_ptr_free(bindings);

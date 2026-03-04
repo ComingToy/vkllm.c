@@ -37,6 +37,7 @@ struct vkllm_tensor
 
     VkAccessFlagBits access_flags;
     VkPipelineStageFlagBits pipeline_stage;
+    VkDescriptorSet vk_desc_set;
 
     vkllm_op_t op;
     struct vkllm_pipeline *pipeline;

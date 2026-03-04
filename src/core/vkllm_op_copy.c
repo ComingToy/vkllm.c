@@ -54,6 +54,7 @@ vkllm_err_t vkllm_op_copy_init(struct vkllm_context *context, struct vkllm_comma
     struct vkllm_pipeline *pipeline = NULL;
     _CHECK(vkllm_op_copy_get_pipeline(context, tensor, &pipeline));
     tensor->pipeline = pipeline;
+    _CHECK(vkllm_pipeline_alloc_desc_set(context, pipeline, &tensor->vk_desc_set));
 
     return VKLLM_ERR_OK;
 }
@@ -108,7 +109,7 @@ vkllm_err_t vkllm_op_copy_run(struct vkllm_context *context, struct vkllm_comman
     }
 
     _CHECK_JUMP(
-        vkllm_commands_pipeline(context, commands, pipeline, bindings, NULL, constants, group_x, group_y, group_z), err,
+        vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, constants, group_x, group_y, group_z), err,
         free_bindings_out);
 
 free_bindings_out:

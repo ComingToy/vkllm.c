@@ -3,6 +3,7 @@
 #include "src/core/vkllm_context.h"
 #include "src/core/vkllm_errors.h"
 #include "src/core/vkllm_graph.h"
+#include "src/core/vkllm_pipeline.h"
 #include "src/core/vkllm_tensor.h"
 #include "src/models/vkllm_models_llama2.h"
 #include "tests/vkllm_test_common.h"
@@ -180,32 +181,43 @@ int main(const int argc, const char *argv[])
         _CHECK_JUMP(vkllm_graph_run(context, graph), err, cleanup_graph);
         _CHECK_JUMP(vkllm_graph_post_run(context, graph), err, cleanup_graph);
 
-#if 0
-    for (uint32_t i = 0; i < model.graph->nodes->used_n; ++i)
-    {
-        struct vkllm_tensor *node = model.graph->nodes->data[i];
-        if (strcmp(node->name, "block.0.attn.Q_ref") == 0 || strcmp(node->name, "block.0.attn.RQ") == 0)
+        if (i == 0)
         {
-            print_tensor_mean(context, model.graph->commands, node);
-            uint32_t seq_len = node->shapes[2], num_head = model.meta.head_count,
-                     hiddden = node->shapes[3] / model.meta.head_count;
-            uint32_t shape[] = {1, seq_len, num_head, hiddden};
-            // _CHECK_JUMP(vkllm_tensor_reshape(context, node, shape), err, cleanup_model);
-            log_info("tensor %s shape = [%u, %u, %u, %u]", node->name, node->shapes[0], node->shapes[1], node->shapes[2], node->shapes[3]);
-            print_first_n(context, model.graph->commands, node, 0, 0, 0, 32);
-            print_first_n(context, model.graph->commands, node, 0, 0, 1, 32);
-            // print_first_n(context, model.graph->commands, node, 0, 0, 1, 100);
-        }
-    }
+            for (uint32_t i = 0; i < graph->nodes->used_n; ++i)
+            {
+                struct vkllm_tensor *node = graph->nodes->data[i];
+                log_info("node %s use pipeline %s", node->name, node->pipeline ? node->pipeline->name : "NULL");
+            }
+#if 1
+            for (uint32_t i = 0; i < graph->nodes->used_n; ++i)
+            {
+                struct vkllm_tensor *node = graph->nodes->data[i];
+                if (strcmp(node->name, "block.0.attn.norm") == 0 || strcmp(node->name, "block.0.attn.RQ") == 0 ||
+                    strcmp("embedded", node->name) == 0)
+                {
+                    print_tensor_mean(context, graph->commands, node);
+                    uint32_t seq_len = node->shapes[2], num_head = model.meta.head_count,
+                             hiddden = node->shapes[3] / model.meta.head_count;
+                    uint32_t shape[] = {1, seq_len, num_head, hiddden};
+                    // _CHECK_JUMP(vkllm_tensor_reshape(context, node, shape), err, cleanup_model);
+                    log_info("tensor %s shape = [%u, %u, %u, %u]", node->name, node->shapes[0], node->shapes[1],
+                             node->shapes[2], node->shapes[3]);
+                    print_first_n(context, graph->commands, node, 0, 0, 0, 32);
+                    print_first_n(context, graph->commands, node, 0, 0, 1, 32);
+                    // print_first_n(context, model.graph->commands, node, 0, 0, 1, 100);
+                }
+            }
 
-    {
-        struct vkllm_tensor *node = model.weights.blocks->data[0]->WQ;
-        print_tensor_mean(context, model.graph->commands, node);
-        print_first_n(context, model.graph->commands, node, 0, 0, 0, 64);
-        print_first_n(context, model.graph->commands, node, 0, 0, 1, 64);
-    }
+            {
+                struct vkllm_tensor *node = model.weights.blocks->data[0]->WQ;
+                print_tensor_mean(context, graph->commands, node);
+                print_first_n(context, graph->commands, node, 0, 0, 0, 64);
+                print_first_n(context, graph->commands, node, 0, 0, 1, 64);
+            }
+        }
 #endif
 
+        vkllm_tensor_invalid_cache(context, graph->output_node);
         uint32_t pred_tok = extract_output_tok(graph);
         vkllm_array_token_id_append(token_ids, pred_tok);
         vkllm_graph_free(context, graph);

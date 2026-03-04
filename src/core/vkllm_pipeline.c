@@ -88,19 +88,12 @@ static vkllm_err_t vkllm_pipeline_init_desc_set_pool(struct vkllm_pipeline *p)
     VkDescriptorPoolCreateInfo desc_pool_create_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
                                                         .pNext = NULL,
                                                         .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
-                                                        .maxSets = 1,
+                                                        .maxSets = 1024,
                                                         .poolSizeCount = 1,
                                                         .pPoolSizes = &size};
 
     _CHECK_VK(vkCreateDescriptorPool(p->device->vk_dev, &desc_pool_create_info, NULL, &p->vk_desc_pool));
 
-    VkDescriptorSetAllocateInfo desc_set_alloc_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-                                                       .pNext = NULL,
-                                                       .descriptorPool = p->vk_desc_pool,
-                                                       .descriptorSetCount = 1,
-                                                       .pSetLayouts = &p->vk_desc_set_layout};
-
-    _CHECK_VK(vkAllocateDescriptorSets(p->device->vk_dev, &desc_set_alloc_info, &p->vk_desc_set));
     return VKLLM_ERR_OK;
 }
 
@@ -290,50 +283,16 @@ vkllm_err_t vkllm_pipeline_new(struct vkllm_context *context, const char *name, 
     return VKLLM_ERR_OK;
 }
 
-vkllm_err_t vkllm_pipeline_update_bindings(struct vkllm_context *context, struct vkllm_pipeline *pipeline,
-                                           struct vkllm_array_ptr *bindings, struct vkllm_array_u32 *indices)
+vkllm_err_t vkllm_pipeline_alloc_desc_set(struct vkllm_context *context, struct vkllm_pipeline *pipeline,
+                                          VkDescriptorSet *vk_desc_set)
 {
-    VkDescriptorBufferInfo *buffer_infos = NULL;
-    _NEW_N_AND_CHECK(buffer_infos, VkDescriptorBufferInfo, bindings->used_n);
-    if (indices && (bindings->used_n != indices->used_n))
-    {
-        log_error("input bindings.size != indices.size");
-        return VKLLM_ERR_ARGS;
-    }
+    VkDescriptorSetAllocateInfo desc_set_alloc_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                                                       .pNext = NULL,
+                                                       .descriptorPool = pipeline->vk_desc_pool,
+                                                       .descriptorSetCount = 1,
+                                                       .pSetLayouts = &pipeline->vk_desc_set_layout};
 
-    for (uint32_t i = 0; i < bindings->used_n; ++i)
-    {
-        struct vkllm_tensor *binding = (struct vkllm_tensor *)bindings->data[i];
-        buffer_infos[i].buffer = binding->data.vk_buf;
-        buffer_infos[i].offset = 0;
-        buffer_infos[i].range = VK_WHOLE_SIZE;
-    }
-
-    VkWriteDescriptorSet *writers = (VkWriteDescriptorSet *)malloc(sizeof(VkWriteDescriptorSet) * bindings->used_n);
-    if (!writers)
-    {
-        free(buffer_infos);
-        return VKLLM_ERR_ALLOC;
-    }
-
-    for (uint32_t i = 0; i < bindings->used_n; ++i)
-    {
-        VkWriteDescriptorSet writer = {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                                       .pNext = NULL,
-                                       .dstSet = pipeline->vk_desc_set,
-                                       .dstBinding = indices ? indices->data[i] : i,
-                                       .dstArrayElement = 0,
-                                       .descriptorCount = 1,
-                                       .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                                       .pImageInfo = NULL,
-                                       .pBufferInfo = &buffer_infos[i],
-                                       .pTexelBufferView = NULL};
-        writers[i] = writer;
-    }
-
-    vkUpdateDescriptorSets(pipeline->device->vk_dev, bindings->used_n, writers, 0, NULL);
-    free(buffer_infos);
-    free(writers);
+    _CHECK_VK(vkAllocateDescriptorSets(pipeline->device->vk_dev, &desc_set_alloc_info, vk_desc_set));
     return VKLLM_ERR_OK;
 }
 
