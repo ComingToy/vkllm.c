@@ -211,7 +211,7 @@ vkllm_err_t vkllm_op_matmul_run(struct vkllm_context *context, struct vkllm_comm
     uint32_t group_z = BATCH;
 
     _CHECK_JUMP(
-        vkllm_commands_pipeline(context, commands, pipeline, bindings, NULL, constants, group_x, group_y, group_z), err,
+        vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, constants, group_x, group_y, group_z), err,
         free_bindings_out);
 
 free_bindings_out:

@@ -100,7 +100,7 @@ vkllm_err_t vkllm_op_embedding_run(struct vkllm_context *context, struct vkllm_c
     struct vkllm_pipeline *pipeline = tensor->pipeline;
     uint32_t N = _MUL4(in0->shapes);
     uint32_t group_x = (N + pipeline->shader_info.local_x - 1) / pipeline->shader_info.local_x;
-    vkllm_err_t err = vkllm_commands_pipeline(context, commands, pipeline, bindings, NULL, constants, group_x, 1, 1);
+    vkllm_err_t err = vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, constants, group_x, 1, 1);
 
     vkllm_shader_constants_free(constants);
     vkllm_array_ptr_free(bindings);
