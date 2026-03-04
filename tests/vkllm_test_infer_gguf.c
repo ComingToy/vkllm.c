@@ -193,7 +193,7 @@ int main(const int argc, const char *argv[])
             {
                 struct vkllm_tensor *node = graph->nodes->data[i];
                 if (strcmp(node->name, "block.0.attn.norm") == 0 || strcmp(node->name, "block.0.attn.RQ") == 0 ||
-                    strcmp("embedded", node->name) == 0)
+                    strcmp("embedded", node->name) == 0 || strcmp("block.0.attn.Q_ref", node->name) == 0)
                 {
                     print_tensor_mean(context, graph->commands, node);
                     uint32_t seq_len = node->shapes[2], num_head = model.meta.head_count,

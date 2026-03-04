@@ -219,11 +219,31 @@ static vkllm_err_t create_tensor_from_gguf(struct vkllm_context *context, struct
     return VKLLM_ERR_OK;
 }
 
+static void vkllm_models_llama2_set_defaults(struct vkllm_context *context, struct vkllm_models_llama2 *model)
+{
+    model->meta.block_count = 32;
+    model->meta.context_length = 2048;
+    model->meta.embedding_length = 4096;
+    model->meta.rope_freq_base = 10000.0f;
+    model->meta.layer_norm_rms_epsilon = 1e-6f;
+    model->meta.key_length = 128;
+    model->meta.value_length = 128;
+    model->meta.vocab_size = 32000;
+    model->meta.head_count = 32;
+    model->meta.head_count_kv = 32;
+    model->meta.bos_token_id = 1;
+    model->meta.eos_token_id = 2;
+    model->meta.padding_token_id = 0;
+    model->meta.add_bos_token = true;
+    model->meta.add_eos_token = true;
+}
+
 vkllm_err_t vkllm_models_llama2_load(struct vkllm_context *context, struct vkllm_models_llama2 *model, const char *file)
 {
     _CHECK_ARGS(context && model && file);
 
     memset(model, 0, sizeof(*model));
+
     vkllm_err_t err = VKLLM_ERR_OK;
 
     struct tokenizer_parse_ctx tok_ctx = {0};
@@ -235,6 +255,7 @@ vkllm_err_t vkllm_models_llama2_load(struct vkllm_context *context, struct vkllm
         return VKLLM_ERR_ARGS;
     }
 
+    vkllm_models_llama2_set_defaults(context, model);
     struct vkllm_commands *commands = NULL;
     _CHECK_JUMP(vkllm_commands_new(context, &commands), err, cleanup_gguf);
 
