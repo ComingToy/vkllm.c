@@ -16,7 +16,7 @@ layout(push_constant) uniform constants
     ShapeConstant in_shape;
     ShapeConstant out_shape;
     uint offsets;
-    LOAD_DTYPE base;
+    float base;
 };
 
 layout(constant_id = 0) const int neox_style = 0;
@@ -65,7 +65,7 @@ void main(void)
         o1 = o0 + out_shape.strides[3];
     }
 
-    LOAD_DTYPE f = LOAD_DTYPE(offsets + h) / pow(base, LOAD_DTYPE(2 * w) / LOAD_DTYPE(in_shape.shapes[3]));
+    LOAD_DTYPE f = LOAD_DTYPE(offsets + h) / pow(LOAD_DTYPE(base), LOAD_DTYPE(2 * w) / LOAD_DTYPE(in_shape.shapes[3]));
     LOAD_DTYPE freqc = cos(f);
     LOAD_DTYPE freqs = sin(f);
 

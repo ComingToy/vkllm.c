@@ -534,7 +534,7 @@ static vkllm_err_t vkllm_create_matmul_pipelines(struct vkllm_context *context)
 static vkllm_err_t vkllm_create_rope_pipelines(struct vkllm_context *context)
 {
     struct vkllm_shader_info shader_info = {.binding_count = 2,
-                                            .push_constant_bytes = sizeof(uint32_t) * 9 + sizeof(float),
+                                            .push_constant_bytes = sizeof(uint32_t) * 17 + sizeof(float),
                                             .local_x = 512,
                                             .local_y = 1,
                                             .local_z = 1};
@@ -558,7 +558,6 @@ static vkllm_err_t vkllm_create_rope_pipelines(struct vkllm_context *context)
 
             if (context->device->support_fp16_arithmetic)
             {
-                shader_info.push_constant_bytes = sizeof(uint32_t) * 9 + 2 * sizeof(uint16_t);
                 _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f16f16", shader_info, _vkllm_rope_f16f16_spv(),
                                           _vkllm_rope_f16f16_size(), specializations,
                                           &context->pipelines.rope.f16f16[i]));
