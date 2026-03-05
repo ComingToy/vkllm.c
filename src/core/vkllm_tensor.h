@@ -60,6 +60,8 @@ extern vkllm_err_t vkllm_tensor_permute(struct vkllm_context *context, struct vk
                                         const uint32_t *axis);
 extern vkllm_err_t vkllm_tensor_copy_ref(struct vkllm_context *context, struct vkllm_tensor *tensor,
                                          struct vkllm_tensor **p);
+extern vkllm_err_t vkllm_tensor_slice0(struct vkllm_context *context, struct vkllm_tensor *tensor, uint32_t extents[4],
+                                       struct vkllm_tensor **slice);
 extern vkllm_err_t vkllm_tensor_s(struct vkllm_context *context, struct vkllm_tensor *tensor, char *buf, size_t len);
 #ifdef __cplusplus
 }

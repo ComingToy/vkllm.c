@@ -1,10 +1,12 @@
 cc_library(
     name = "vkllm_llama2_models",
     srcs = [
+        "vkllm_kvcache.c",
         "vkllm_llama2_layers.c",
         "vkllm_models_llama2.c",
     ],
     hdrs = [
+        "vkllm_kvcache.h",
         "vkllm_llama2_layers.h",
         "vkllm_models_llama2.h",
     ],

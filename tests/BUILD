@@ -145,6 +145,15 @@ cc_test(
 )
 
 cc_test(
+    name = "vkllm_test_op_update_rows",
+    srcs = ["vkllm_test_op_update_rows.c"],
+    deps = DEPS,
+    copts = COPTS,
+    linkopts = LINK_OPTS,
+)
+
+
+cc_test(
     name = "vkllm_test_infer_gguf",
     srcs = ["vkllm_test_infer_gguf.c"],
     deps = DEPS,

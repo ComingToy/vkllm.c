@@ -143,7 +143,7 @@ static inline float compare_buf(const void *lhs, const void *rhs, uint32_t shape
                         float v1 = vkllm_fp16_to_fp32(rhs_fp16[i]);
                         err = err + alpha * (v0 - v1) * (v0 - v1);
 
-#if 1
+#if 0
                         if (fabsf(v0 - v1) > 1e-2 || isnan(err))
                         {
                             log_error("%s index %u at (%u, %u, %u, %u) err lhs %f rhs %f", name, i, b, c, h, w, v0, v1);
@@ -155,7 +155,7 @@ static inline float compare_buf(const void *lhs, const void *rhs, uint32_t shape
                     }
 
                     err = err + alpha * (lhs_fp32[i] - rhs_fp32[i]) * (lhs_fp32[i] - rhs_fp32[i]);
-#if 1
+#if 0
                     if (fabsf(lhs_fp32[i] - rhs_fp32[i]) > 1e-3 || isnan(err))
                     {
                         log_error("index %u at (%u, %u, %u, %u) err lhs %f rhs %f", i, b, c, h, w, lhs_fp32[i],

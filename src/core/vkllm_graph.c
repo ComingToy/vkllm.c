@@ -11,6 +11,7 @@
 #include "vkllm_op_rmsnorm.h"
 #include "vkllm_op_rope.h"
 #include "vkllm_op_softmax.h"
+#include "vkllm_op_update_rows.h"
 #include "vkllm_tensor.h"
 
 vkllm_err_t vkllm_graph_new(struct vkllm_context *context, struct vkllm_graph **graph)
@@ -119,6 +120,9 @@ static vkllm_err_t vkllm_graph_init_tensor(struct vkllm_context *context, struct
     case VKLLM_OP_FFN_UP_AND_GATE:
         _CHECK(vkllm_op_ffn_up_and_gate_init(context, commands, tensor));
         break;
+    case VKLLM_OP_UPDATE_ROWS:
+        _CHECK(vkllm_op_update_rows_init(context, commands, tensor));
+        break;
     case VKLLM_OP_REF:
         // Reference tensor, srcs already recursively initialized above
         break;
@@ -205,6 +209,9 @@ static vkllm_err_t vkllm_graph_run_tensor(struct vkllm_context *context, struct 
         break;
     case VKLLM_OP_FFN_UP_AND_GATE:
         _CHECK(vkllm_op_ffn_up_and_gate_run(context, commands, tensor));
+        break;
+    case VKLLM_OP_UPDATE_ROWS:
+        _CHECK(vkllm_op_update_rows_run(context, commands, tensor));
         break;
     case VKLLM_OP_REF:
         // Reference tensor, srcs already recursively executed above
@@ -296,6 +303,9 @@ static vkllm_err_t vkllm_graph_post_run_tensor(struct vkllm_context *context, st
         break;
     case VKLLM_OP_FFN_UP_AND_GATE:
         _CHECK(vkllm_op_ffn_up_and_gate_post_run(context, commands, tensor));
+        break;
+    case VKLLM_OP_UPDATE_ROWS:
+        _CHECK(vkllm_op_update_rows_post_run(context, commands, tensor));
         break;
     case VKLLM_OP_REF:
         // Reference tensor, srcs already recursively post-run above

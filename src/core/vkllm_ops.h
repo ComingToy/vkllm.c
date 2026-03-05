@@ -16,6 +16,7 @@ typedef enum
     VKLLM_OP_ROPE,
     VKLLM_OP_SOFTMAX,
     VKLLM_OP_FFN_UP_AND_GATE,
+    VKLLM_OP_UPDATE_ROWS,
     VKLLM_OP_REF,
 } vkllm_op_t;
 

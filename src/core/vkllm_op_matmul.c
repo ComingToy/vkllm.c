@@ -149,8 +149,6 @@ vkllm_err_t vkllm_op_matmul_run(struct vkllm_context *context, struct vkllm_comm
 
     vkllm_err_t err = VKLLM_ERR_OK;
 
-    struct vkllm_pipeline *pipeline = tensor->pipeline;
-
     struct vkllm_dtype_info dtype_info;
     _CHECK(vkllm_get_dtype_info(tensor->dtype, &dtype_info));
 
@@ -214,6 +212,8 @@ vkllm_err_t vkllm_op_matmul_run(struct vkllm_context *context, struct vkllm_comm
         vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, constants, group_x, group_y, group_z), err,
         free_bindings_out);
 
+    tensor->access_flags = VK_ACCESS_SHADER_WRITE_BIT;
+    tensor->pipeline_stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 free_bindings_out:
     vkllm_array_ptr_free(bindings);
 free_constants_out:

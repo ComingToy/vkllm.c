@@ -563,7 +563,6 @@ fail_free_embedded:
     vkllm_tensor_free(context, embedded);
 fail_free_graph:
     vkllm_graph_free(context, graph);
-fail:
     return err;
 }
 
