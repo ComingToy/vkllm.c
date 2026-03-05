@@ -6,22 +6,26 @@
 #include "../core/vkllm_op_softmax.h"
 #include "../core/vkllm_tensor.h"
 #include "src/core/vkllm_common.h"
+#include "vkllm_kvcache.h"
 #include <math.h>
+#include <stdio.h>
 
 vkllm_err_t vkllm_llama2_build_ffn_layer(struct vkllm_context *context, struct vkllm_graph *graph,
                                          struct vkllm_tensor *input, struct vkllm_llama2_ffn_layer_params params,
-                                         const char *name)
+                                         uint32_t block_idx)
 {
     _CHECK_ARGS(context && graph && input && params.WD && params.WG && params.WU);
     struct vkllm_tensor *norm = NULL, *up = NULL, *gate = NULL, *down = NULL, *gate_mul = NULL;
     vkllm_err_t err = VKLLM_ERR_OK;
     char scope_buf[128];
+    char name[64];
 
     uint32_t batch = input->shapes[0];
     uint32_t channel = input->shapes[1];
     uint32_t seq_len = input->shapes[2];
     uint32_t up_dim = params.WU->shapes[2];
 
+    snprintf(name, sizeof(name), "block.%u.ffn", block_idx);
     struct vkllm_tensor *norm_srcs[] = {input, params.norm_weight};
     struct vkllm_op_rmsnorm_params norm_params = {.power = params.norm_power, .eps = params.norm_eps};
     snprintf(scope_buf, sizeof(scope_buf), "%s.norm", name);
@@ -92,8 +96,8 @@ fail_free_norm:
 }
 
 vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, struct vkllm_graph *graph,
-                                               struct vkllm_tensor *input,
-                                               struct vkllm_llama2_self_attn_layer_params params, const char *name)
+                                               struct vkllm_kvcache *kvcache, struct vkllm_tensor *input,
+                                               struct vkllm_llama2_self_attn_layer_params params, uint32_t block_idx)
 {
     _CHECK_ARGS(context && graph && input && params.WQ && params.WK && params.WV);
 
@@ -122,6 +126,9 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     struct vkllm_tensor *RQ = NULL, *RK = NULL;
     struct vkllm_tensor *scores = NULL, *attn_weights = NULL, *output = NULL;
     char scope_buf[128];
+    char name[64];
+
+    snprintf(name, sizeof(name), "block.%u.attn", block_idx);
 
     struct vkllm_tensor *norm_srcs[] = {input, params.norm_weight};
     struct vkllm_op_rmsnorm_params norm_params = {.power = params.norm_power, .eps = params.norm_eps};
@@ -211,9 +218,12 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
                 err, fail_free_RQ);
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, RK), err, fail_free_RK);
 
+    _CHECK_JUMP(vkllm_kvcache_update(context, kvcache, &RK, &V_ref, block_idx, params.offsets), err, fail_free_RK);
+
     // Step 6: Compute scores = Q @ K^T / sqrt(head_dim)
-    // scores shape: [batch, num_head, seq_len, seq_len]
-    uint32_t scores_shapes[4] = {batch, params.num_head, seq_len, seq_len};
+    // scores shape: [batch, num_head, seq_len, key_num]
+    uint32_t key_num = RK->shapes[2];
+    uint32_t scores_shapes[4] = {batch, params.num_head, seq_len, key_num};
     struct vkllm_tensor *scores_srcs[] = {RQ, RK};
     matmul_params.scale = 1.0f / sqrtf((float)head_dim);
     snprintf(scope_buf, sizeof(scope_buf), "%s.scores", name);
@@ -330,18 +340,15 @@ fail_free_norm:
 }
 
 vkllm_err_t vkllm_llama2_build_transformer_block(struct vkllm_context *context, struct vkllm_graph *graph,
-                                                 struct vkllm_tensor *input,
-                                                 struct vkllm_llama2_transformer_block_params params, const char *name)
+                                                 struct vkllm_kvcache *kvcache, struct vkllm_tensor *input,
+                                                 struct vkllm_llama2_transformer_block_params params,
+                                                 uint32_t block_idx)
 {
     _CHECK_ARGS(context && graph && input);
 
-    char scope_buf[256];
-    snprintf(scope_buf, sizeof(scope_buf), "%s.attn", name);
-    _CHECK(vkllm_llama2_build_self_attn_layer(context, graph, input, params.attn, scope_buf));
-    snprintf(scope_buf, sizeof(scope_buf), "%s.ffn", name);
-
+    _CHECK(vkllm_llama2_build_self_attn_layer(context, graph, kvcache, input, params.attn, block_idx));
     struct vkllm_tensor *attn_output = graph->nodes->data[graph->nodes->used_n - 1];
-    _CHECK(vkllm_llama2_build_ffn_layer(context, graph, attn_output, params.ffn, scope_buf));
+    _CHECK(vkllm_llama2_build_ffn_layer(context, graph, attn_output, params.ffn, block_idx));
 
     return VKLLM_ERR_OK;
 }

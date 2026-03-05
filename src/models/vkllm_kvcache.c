@@ -9,18 +9,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-vkllm_err_t vkllm_kvcache_new(struct vkllm_context *context, uint32_t cache_shape[4], uint32_t layer_counts,
-                              struct vkllm_kvcache **kvcache)
+vkllm_err_t vkllm_kvcache_new(struct vkllm_context *context, uint32_t kcache_shape[4], uint32_t vcache_shape[4],
+                              uint32_t layer_counts, struct vkllm_kvcache **kvcache)
 {
     _NEW_AND_CHECK(*kvcache, struct vkllm_kvcache);
     struct vkllm_kvcache *p = *kvcache;
     p->kcaches = NULL;
     p->vcaches = NULL;
-
-    for (uint32_t i = 0; i < _ARRAY_SIZE(p->cache_shape); ++i)
-    {
-        p->cache_shape[i] = cache_shape[i];
-    }
+    p->layer_counts = layer_counts;
+    _ASSIGN4(p->kcache_shape, kcache_shape);
+    _ASSIGN4(p->vcache_shape, vcache_shape);
 
     vkllm_err_t err = VKLLM_ERR_OK;
     _CHECK_JUMP(vkllm_array_tensor_new(&p->kcaches, layer_counts), err, cleanup_malloc);
@@ -33,13 +31,13 @@ vkllm_err_t vkllm_kvcache_new(struct vkllm_context *context, uint32_t cache_shap
         struct vkllm_tensor *kcache = NULL, *vcache = NULL;
         uint32_t offsets = 0;
         snprintf(name, sizeof(name), "kcache_%u", i);
-        _CHECK_JUMP(vkllm_tensor_new(context, name, cache_shape, vkllm_dtype_float16, VKLLM_OP_UPDATE_ROWS, NULL, 0,
+        _CHECK_JUMP(vkllm_tensor_new(context, name, kcache_shape, vkllm_dtype_float16, VKLLM_OP_UPDATE_ROWS, NULL, 0,
                                      &offsets, sizeof(offsets), false, &kcache),
                     err, cleanup_vcache);
         vkllm_array_tensor_append(p->kcaches, kcache);
 
         snprintf(name, sizeof(name), "vcache_%u", i);
-        _CHECK_JUMP(vkllm_tensor_new(context, name, cache_shape, vkllm_dtype_float16, VKLLM_OP_UPDATE_ROWS, NULL, 0,
+        _CHECK_JUMP(vkllm_tensor_new(context, name, vcache_shape, vkllm_dtype_float16, VKLLM_OP_UPDATE_ROWS, NULL, 0,
                                      &offsets, sizeof(offsets), false, &vcache),
                     err, cleanup_vcache);
         vkllm_array_tensor_append(p->vcaches, vcache);

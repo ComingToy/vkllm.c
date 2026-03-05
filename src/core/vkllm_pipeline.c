@@ -13,6 +13,7 @@
 #include "vkllm_rope_shaders.h"
 #include "vkllm_softmax_shaders.h"
 #include "vkllm_tensor.h"
+#include "vkllm_update_rows.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -613,6 +614,27 @@ static vkllm_err_t vkllm_create_copy_pipelines(struct vkllm_context *context)
     return VKLLM_ERR_OK;
 }
 
+static vkllm_err_t vkllm_create_update_rows_pipelines(struct vkllm_context *context)
+{
+    _CHECK_ARGS(context);
+
+    struct vkllm_shader_info shader_info = {
+        .binding_count = 2, .push_constant_bytes = sizeof(uint32_t) * 17, .local_x = 512, .local_y = 1, .local_z = 1};
+
+    context->pipelines.update_rows.f16 = NULL;
+    context->pipelines.update_rows.f32 = NULL;
+
+    if (context->device->support_16bit_storage)
+    {
+        _CHECK(vkllm_pipeline_new(context, "pipeline_update_rows_f16", shader_info, _vkllm_update_rows_f16_spv(),
+                                  _vkllm_update_rows_f16_size(), NULL, &context->pipelines.update_rows.f16));
+    }
+
+    _CHECK(vkllm_pipeline_new(context, "pipeline_update_rows_f32", shader_info, _vkllm_update_rows_f32_spv(),
+                              _vkllm_update_rows_f32_size(), NULL, &context->pipelines.update_rows.f32));
+    return VKLLM_ERR_OK;
+}
+
 vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context)
 {
     _CHECK(vkllm_create_all_bin_pipeline(context));
@@ -623,6 +645,7 @@ vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context)
     _CHECK(vkllm_create_softmax_pipelines(context));
     _CHECK(vkllm_create_ffn_pipelines(context));
     _CHECK(vkllm_create_copy_pipelines(context));
+    _CHECK(vkllm_create_update_rows_pipelines(context));
     return VKLLM_ERR_OK;
 }
 
@@ -670,6 +693,8 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
     vkllm_pipeline_free(context, context->pipelines.ffn.f32f32f32);
     vkllm_pipeline_free(context, context->pipelines.copy.f16);
     vkllm_pipeline_free(context, context->pipelines.copy.f32);
+    vkllm_pipeline_free(context, context->pipelines.update_rows.f16);
+    vkllm_pipeline_free(context, context->pipelines.update_rows.f32);
 }
 #undef vkllm_free_op_pipelines
 #undef _vkllm_free_op_pipeline

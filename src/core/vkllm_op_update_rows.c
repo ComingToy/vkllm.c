@@ -52,9 +52,15 @@ vkllm_err_t vkllm_op_update_rows_init(struct vkllm_context *context, struct vkll
     struct vkllm_op_update_rows_params *params = (struct vkllm_op_update_rows_params *)tensor->params;
     _CHECK_ARGS(params->offset_rows + in0->shapes[2] <= tensor->shapes[2]);
 
+    if (tensor->pipeline && tensor->vk_desc_set != VK_NULL_HANDLE)
+    {
+        return VKLLM_ERR_OK;
+    }
+
     struct vkllm_pipeline *pipeline = NULL;
     _CHECK(vkllm_op_update_rows_get_pipeline(context, tensor, &pipeline));
     tensor->pipeline = pipeline;
+    _CHECK(vkllm_pipeline_alloc_desc_set(context, pipeline, &tensor->vk_desc_set));
 
     return VKLLM_ERR_OK;
 }
@@ -99,7 +105,7 @@ vkllm_err_t vkllm_op_update_rows_run(struct vkllm_context *context, struct vkllm
     uint32_t group_y = 1, group_z = 1;
 
     _CHECK_JUMP(
-        vkllm_commands_pipeline(context, commands, pipeline, bindings, NULL, constants, group_x, group_y, group_z), err,
+        vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, constants, group_x, group_y, group_z), err,
         free_bindings_out);
 
     tensor->access_flags = VK_ACCESS_SHADER_WRITE_BIT;

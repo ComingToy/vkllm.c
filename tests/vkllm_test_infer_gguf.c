@@ -9,6 +9,7 @@
 #include "tests/vkllm_test_common.h"
 #include <stdio.h>
 #include <string.h>
+#include <sys/time.h>
 
 static vkllm_err_t print_tensor_mean(struct vkllm_context *context, struct vkllm_commands *commands,
                                      struct vkllm_tensor *tensor)
@@ -124,9 +125,16 @@ static uint32_t extract_output_tok(struct vkllm_graph *graph)
 
 int main(const int argc, const char *argv[])
 {
-    if (argc != 2)
+    if (argc != 3)
     {
-        log_error("usage: %s <path to gguf>", argv[0]);
+        log_error("usage: %s <path to gguf> <num_tokens>", argv[0]);
+        return -1;
+    }
+
+    uint32_t num_tokens = atoi(argv[2]);
+    if (num_tokens == 0)
+    {
+        log_error("invalid num_tokens: %s", argv[2]);
         return -1;
     }
 
@@ -161,8 +169,15 @@ int main(const int argc, const char *argv[])
         fprintf(stderr, "%u ", token_ids->data[i]);
     }
 
+    uint32_t offset = 0;
     struct vkllm_graph *graph = NULL;
-    for (uint32_t i = 0; i < 32; ++i)
+    struct vkllm_array_token_id *output_tokens = NULL;
+    vkllm_array_token_id_new(&output_tokens, 32);
+
+    double total_time_ms = 0.0;
+    struct timeval tv_start, tv_end;
+
+    for (uint32_t i = 0; i < num_tokens; ++i)
     {
         struct vkllm_tensor *input_toks = NULL;
         uint32_t input_shapes[] = {1, 1, 1, token_ids->used_n};
@@ -172,11 +187,16 @@ int main(const int argc, const char *argv[])
                     err, cleanup_token_ids);
         _CHECK_JUMP(vkllm_graph_new(context, &graph), err, cleanup_token_ids);
 
-        _CHECK_JUMP(vkllm_models_llama2_build_graph(context, &model, input_toks, graph), err, cleanup_graph);
+        _CHECK_JUMP(vkllm_models_llama2_build_graph(context, &model, input_toks, graph, offset), err, cleanup_graph);
         _CHECK_JUMP(vkllm_graph_init(context, graph), err, cleanup_graph);
         _CHECK_JUMP(vkllm_commands_upload(context, graph->commands, input_toks, (const uint8_t *)token_ids->data,
                                           sizeof(uint32_t) * token_ids->used_n),
                     err, cleanup_graph);
+
+        if (i == 1)
+        {
+            gettimeofday(&tv_start, NULL);
+        }
 
         _CHECK_JUMP(vkllm_graph_run(context, graph), err, cleanup_graph);
         _CHECK_JUMP(vkllm_graph_post_run(context, graph), err, cleanup_graph);
@@ -219,15 +239,25 @@ int main(const int argc, const char *argv[])
 
         vkllm_tensor_invalid_cache(context, graph->output_node);
         uint32_t pred_tok = extract_output_tok(graph);
+
+        offset += token_ids->used_n;
+        vkllm_array_token_id_append(output_tokens, pred_tok);
+        token_ids->used_n = 0;
         vkllm_array_token_id_append(token_ids, pred_tok);
         vkllm_graph_free(context, graph);
         graph = NULL;
     }
 
+    gettimeofday(&tv_end, NULL);
+    total_time_ms = (tv_end.tv_sec - tv_start.tv_sec) * 1000.0 + (tv_end.tv_usec - tv_start.tv_usec) / 1000.0;
+    double tokens_per_second = ((num_tokens - 1.0) / total_time_ms) * 1000.0;
+    log_info("Average tokens/second: %.2f (generated %u tokens in %.2f ms)", tokens_per_second, num_tokens - 1,
+             total_time_ms);
+
     log_info("genereate sentence: ");
-    for (uint32_t i = 0; i < token_ids->used_n; ++i)
+    for (uint32_t i = 0; i < output_tokens->used_n; ++i)
     {
-        uint32_t pred_tok = token_ids->data[i];
+        uint32_t pred_tok = output_tokens->data[i];
         // log_info("pred tok: %u, piece: %s", pred_tok, model.meta.tokens->data[pred_tok].text);
         fprintf(stdout, "%s", model.meta.tokens->data[pred_tok].text);
     }
