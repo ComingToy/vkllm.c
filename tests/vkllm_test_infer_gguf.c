@@ -172,7 +172,7 @@ int main(const int argc, const char *argv[])
                     err, cleanup_token_ids);
         _CHECK_JUMP(vkllm_graph_new(context, &graph), err, cleanup_token_ids);
 
-        _CHECK_JUMP(vkllm_models_llama2_build_graph(context, &model, input_toks, graph), err, cleanup_graph);
+        _CHECK_JUMP(vkllm_models_llama2_build_graph(context, &model, input_toks, graph, 0), err, cleanup_graph);
         _CHECK_JUMP(vkllm_graph_init(context, graph), err, cleanup_graph);
         _CHECK_JUMP(vkllm_commands_upload(context, graph->commands, input_toks, (const uint8_t *)token_ids->data,
                                           sizeof(uint32_t) * token_ids->used_n),

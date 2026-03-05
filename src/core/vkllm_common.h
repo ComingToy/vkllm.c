@@ -88,6 +88,14 @@ extern "C" {
     } while (0)
 
 #define _MUL4(__vec4) ((__vec4)[0] * (__vec4)[1] * (__vec4)[2] * (__vec4)[3])
+#define _ASSIGN4(_lhs, _rhs)                                                                                           \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        (_lhs)[0] = (_rhs)[0];                                                                                         \
+        (_lhs)[1] = (_rhs)[1];                                                                                         \
+        (_lhs)[2] = (_rhs)[2];                                                                                         \
+        (_lhs)[3] = (_rhs)[3];                                                                                         \
+    } while (0)
 
 #define _ARRAY_SIZE(_arr) (sizeof(_arr) / sizeof((_arr)[0]))
 

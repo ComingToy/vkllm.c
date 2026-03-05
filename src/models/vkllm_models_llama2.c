@@ -6,6 +6,8 @@
 #include "../core/vkllm_op_rmsnorm.h"
 #include "../core/vkllm_tensor.h"
 #include "gguflib.h"
+#include "src/core/vkllm_common.h"
+#include "vkllm_kvcache.h"
 #include "vkllm_llama2_layers.h"
 #include <log.h>
 #include <math.h>
@@ -238,6 +240,18 @@ static void vkllm_models_llama2_set_defaults(struct vkllm_context *context, stru
     model->meta.add_eos_token = true;
 }
 
+static vkllm_err_t vkllm_models_llama2_create_kvcache(struct vkllm_context *context, struct vkllm_models_llama2 *model)
+{
+    uint32_t key_head_dim = model->weights.blocks->data[0]->WK->shapes[3] / model->meta.head_count;
+    uint32_t value_head_dim = model->weights.blocks->data[0]->WV->shapes[3] / model->meta.head_count;
+
+    uint32_t kcache_shape[4] = {1, model->meta.head_count, model->meta.context_length, key_head_dim};
+    uint32_t vcache_shape[4] = {1, model->meta.head_count, model->meta.context_length, value_head_dim};
+
+    _CHECK(vkllm_kvcache_new(context, kcache_shape, vcache_shape, model->meta.block_count, &model->weights.kvcache));
+    return VKLLM_ERR_OK;
+}
+
 vkllm_err_t vkllm_models_llama2_load(struct vkllm_context *context, struct vkllm_models_llama2 *model, const char *file)
 {
     _CHECK_ARGS(context && model && file);
@@ -372,6 +386,8 @@ vkllm_err_t vkllm_models_llama2_load(struct vkllm_context *context, struct vkllm
         }
     }
 
+    _CHECK_JUMP(vkllm_models_llama2_create_kvcache(context, model), err, cleanup_commands);
+
     vkllm_commands_free(context, commands);
     gguf_close(gguf);
     return VKLLM_ERR_OK;
@@ -461,11 +477,16 @@ vkllm_err_t vkllm_models_llama2_free(struct vkllm_context *context, struct vkllm
         model->weights.blocks = NULL;
     }
 
+    if (model->weights.kvcache)
+    {
+        vkllm_kvcache_free(context, model->weights.kvcache);
+    }
+
     return VKLLM_ERR_OK;
 }
 
 vkllm_err_t vkllm_models_llama2_build_graph(struct vkllm_context *context, struct vkllm_models_llama2 *model,
-                                            struct vkllm_tensor *input_toks, struct vkllm_graph *graph)
+                                            struct vkllm_tensor *input_toks, struct vkllm_graph *graph, uint32_t offsets)
 {
     _CHECK_ARGS(context && model);
     _CHECK_ARGS(model->weights.tok_embed_weights && model->weights.output_norm_weight && model->weights.output_weight);
@@ -510,7 +531,7 @@ vkllm_err_t vkllm_models_llama2_build_graph(struct vkllm_context *context, struc
             .norm_power = 2.0f,
             .norm_eps = model->meta.layer_norm_rms_epsilon,
             .freq_base = model->meta.rope_freq_base,
-            .offsets = 0,
+            .offsets = offsets,
             .num_head = model->meta.head_count,
         };
 
@@ -530,8 +551,9 @@ vkllm_err_t vkllm_models_llama2_build_graph(struct vkllm_context *context, struc
 
         char block_name[64];
         snprintf(block_name, sizeof(block_name), "block.%u", i);
-        _CHECK_JUMP(vkllm_llama2_build_transformer_block(context, graph, hidden, block_params, block_name), err,
-                    fail_free_embedded);
+        _CHECK_JUMP(
+            vkllm_llama2_build_transformer_block(context, graph, model->weights.kvcache, hidden, block_params, i), err,
+            fail_free_embedded);
         hidden = graph->nodes->data[graph->nodes->used_n - 1];
     }
 

@@ -19,6 +19,7 @@ struct block_weights
 VKLLM_DEF_ARRAY(block_weights, struct block_weights *);
 
 struct vkllm_graph;
+struct vkllm_kvcache;
 
 struct vkllm_token
 {
@@ -130,6 +131,7 @@ struct vkllm_models_llama2
         struct vkllm_array_block_weights *blocks;
         struct vkllm_tensor *output_norm_weight;
         struct vkllm_tensor *output_weight;
+        struct vkllm_kvcache *kvcache;
     } weights;
 };
 
@@ -138,7 +140,8 @@ extern vkllm_err_t vkllm_models_llama2_load(struct vkllm_context *context, struc
 extern vkllm_err_t vkllm_models_llama2_free(struct vkllm_context *context, struct vkllm_models_llama2 *model);
 
 extern vkllm_err_t vkllm_models_llama2_build_graph(struct vkllm_context *context, struct vkllm_models_llama2 *model,
-                                                   struct vkllm_tensor *input_toks, struct vkllm_graph *graph);
+                                                   struct vkllm_tensor *input_toks, struct vkllm_graph *graph,
+                                                   uint32_t offsets);
 extern vkllm_err_t vkllm_models_llama2_tokenize(struct vkllm_models_llama2 *model, const char *sentence,
                                                 struct vkllm_array_token_id **token_ids);
 
