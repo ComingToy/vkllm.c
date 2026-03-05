@@ -104,6 +104,8 @@ vkllm_err_t vkllm_op_embedding_run(struct vkllm_context *context, struct vkllm_c
 
     vkllm_shader_constants_free(constants);
     vkllm_array_ptr_free(bindings);
+    tensor->access_flags = VK_ACCESS_SHADER_WRITE_BIT;
+    tensor->pipeline_stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     return err;
 }
 

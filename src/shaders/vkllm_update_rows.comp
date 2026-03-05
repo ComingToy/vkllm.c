@@ -1,0 +1,46 @@
+#version 450 core
+#include "vkllm_shader_header.comp.h"
+
+layout(binding = 0) readonly buffer in0_type
+{
+    DTYPE in0[];
+};
+
+layout(binding = 1) writeonly buffer out0_type
+{
+    DTYPE out0[];
+};
+
+layout(push_constant) uniform constants
+{
+    ShapeConstant shape0;
+    ShapeConstant shape1;
+    uint offset_rows;
+};
+
+void main(void)
+{
+    uint tid = get_thread_id();
+
+    uint shape3 = shape0.shapes[3];
+    uint cn = shape0.shapes[2] * shape3;
+    uint bn = shape0.shapes[1] * cn;
+
+    uint b = tid / bn;
+    uint b_offset = b * bn;
+    uint c = (tid - b_offset) / cn;
+    uint c_offset = c * cn;
+    uint h = (tid - b_offset - c_offset) / shape3;
+    uint w = tid - b_offset - c_offset - h * shape3;
+    uint out_h = h + offset_rows;
+
+    if (b >= shape0.shapes[0] || c >= shape0.shapes[1] || h >= shape0.shapes[2] || w >= shape0.shapes[3] || out_h >= shape1.shapes[2])
+    {
+        return;
+    }
+
+    uint i0 = b * shape0.strides[0] + c * shape0.strides[1] + h * shape0.strides[2] + w * shape0.strides[3];
+    uint o0 = b * shape1.strides[0] + c * shape1.strides[1] + out_h * shape1.strides[2] + w * shape1.strides[3];
+
+    out0[o0] = in0[i0];
+}

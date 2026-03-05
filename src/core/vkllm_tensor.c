@@ -298,6 +298,27 @@ vkllm_err_t vkllm_tensor_copy_ref(struct vkllm_context *context, struct vkllm_te
     return VKLLM_ERR_OK;
 }
 
+vkllm_err_t vkllm_tensor_slice0(struct vkllm_context *context, struct vkllm_tensor *tensor, uint32_t *extents,
+                                struct vkllm_tensor **slice)
+{
+    _CHECK_ARGS(context && tensor && extents && slice);
+    _CHECK(vkllm_tensor_copy_ref(context, tensor, slice));
+    _CHECK(extents[0] <= tensor->shapes[0]);
+    _CHECK(extents[1] <= tensor->shapes[1]);
+    _CHECK(extents[2] <= tensor->shapes[2]);
+    _CHECK(extents[3] <= tensor->shapes[3]);
+
+    struct vkllm_tensor *t = *slice;
+    snprintf((char *)t->name, sizeof(t->name), "%s_slice0", tensor->name);
+
+    t->shapes[0] = extents[0];
+    t->shapes[1] = extents[1];
+    t->shapes[2] = extents[2];
+    t->shapes[3] = extents[3];
+
+    return VKLLM_ERR_OK;
+}
+
 vkllm_err_t vkllm_tensor_s(struct vkllm_context *context, struct vkllm_tensor *tensor, char *buf, size_t len)
 {
     _CHECK_ARGS(context && tensor && buf && len > 0);

@@ -102,8 +102,6 @@ vkllm_err_t vkllm_op_rmsnorm_run(struct vkllm_context *context, struct vkllm_com
     uint32_t group_y = num_rows;
     uint32_t group_z = 1;
 
-    struct vkllm_pipeline *pipeline = tensor->pipeline;
-
     // If num_rows is too large, distribute across y and z dimensions
     uint32_t max_group_y = context->device->vk_physical_dev.properties.limits.maxComputeWorkGroupCount[1];
     if (group_y > max_group_y)
@@ -116,6 +114,8 @@ vkllm_err_t vkllm_op_rmsnorm_run(struct vkllm_context *context, struct vkllm_com
         vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, constants, group_x, group_y, group_z), err,
         free_bindings_out);
 
+    tensor->access_flags = VK_ACCESS_SHADER_WRITE_BIT;
+    tensor->pipeline_stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 free_bindings_out:
     vkllm_array_ptr_free(bindings);
 free_constants_out:
