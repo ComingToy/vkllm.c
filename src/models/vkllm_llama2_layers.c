@@ -221,8 +221,9 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     _CHECK_JUMP(vkllm_kvcache_update(context, kvcache, &RK, &V_ref, block_idx, params.offsets), err, fail_free_RK);
 
     // Step 6: Compute scores = Q @ K^T / sqrt(head_dim)
-    // scores shape: [batch, num_head, seq_len, seq_len]
-    uint32_t scores_shapes[4] = {batch, params.num_head, seq_len, seq_len};
+    // scores shape: [batch, num_head, seq_len, key_num]
+    uint32_t key_num = RK->shapes[2];
+    uint32_t scores_shapes[4] = {batch, params.num_head, seq_len, key_num};
     struct vkllm_tensor *scores_srcs[] = {RQ, RK};
     matmul_params.scale = 1.0f / sqrtf((float)head_dim);
     snprintf(scope_buf, sizeof(scope_buf), "%s.scores", name);

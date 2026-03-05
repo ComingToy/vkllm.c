@@ -161,7 +161,11 @@ int main(const int argc, const char *argv[])
         fprintf(stderr, "%u ", token_ids->data[i]);
     }
 
+    uint32_t offset = 0;
     struct vkllm_graph *graph = NULL;
+    struct vkllm_array_token_id *output_tokens = NULL;
+    vkllm_array_token_id_new(&output_tokens, 32);
+
     for (uint32_t i = 0; i < 32; ++i)
     {
         struct vkllm_tensor *input_toks = NULL;
@@ -172,7 +176,7 @@ int main(const int argc, const char *argv[])
                     err, cleanup_token_ids);
         _CHECK_JUMP(vkllm_graph_new(context, &graph), err, cleanup_token_ids);
 
-        _CHECK_JUMP(vkllm_models_llama2_build_graph(context, &model, input_toks, graph, 0), err, cleanup_graph);
+        _CHECK_JUMP(vkllm_models_llama2_build_graph(context, &model, input_toks, graph, offset), err, cleanup_graph);
         _CHECK_JUMP(vkllm_graph_init(context, graph), err, cleanup_graph);
         _CHECK_JUMP(vkllm_commands_upload(context, graph->commands, input_toks, (const uint8_t *)token_ids->data,
                                           sizeof(uint32_t) * token_ids->used_n),
@@ -219,15 +223,19 @@ int main(const int argc, const char *argv[])
 
         vkllm_tensor_invalid_cache(context, graph->output_node);
         uint32_t pred_tok = extract_output_tok(graph);
+
+        offset += token_ids->used_n;
+        vkllm_array_token_id_append(output_tokens, pred_tok);
+        token_ids->used_n = 0;
         vkllm_array_token_id_append(token_ids, pred_tok);
         vkllm_graph_free(context, graph);
         graph = NULL;
     }
 
     log_info("genereate sentence: ");
-    for (uint32_t i = 0; i < token_ids->used_n; ++i)
+    for (uint32_t i = 0; i < output_tokens->used_n; ++i)
     {
-        uint32_t pred_tok = token_ids->data[i];
+        uint32_t pred_tok = output_tokens->data[i];
         // log_info("pred tok: %u, piece: %s", pred_tok, model.meta.tokens->data[pred_tok].text);
         fprintf(stdout, "%s", model.meta.tokens->data[pred_tok].text);
     }
