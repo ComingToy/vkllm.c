@@ -3,6 +3,7 @@
 #include "src/core/vkllm_context.h"
 #include "src/core/vkllm_errors.h"
 #include "src/core/vkllm_graph.h"
+#include "src/core/vkllm_ops.h"
 #include "src/core/vkllm_pipeline.h"
 #include "src/core/vkllm_tensor.h"
 #include "src/models/vkllm_models_llama2.h"
@@ -260,6 +261,11 @@ int main(const int argc, const char *argv[])
         uint32_t pred_tok = output_tokens->data[i];
         // log_info("pred tok: %u, piece: %s", pred_tok, model.meta.tokens->data[pred_tok].text);
         fprintf(stdout, "%s", model.meta.tokens->data[pred_tok].text);
+    }
+
+    for (uint32_t i = 0; i < VKLLM_OP_COUNTS; ++i)
+    {
+        fprintf(stderr, "op %s total time cost: %lu", vkllm_op_s(i), (unsigned long)context->stats.op_time_costs[i]);
     }
 
 cleanup_graph:
