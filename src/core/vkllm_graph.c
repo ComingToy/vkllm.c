@@ -338,6 +338,9 @@ vkllm_err_t vkllm_graph_post_run(struct vkllm_context *context, struct vkllm_gra
     {
         struct vkllm_tensor *node = graph->nodes->data[i];
         struct vkllm_pipeline *pipeline = node->pipeline;
+        if (!pipeline)
+            continue;
+
         uint64_t cost = 0;
         vkllm_pipeline_query_exec_time(context, pipeline, &cost);
         context->stats.op_time_costs[node->op] += cost;
