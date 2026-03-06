@@ -202,6 +202,7 @@ int main(const int argc, const char *argv[])
         _CHECK_JUMP(vkllm_graph_run(context, graph), err, cleanup_graph);
         _CHECK_JUMP(vkllm_graph_post_run(context, graph), err, cleanup_graph);
 
+#if 0
         if (i == 0)
         {
             for (uint32_t i = 0; i < graph->nodes->used_n; ++i)
@@ -209,7 +210,6 @@ int main(const int argc, const char *argv[])
                 struct vkllm_tensor *node = graph->nodes->data[i];
                 log_info("node %s use pipeline %s", node->name, node->pipeline ? node->pipeline->name : "NULL");
             }
-#if 1
             for (uint32_t i = 0; i < graph->nodes->used_n; ++i)
             {
                 struct vkllm_tensor *node = graph->nodes->data[i];
