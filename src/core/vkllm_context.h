@@ -10,6 +10,7 @@ extern "C" {
 #include <stdint.h>
 
 #include "vkllm_errors.h"
+#include "vkllm_ops.h"
 
 struct vkllm_gpu_device;
 struct vkllm_pipeline;
@@ -86,6 +87,7 @@ struct vkllm_context
     {
         int tensor_alloc_counts;
         int tensor_free_counts;
+        uint64_t op_time_costs[(int)VKLLM_OP_COUNTS];
     } stats;
 };
 

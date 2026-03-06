@@ -1,4 +1,5 @@
 #include "vkllm_graph.h"
+#include "src/core/vkllm_pipeline.h"
 #include "vkllm_commands.h"
 #include "vkllm_common.h"
 #include "vkllm_context.h"
@@ -332,6 +333,18 @@ vkllm_err_t vkllm_graph_post_run(struct vkllm_context *context, struct vkllm_gra
 
     // Recursively post-run starting from the output node
     err = vkllm_graph_post_run_tensor(context, graph->commands, graph->output_node, visited);
+
+    for (uint32_t i = 0; i < graph->nodes->used_n; ++i)
+    {
+        struct vkllm_tensor *node = graph->nodes->data[i];
+        struct vkllm_pipeline *pipeline = node->pipeline;
+        if (!pipeline)
+            continue;
+
+        uint64_t cost = 0;
+        vkllm_pipeline_query_exec_time(context, pipeline, &cost);
+        context->stats.op_time_costs[node->op] += cost;
+    }
 
     // Clean up the visited hash set
     vkllm_hashset_free(visited);
