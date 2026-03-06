@@ -77,9 +77,9 @@ glsl_shader(
     extra_args = COMMON_ARGS,
     tool = "//tools:binary_to_array",
     macros = [
-        "-DIN0_DTYPE=float -DIN1_DTYPE=float -DSMEM_DTYPE=vec4 -DOUT_DTYPE=float -DACC_DTYPE=float",
-        "-D_SUPPORT_16BIT_STORAGE -D_SUPPORT_FLOAT16_ARITHMETIC -DIN0_DTYPE=float16_t -DIN1_DTYPE=float16_t -DSMEM_DTYPE=f16vec4 -DACC_DTYPE=float -DOUT_DTYPE=float16_t -DBROADCASE_A=0 -DBROADCASE_B=0",
-        "-D_SUPPORT_16BIT_STORAGE -DIN0_DTYPE=float16_t -DIN1_DTYPE=float16_t -DSMEM_DTYPE=vec4 -DLOAD_DTYPE=float -DACC_DTYPE=float -DOUT_DTYPE=float16_t -DBROADCASE_A=0 -DBROADCASE_B=0",
+        "-DIN0_DTYPE=float -DIN1_DTYPE=float -DSMEM_VEC2=vec2 -DOUT_DTYPE=float -DACC_DTYPE=float",
+        "-D_SUPPORT_16BIT_STORAGE -D_SUPPORT_FLOAT16_ARITHMETIC -DIN0_DTYPE=float16_t -DIN1_DTYPE=float16_t -DSMEM_VEC2=f16vec2 -DACC_DTYPE=float -DOUT_DTYPE=float16_t -DBROADCASE_A=0 -DBROADCASE_B=0",
+        "-D_SUPPORT_16BIT_STORAGE -DIN0_DTYPE=float16_t -DIN1_DTYPE=float16_t -DSMEM_VEC2=vec2 -DLOAD_DTYPE=float -DACC_DTYPE=float -DOUT_DTYPE=float16_t -DBROADCASE_A=0 -DBROADCASE_B=0",
     ],
     suffixes = [
         "f32f32f32",
