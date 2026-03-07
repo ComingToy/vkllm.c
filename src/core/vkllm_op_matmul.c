@@ -202,8 +202,8 @@ vkllm_err_t vkllm_op_matmul_run(struct vkllm_context *context, struct vkllm_comm
     // Based on the shader code from vkllm_matmul.comp:
     // BM = 128, BN = 128, workgroup size = (1, 1, 256)
     // Each workgroup processes a BM x BN block of the output
-    uint32_t BM = 128;
-    uint32_t BN = 128;
+    uint32_t BM = 64;
+    uint32_t BN = 64;
     uint32_t group_x = (M + BM - 1) / BM;
     uint32_t group_y = (N + BN - 1) / BN;
     uint32_t group_z = BATCH;

@@ -265,7 +265,7 @@ int main(const int argc, const char *argv[])
 
     for (uint32_t i = 0; i < VKLLM_OP_COUNTS; ++i)
     {
-        fprintf(stderr, "op %s total time cost: %lu", vkllm_op_s(i), (unsigned long)context->stats.op_time_costs[i]);
+        fprintf(stderr, "op %s total time cost: %lu\n", vkllm_op_s(i), (unsigned long)context->stats.op_time_costs[i]);
     }
 
 cleanup_graph:
