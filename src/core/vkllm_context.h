@@ -14,6 +14,7 @@ extern "C" {
 
 struct vkllm_gpu_device;
 struct vkllm_pipeline;
+struct vkllm_hashmap;
 
 struct vkllm_context
 {
@@ -96,6 +97,7 @@ struct vkllm_context
         int tensor_alloc_counts;
         int tensor_free_counts;
         uint64_t op_time_costs[(int)VKLLM_OP_COUNTS];
+        struct vkllm_hashmap *node_time_cost;
     } stats;
 };
 
