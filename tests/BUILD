@@ -121,6 +121,14 @@ cc_test(
 )
 
 cc_test(
+    name = "vkllm_test_hashmap",
+    srcs = ["vkllm_test_hashmap.c"],
+    deps = DEPS,
+    copts = COPTS,
+    linkopts = LINK_OPTS,
+)
+
+cc_test(
     name = "vkllm_test_hashset_perf",
     srcs = ["vkllm_test_hashset_perf.c"],
     deps = DEPS,

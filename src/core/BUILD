@@ -19,6 +19,7 @@ cc_library(
         "vkllm_op_softmax.c",
         "vkllm_op_update_rows.c",
         "vkllm_hashset.c",
+        "vkllm_hashmap.c",
         "vkllm_graph.c",
     ],
     hdrs = [
@@ -46,6 +47,7 @@ cc_library(
         "vkllm_op_update_rows.h",
         "vkllm_graph.h",
         "vkllm_hashset.h",
+        "vkllm_hashmap.h",
     ],
     deps = [
 		"//vulkan_rules:vulkan_cc_library",
