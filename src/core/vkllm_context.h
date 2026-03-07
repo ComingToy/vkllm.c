@@ -52,6 +52,8 @@ struct vkllm_context
         {
             // pipeline array size: a_boardcast_type x b_boardcast_type
             struct vkllm_pipeline *f32f32[4][4];
+            struct vkllm_pipeline *f16f32[4][4];
+            struct vkllm_pipeline *f16f16[4][4];
         } mat_mul_vec;
 
         struct

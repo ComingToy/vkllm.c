@@ -85,11 +85,25 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
 
         if (context->device->support_fp16_arithmetic)
         {
-            *pipeline = context->pipelines.matmul.f16f16f16[a_boardcast_type][b_boardcast_type][tranposed_b];
+            if (in0->shapes[2] == 1 && tranposed_b)
+            {
+                *pipeline = context->pipelines.mat_mul_vec.f16f16[a_boardcast_type][b_boardcast_type];
+            }
+            else
+            {
+                *pipeline = context->pipelines.matmul.f16f16f16[a_boardcast_type][b_boardcast_type][tranposed_b];
+            }
         }
         else
         {
-            *pipeline = context->pipelines.matmul.f16f32f16[a_boardcast_type][b_boardcast_type][tranposed_b];
+            if (in0->shapes[2] == 1 && tranposed_b)
+            {
+                *pipeline = context->pipelines.mat_mul_vec.f16f32[a_boardcast_type][b_boardcast_type];
+            }
+            else
+            {
+                *pipeline = context->pipelines.matmul.f16f32f16[a_boardcast_type][b_boardcast_type][tranposed_b];
+            }
         }
     }
     else if (in0->dtype == vkllm_dtype_float32 && in1->dtype == vkllm_dtype_float32)
@@ -300,8 +314,7 @@ vkllm_err_t vkllm_op_matmul_run(struct vkllm_context *context, struct vkllm_comm
     struct vkllm_tensor *in0 = tensor->srcs[0], *in1 = tensor->srcs[1];
     _CHECK_ARGS(in0 && in1);
 
-    if (in0->dtype == vkllm_dtype_float32 && in1->dtype == vkllm_dtype_float32 && in0->shapes[2] == 1 &&
-        is_transposed_b(tensor))
+    if (in0->shapes[2] == 1 && is_transposed_b(tensor))
     {
         return vkllm_op_mat_mul_vec_run(context, commands, tensor);
     }

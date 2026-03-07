@@ -643,6 +643,8 @@ static vkllm_err_t vkllm_create_mat_mul_vec_pipelines(struct vkllm_context *cont
         for (uint32_t k = 0; k < 4; ++k)
         {
             context->pipelines.mat_mul_vec.f32f32[i][k] = NULL;
+            context->pipelines.mat_mul_vec.f16f32[i][k] = NULL;
+            context->pipelines.mat_mul_vec.f16f16[i][k] = NULL;
         }
     }
 
@@ -662,6 +664,38 @@ static vkllm_err_t vkllm_create_mat_mul_vec_pipelines(struct vkllm_context *cont
             vkllm_err_t err = vkllm_pipeline_new(context, "mat_mul_vec_pipelines_f32f32", shader_info,
                                                  _vkllm_mat_mul_vecf32f32_spv(), _vkllm_mat_mul_vecf32f32_size(),
                                                  specializations, &context->pipelines.mat_mul_vec.f32f32[i][k]);
+            if (err != VKLLM_ERR_OK)
+            {
+                vkllm_shader_constants_free(specializations);
+                return err;
+            }
+
+            if (context->device->support_16bit_storage)
+            {
+
+                err = vkllm_pipeline_new(context, "mat_mul_vec_pipelines_f16f32", shader_info,
+                                         _vkllm_mat_mul_vecf16f32_spv(), _vkllm_mat_mul_vecf16f32_size(),
+                                         specializations, &context->pipelines.mat_mul_vec.f16f32[i][k]);
+
+                if (err != VKLLM_ERR_OK)
+                {
+                    vkllm_shader_constants_free(specializations);
+                    return err;
+                }
+
+                if (context->device->support_fp16_arithmetic)
+                {
+                    err = vkllm_pipeline_new(context, "mat_mul_vec_pipelines_f16f16", shader_info,
+                                             _vkllm_mat_mul_vecf16f16_spv(), _vkllm_mat_mul_vecf16f16_size(),
+                                             specializations, &context->pipelines.mat_mul_vec.f16f16[i][k]);
+                }
+
+                if (err != VKLLM_ERR_OK)
+                {
+                    vkllm_shader_constants_free(specializations);
+                    return err;
+                }
+            }
             vkllm_shader_constants_free(specializations);
             _CHECK(err);
         }
@@ -718,6 +752,8 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
         for (uint32_t k = 0; k < 4; ++k)
         {
             vkllm_pipeline_free(context, context->pipelines.mat_mul_vec.f32f32[i][k]);
+            vkllm_pipeline_free(context, context->pipelines.mat_mul_vec.f16f32[i][k]);
+            vkllm_pipeline_free(context, context->pipelines.mat_mul_vec.f16f16[i][k]);
         }
     }
 

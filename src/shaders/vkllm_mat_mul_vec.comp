@@ -2,21 +2,25 @@
 #extension GL_EXT_control_flow_attributes : require
 #extension GL_KHR_shader_subgroup_basic : require
 #extension GL_KHR_shader_subgroup_arithmetic : require
+#ifdef _SUPPORT_FLOAT16_ARITHMETIC 
+#extension GL_EXT_shader_subgroup_extended_types_float16 : require
+#endif
+
 #include "vkllm_shader_header.comp.h"
 
 layout(binding = 0) readonly buffer in0_type
 {
-    float in_vec[];
+    DTYPE in_vec[];
 };
 
 layout(binding = 1) readonly buffer in1_type
 {
-    float in_mat[];
+    DTYPE in_mat[];
 };
 
 layout(binding = 2) writeonly buffer out0_type
 {
-    float out_mat[];
+    DTYPE out_mat[];
 };
 
 layout(push_constant) uniform constants
@@ -101,21 +105,21 @@ void main()
 
     uint out_batch_off = b * shape_out.strides[0] + c * shape_out.strides[1];
 
-    float acc = .0;
+    ACC_DTYPE acc = ACC_DTYPE(0);
 
     uint K = shape_vec.shapes[3];
     for (uint i = gl_SubgroupInvocationID.x; i < K; i += gl_SubgroupSize)
     {
         uint ai = a_batch_off + h * shape_vec.strides[2] + i * shape_vec.strides[3];
         uint bi = b_batch_off + w * shape_mat.strides[2] + i * shape_mat.strides[3];
-        acc += in_vec[ai] * in_mat[bi];
+        acc += ACC_DTYPE(in_vec[ai]) * ACC_DTYPE(in_mat[bi]);
     }
 
     uint ci = out_batch_off + h * shape_out.strides[2] + w * shape_out.strides[3];
-    float v = subgroupAdd(acc) * scale;
-    v = act == 1 ? v / (1.0 + exp(-v)) : v;
+    ACC_DTYPE v = subgroupAdd(acc) * ACC_DTYPE(scale);
+    v = act == 1 ? v / (ACC_DTYPE(1.0) + exp(-v)) : v;
     if (subgroupElect())
     {
-        out_mat[ci] = v;
+        out_mat[ci] = OUT_DTYPE(v);
     }
 }

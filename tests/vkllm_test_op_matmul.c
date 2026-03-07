@@ -178,6 +178,7 @@ static struct
     bool act;
 } tests[] = {
     {1, 1, 1, 1, 1, 1024, 2048, vkllm_dtype_float32, true, false},
+    {1, 1, 1, 1, 1, 1024, 2048, vkllm_dtype_float16, true, false},
 
 #if 1
     // Single batch tests (B=1, C=1, no broadcasting) with transposed B, no activation
