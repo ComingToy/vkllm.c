@@ -8,6 +8,7 @@
 #include "vkllm_errors.h"
 #include "vkllm_ffn_shaders.h"
 #include "vkllm_gpu_device.h"
+#include "vkllm_mat_mul_vec_shaders.h"
 #include "vkllm_matmul_shaders.h"
 #include "vkllm_rmsnorm_shaders.h"
 #include "vkllm_rope_shaders.h"
@@ -635,6 +636,39 @@ static vkllm_err_t vkllm_create_update_rows_pipelines(struct vkllm_context *cont
     return VKLLM_ERR_OK;
 }
 
+static vkllm_err_t vkllm_create_mat_mul_vec_pipelines(struct vkllm_context *context)
+{
+    for (uint32_t i = 0; i < 4; ++i)
+    {
+        for (uint32_t k = 0; k < 4; ++k)
+        {
+            context->pipelines.mat_mul_vec.f32f32[i][k] = NULL;
+        }
+    }
+
+    struct vkllm_shader_info shader_info = {.binding_count = 3,
+                                            .push_constant_bytes =
+                                                sizeof(uint32_t) * 24 + sizeof(float) + sizeof(int32_t),
+                                            .local_x = 512,
+                                            .local_y = 1,
+                                            .local_z = 1};
+
+    for (int32_t i = 0; i < 4; ++i)
+    {
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            struct vkllm_shader_constants *specializations = NULL;
+            vkllm_shader_constants_new(&specializations, 64);
+            vkllm_err_t err = vkllm_pipeline_new(context, "mat_mul_vec_pipelines_f32f32", shader_info,
+                                                 _vkllm_mat_mul_vecf32f32_spv(), _vkllm_mat_mul_vecf32f32_size(),
+                                                 specializations, &context->pipelines.mat_mul_vec.f32f32[i][k]);
+            vkllm_shader_constants_free(specializations);
+            _CHECK(err);
+        }
+    }
+    return VKLLM_ERR_OK;
+}
+
 vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context)
 {
     _CHECK(vkllm_create_all_bin_pipeline(context));
@@ -646,6 +680,7 @@ vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context)
     _CHECK(vkllm_create_ffn_pipelines(context));
     _CHECK(vkllm_create_copy_pipelines(context));
     _CHECK(vkllm_create_update_rows_pipelines(context));
+    _CHECK(vkllm_create_mat_mul_vec_pipelines(context));
     return VKLLM_ERR_OK;
 }
 
@@ -675,6 +710,14 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
                 vkllm_pipeline_free(context, context->pipelines.matmul.f16f16f16[a][b][t]);
                 vkllm_pipeline_free(context, context->pipelines.matmul.f16f32f16[a][b][t]);
             }
+        }
+    }
+
+    for (uint32_t i = 0; i < 4; ++i)
+    {
+        for (uint32_t k = 0; k < 4; ++k)
+        {
+            vkllm_pipeline_free(context, context->pipelines.mat_mul_vec.f32f32[i][k]);
         }
     }
 

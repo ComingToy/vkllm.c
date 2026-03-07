@@ -1,0 +1,121 @@
+#version 450 core
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#include "vkllm_shader_header.comp.h"
+
+layout(binding = 0) readonly buffer in0_type
+{
+    float in_vec[];
+};
+
+layout(binding = 1) readonly buffer in1_type
+{
+    float in_mat[];
+};
+
+layout(binding = 2) writeonly buffer out0_type
+{
+    float out_mat[];
+};
+
+layout(push_constant) uniform constants
+{
+    ShapeConstant shape_vec;
+    ShapeConstant shape_mat;
+    ShapeConstant shape_out;
+
+    float scale;
+    int act;
+};
+
+#define BOARDCAST_AXIS0 0
+#define BOARDCAST_AXIS1 1
+#define BOARDCAST_AXIS01 2
+#define BOARDCAST_NONE 3
+
+layout(constant_id = 0) const int a_boardcast_type = 0;
+layout(constant_id = 1) const int b_boardcast_type = 0;
+
+void get_indices(uint tid, out uint b, out uint c, out uint h, out uint w)
+{
+    uint shape3 = shape_out.shapes[3];
+    uint cn = shape_out.shapes[2] * shape3;
+    uint bn = shape_out.shapes[1] * cn;
+
+    b = tid / bn;
+    uint b_offset = b * bn;
+
+    c = (tid - b_offset) / cn;
+    uint c_offset = c * cn;
+
+    h = (tid - b_offset - c_offset) / shape3;
+    w = tid - b_offset - c_offset - h * shape3;
+}
+
+void get_batch_offset(uint b, uint c, out uint a_batch_offset, out uint b_batch_offset)
+{
+    a_batch_offset = 0;
+    b_batch_offset = 0;
+    if (a_boardcast_type == BOARDCAST_AXIS0)
+    {
+        a_batch_offset = c * shape_vec.strides[1];
+    }
+    else if (a_boardcast_type == BOARDCAST_AXIS1)
+    {
+        a_batch_offset = b * shape_vec.strides[0];
+    }
+    else if (a_boardcast_type == BOARDCAST_NONE)
+    {
+        a_batch_offset = b * shape_vec.strides[0] + c * shape_vec.strides[1];
+    }
+
+    if (b_boardcast_type == BOARDCAST_AXIS0)
+    {
+        b_batch_offset = c * shape_mat.strides[1];
+    }
+    else if (b_boardcast_type == BOARDCAST_AXIS1)
+    {
+        b_batch_offset = b * shape_mat.strides[0];
+    }
+    else if (b_boardcast_type == BOARDCAST_NONE)
+    {
+        b_batch_offset = b * shape_mat.strides[0] + c * shape_mat.strides[1];
+    }
+}
+
+void main()
+{
+    uint tid = get_thread_id();
+    uint glb_subgroup_id = tid / gl_SubgroupSize;
+    uint b = 0, c = 0, h = 0, w = 0;
+    get_indices(glb_subgroup_id, b, c, h, w);
+
+    if (b >= shape_out.shapes[0] || c >= shape_out.shapes[1] || h >= shape_out.shapes[2] || w >= shape_out.shapes[3])
+    {
+        return;
+    }
+
+    uint a_batch_off, b_batch_off;
+    get_batch_offset(b, c, a_batch_off, b_batch_off);
+
+    uint out_batch_off = b * shape_out.strides[0] + c * shape_out.strides[1];
+
+    float acc = .0;
+
+    uint K = shape_vec.shapes[3];
+    for (uint i = gl_SubgroupInvocationID.x; i < K; i += gl_SubgroupSize)
+    {
+        uint ai = a_batch_off + h * shape_vec.strides[2] + i * shape_vec.strides[3];
+        uint bi = b_batch_off + w * shape_mat.strides[2] + i * shape_mat.strides[3];
+        acc += in_vec[ai] * in_mat[bi];
+    }
+
+    uint ci = out_batch_off + h * shape_out.strides[2] + w * shape_out.strides[3];
+    float v = subgroupAdd(acc) * scale;
+    v = act == 1 ? v / (1.0 + exp(-v)) : v;
+    if (subgroupElect())
+    {
+        out_mat[ci] = v;
+    }
+}

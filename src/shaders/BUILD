@@ -89,6 +89,22 @@ glsl_shader(
 )
 
 glsl_shader(
+    name = "vkllm_mat_mul_vec_shaders",
+    shaders = [
+        "vkllm_mat_mul_vec.comp",
+    ],
+    hdrs = COMP_SHADER_HDRS,
+    extra_args = COMMON_ARGS,
+    tool = "//tools:binary_to_array",
+    macros = [
+        "-DIN_DTYPE=float",
+    ],
+    suffixes = [
+        "f32f32"
+    ],
+)
+
+glsl_shader(
     name = "vkllm_rope_shaders",
     shaders = [
         "vkllm_rope.comp",
@@ -197,6 +213,7 @@ cc_shader_library(
         ":vkllm_copy_shaders",
         ":vkllm_ffn_shaders",
         ":vkllm_update_rows",
+        ":vkllm_mat_mul_vec_shaders",
     ],
     visibility = ["//visibility:public"]
 )

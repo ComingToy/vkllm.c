@@ -66,7 +66,10 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
     int a_boardcast_type = boardcast_type(tensor->srcs[0], tensor->srcs[1]);
     int b_boardcast_type = boardcast_type(tensor->srcs[1], tensor->srcs[0]);
 
-    if (tensor->srcs[0]->dtype == vkllm_dtype_float16 && tensor->srcs[1]->dtype == vkllm_dtype_float16)
+    struct vkllm_tensor *in0 = tensor->srcs[0];
+    struct vkllm_tensor *in1 = tensor->srcs[1];
+
+    if (in0->dtype == vkllm_dtype_float16 && in1->dtype == vkllm_dtype_float16)
     {
         if (tensor->dtype != vkllm_dtype_float16)
         {
@@ -89,9 +92,16 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
             *pipeline = context->pipelines.matmul.f16f32f16[a_boardcast_type][b_boardcast_type][tranposed_b];
         }
     }
-    else if (tensor->srcs[0]->dtype == vkllm_dtype_float32 && tensor->srcs[0]->dtype == vkllm_dtype_float32)
+    else if (in0->dtype == vkllm_dtype_float32 && in1->dtype == vkllm_dtype_float32)
     {
-        *pipeline = context->pipelines.matmul.f32f32f32[a_boardcast_type][b_boardcast_type][tranposed_b];
+        if (in0->shapes[2] == 1 && tranposed_b)
+        {
+            *pipeline = context->pipelines.mat_mul_vec.f32f32[a_boardcast_type][b_boardcast_type];
+        }
+        else
+        {
+            *pipeline = context->pipelines.matmul.f32f32f32[a_boardcast_type][b_boardcast_type][tranposed_b];
+        }
     }
     else
     {
@@ -116,8 +126,71 @@ vkllm_err_t vkllm_op_matmul_init(struct vkllm_context *context, struct vkllm_com
     return VKLLM_ERR_OK;
 }
 
-vkllm_err_t vkllm_op_matmul_run(struct vkllm_context *context, struct vkllm_commands *commands,
-                                struct vkllm_tensor *tensor)
+static vkllm_err_t vkllm_op_mat_mul_vec_run(struct vkllm_context *context, struct vkllm_commands *commands,
+                                            struct vkllm_tensor *tensor)
+{
+    _CHECK_ARGS(context && commands && tensor);
+    _CHECK_ARGS(tensor->srcs[0] && tensor->srcs[1]);
+    _CHECK_ARGS(tensor->op == VKLLM_OP_MATMUL);
+
+    struct vkllm_tensor *in0 = tensor->srcs[0], *in1 = tensor->srcs[1];
+    _CHECK_ARGS(in0 && in1);
+
+    struct vkllm_dtype_info dtype_info;
+    _CHECK(vkllm_get_dtype_info(tensor->dtype, &dtype_info));
+
+    struct vkllm_dtype_info in0_dtype_info;
+    _CHECK(vkllm_get_dtype_info(in0->dtype, &in0_dtype_info));
+
+    struct vkllm_dtype_info in1_dtype_info;
+    _CHECK(vkllm_get_dtype_info(in1->dtype, &in1_dtype_info));
+
+    uint32_t strides0[4], strides1[4], strides2[4];
+    _DIV4_S(in0->strides, in0_dtype_info.bytes, strides0);
+    _DIV4_S(in1->strides, in1_dtype_info.bytes, strides1);
+    _DIV4_S(tensor->strides, dtype_info.bytes, strides2);
+
+    const struct vkllm_op_matmul_params *params = get_matmul_params(tensor);
+    const float scale = params->scale;
+    const int32_t act = params->act;
+
+    struct vkllm_shader_constants *constants = NULL;
+    _CHECK(vkllm_shader_constants_new(&constants, 128));
+    vkllm_shader_constants_append_n(constants, in0->shapes, 4);
+    vkllm_shader_constants_append_n(constants, strides0, 4);
+    vkllm_shader_constants_append_n(constants, in1->shapes, 4);
+    vkllm_shader_constants_append_n(constants, strides1, 4);
+    vkllm_shader_constants_append_n(constants, tensor->shapes, 4);
+    vkllm_shader_constants_append_n(constants, strides2, 4);
+    vkllm_shader_constants_append(constants, scale);
+    vkllm_shader_constants_append(constants, act);
+
+    vkllm_err_t err = VKLLM_ERR_OK;
+    struct vkllm_array_ptr *bindings = NULL;
+    _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 3), err, free_constants_out);
+    vkllm_array_ptr_append(bindings, in0);
+    vkllm_array_ptr_append(bindings, in1);
+    vkllm_array_ptr_append(bindings, tensor);
+
+    uint32_t N = _MUL4(tensor->shapes);
+    uint32_t group_x = (N + tensor->pipeline->shader_info.local_x - 1) / tensor->pipeline->shader_info.local_x;
+    uint32_t group_y = context->device->subgroup_size, group_z = 1;
+
+    _CHECK_JUMP(
+        vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, constants, group_x, group_y, group_z), err,
+        free_bindings_out);
+
+    tensor->access_flags = VK_ACCESS_SHADER_WRITE_BIT;
+    tensor->pipeline_stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+free_bindings_out:
+    vkllm_array_ptr_free(bindings);
+free_constants_out:
+    vkllm_shader_constants_free(constants);
+    return err;
+}
+
+vkllm_err_t vkllm_op_mat_mul_mat_run(struct vkllm_context *context, struct vkllm_commands *commands,
+                                     struct vkllm_tensor *tensor)
 {
     _CHECK_ARGS(context && commands && tensor);
     _CHECK_ARGS(tensor->srcs[0] && tensor->srcs[1]);
@@ -219,6 +292,21 @@ free_bindings_out:
 free_constants_out:
     vkllm_shader_constants_free(constants);
     return err;
+}
+
+vkllm_err_t vkllm_op_matmul_run(struct vkllm_context *context, struct vkllm_commands *commands,
+                                struct vkllm_tensor *tensor)
+{
+    struct vkllm_tensor *in0 = tensor->srcs[0], *in1 = tensor->srcs[1];
+    _CHECK_ARGS(in0 && in1);
+
+    if (in0->dtype == vkllm_dtype_float32 && in1->dtype == vkllm_dtype_float32 && in0->shapes[2] == 1 &&
+        is_transposed_b(tensor))
+    {
+        return vkllm_op_mat_mul_vec_run(context, commands, tensor);
+    }
+
+    return vkllm_op_mat_mul_mat_run(context, commands, tensor);
 }
 
 vkllm_err_t vkllm_op_matmul_post_run(struct vkllm_context *context, struct vkllm_commands *commands,
