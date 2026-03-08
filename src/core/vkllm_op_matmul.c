@@ -11,7 +11,7 @@ static const struct vkllm_op_matmul_params *get_matmul_params(const struct vkllm
     return (const struct vkllm_op_matmul_params *)tensor->params;
 }
 
-static bool is_transposed_b(struct vkllm_tensor *tensor)
+static inline const bool is_transposed_b(const struct vkllm_tensor *tensor)
 {
     struct vkllm_tensor *a = tensor->srcs[0];
     struct vkllm_tensor *b = tensor->srcs[1];
@@ -21,6 +21,18 @@ static bool is_transposed_b(struct vkllm_tensor *tensor)
     uint32_t K = a->shapes[3];
 
     return a->shapes[2] == M && b->shapes[2] == N && a->shapes[3] == K && b->shapes[3] == K;
+}
+
+static inline const bool is_mat_mul_vec(const struct vkllm_tensor *tensor)
+{
+    struct vkllm_tensor *in0 = tensor->srcs[0];
+
+    if (in0->shapes[2] == 1 && is_transposed_b(tensor) && tensor->shapes[3] % 4 == 0)
+    {
+        return true;
+    }
+
+    return false;
 }
 
 #define BOARDCAST_AXIS0 0
@@ -85,7 +97,7 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
 
         if (context->device->support_fp16_arithmetic)
         {
-            if (in0->shapes[2] == 1 && tranposed_b)
+            if (is_mat_mul_vec(tensor))
             {
                 *pipeline = context->pipelines.mat_mul_vec.f16f16[a_boardcast_type][b_boardcast_type];
             }
@@ -96,7 +108,7 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
         }
         else
         {
-            if (in0->shapes[2] == 1 && tranposed_b)
+            if (is_mat_mul_vec(tensor))
             {
                 *pipeline = context->pipelines.mat_mul_vec.f16f32[a_boardcast_type][b_boardcast_type];
             }
@@ -108,7 +120,7 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
     }
     else if (in0->dtype == vkllm_dtype_float32 && in1->dtype == vkllm_dtype_float32)
     {
-        if (in0->shapes[2] == 1 && tranposed_b)
+        if (is_mat_mul_vec(tensor))
         {
             *pipeline = context->pipelines.mat_mul_vec.f32f32[a_boardcast_type][b_boardcast_type];
         }
@@ -186,7 +198,7 @@ static vkllm_err_t vkllm_op_mat_mul_vec_run(struct vkllm_context *context, struc
     vkllm_array_ptr_append(bindings, in1);
     vkllm_array_ptr_append(bindings, tensor);
 
-    uint32_t N = _MUL4(tensor->shapes);
+    uint32_t N = _MUL4(tensor->shapes) / 4;
     uint32_t group_x = (N + tensor->pipeline->shader_info.local_x - 1) / tensor->pipeline->shader_info.local_x;
     uint32_t group_y = context->device->subgroup_size, group_z = 1;
 
@@ -314,7 +326,7 @@ vkllm_err_t vkllm_op_matmul_run(struct vkllm_context *context, struct vkllm_comm
     struct vkllm_tensor *in0 = tensor->srcs[0], *in1 = tensor->srcs[1];
     _CHECK_ARGS(in0 && in1);
 
-    if (in0->shapes[2] == 1 && is_transposed_b(tensor))
+    if (is_mat_mul_vec(tensor))
     {
         return vkllm_op_mat_mul_vec_run(context, commands, tensor);
     }

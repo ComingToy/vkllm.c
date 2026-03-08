@@ -43,7 +43,7 @@ layout(constant_id = 1) const int b_boardcast_type = 0;
 
 void get_indices(uint tid, out uint b, out uint c, out uint h, out uint w)
 {
-    uint shape3 = shape_out.shapes[3];
+    uint shape3 = shape_out.shapes[3] / 4;
     uint cn = shape_out.shapes[2] * shape3;
     uint bn = shape_out.shapes[1] * cn;
 
@@ -98,7 +98,8 @@ void main()
     uint b = 0, c = 0, h = 0, w = 0;
     get_indices(glb_subgroup_id, b, c, h, w);
 
-    if (b >= shape_out.shapes[0] || c >= shape_out.shapes[1] || h >= shape_out.shapes[2] || w >= shape_out.shapes[3])
+    if (b >= shape_out.shapes[0] || c >= shape_out.shapes[1] || h >= shape_out.shapes[2] ||
+        4 * w >= shape_out.shapes[3])
     {
         return;
     }
@@ -108,42 +109,45 @@ void main()
 
     uint out_batch_off = b * shape_out.strides[0] + c * shape_out.strides[1];
 
-    ACC_DTYPE acc = ACC_DTYPE(0);
+    ACC_DTYPE acc[4] = {ACC_DTYPE(0), ACC_DTYPE(0), ACC_DTYPE(0), ACC_DTYPE(0)};
 
     uint K = shape_vec.shapes[3];
-    uint iter_stride = 2 * gl_SubgroupSize;
     uint a_glb_offs = a_batch_off + h * shape_vec.strides[2];
-    uint b_glb_offs = b_batch_off + w * shape_mat.strides[2];
 
-#if 1
-    uint i = 2 * gl_SubgroupInvocationID.x;
-    for (; i < K; i += iter_stride)
+    uint iter_stride = 8 * gl_SubgroupSize;
+
+    for (uint wi = 0; wi < 4; ++wi)
     {
-        uint a0 = a_glb_offs + i * shape_vec.strides[3];
-        uint a1 = a0 + shape_vec.strides[3];
-        uint b0 = b_glb_offs + i * shape_mat.strides[3];
-        uint b1 = b0 + shape_mat.strides[3];
+        uint b_glb_offs = b_batch_off + (4 * w + wi) * shape_mat.strides[2];
+        
+        uint i = 8 * gl_SubgroupInvocationID.x;
 
-        vec2 a = vec2(ACC_DTYPE(in_vec[a0]), ACC_DTYPE(in_vec[a1]));
-        vec2 b = vec2(ACC_DTYPE(in_mat[b0]), ACC_DTYPE(in_mat[b1]));
-        acc = ACC_DTYPE(dot(a, b)) + acc;
+        for (; i < K; i += iter_stride)
+        {
+            for (uint ii = 0; ii < 8; ++ii)
+            {
+                uint a0 = a_glb_offs + (i + ii) * shape_vec.strides[3];
+                uint b0 = b_glb_offs + (i + ii) * shape_mat.strides[3];
+                acc[wi] = fma(ACC_DTYPE(in_vec[a0]), ACC_DTYPE(in_mat[b0]), acc[wi]);
+            }
+        }
+
+        for (; i < K; i += gl_SubgroupSize)
+        {
+            uint a0 = a_glb_offs + i * shape_vec.strides[3];
+            uint b0 = b_glb_offs + i * shape_mat.strides[3];
+            acc[wi] = fma(ACC_DTYPE(in_vec[a0]), ACC_DTYPE(in_mat[b0]), acc[wi]);
+        }
     }
-#else
-    uint i = gl_SubgroupInvocationID.x;
-#endif
 
-    for (; i < K; i += gl_SubgroupSize)
+    for (uint wi = 0; wi < 4; ++wi)
     {
-        uint a0 = a_glb_offs + i * shape_vec.strides[3];
-        uint b0 = b_glb_offs + i * shape_mat.strides[3];
-        acc = fma(ACC_DTYPE(in_vec[a0]), ACC_DTYPE(in_mat[b0]), acc);
-    }
-
-    uint ci = out_batch_off + h * shape_out.strides[2] + w * shape_out.strides[3];
-    ACC_DTYPE v = subgroupAdd(acc) * ACC_DTYPE(scale);
-    v = act == 1 ? v / (ACC_DTYPE(1.0) + exp(-v)) : v;
-    if (subgroupElect())
-    {
-        out_mat[ci] = OUT_DTYPE(v);
+        uint ci = out_batch_off + h * shape_out.strides[2] + (4 * w + wi) * shape_out.strides[3];
+        ACC_DTYPE v = subgroupAdd(acc[wi]) * ACC_DTYPE(scale);
+        v = act == 1 ? v / (ACC_DTYPE(1.0) + exp(-v)) : v;
+        if (subgroupElect())
+        {
+            out_mat[ci] = OUT_DTYPE(v);
+        }
     }
 }
