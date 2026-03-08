@@ -111,26 +111,27 @@ void main()
     ACC_DTYPE acc = ACC_DTYPE(0);
 
     uint K = shape_vec.shapes[3];
-    uint iter_stride = 2 * gl_SubgroupSize;
+    uint iter_stride = 4 * gl_SubgroupSize;
     uint a_glb_offs = a_batch_off + h * shape_vec.strides[2];
     uint b_glb_offs = b_batch_off + w * shape_mat.strides[2];
 
-#if 1
-    uint i = 2 * gl_SubgroupInvocationID.x;
+    uint i = 4 * gl_SubgroupInvocationID.x;
     for (; i < K; i += iter_stride)
     {
         uint a0 = a_glb_offs + i * shape_vec.strides[3];
         uint a1 = a0 + shape_vec.strides[3];
+        uint a2 = a1 + shape_vec.strides[3];
+        uint a3 = a2 + shape_vec.strides[3];
+
         uint b0 = b_glb_offs + i * shape_mat.strides[3];
         uint b1 = b0 + shape_mat.strides[3];
+        uint b2 = b1 + shape_mat.strides[3];
+        uint b3 = b2 + shape_mat.strides[3];
 
-        vec2 a = vec2(ACC_DTYPE(in_vec[a0]), ACC_DTYPE(in_vec[a1]));
-        vec2 b = vec2(ACC_DTYPE(in_mat[b0]), ACC_DTYPE(in_mat[b1]));
+        vec4 a = vec4(ACC_DTYPE(in_vec[a0]), ACC_DTYPE(in_vec[a1]), ACC_DTYPE(in_vec[a2]), ACC_DTYPE(in_vec[a3]));
+        vec4 b = vec4(ACC_DTYPE(in_mat[b0]), ACC_DTYPE(in_mat[b1]), ACC_DTYPE(in_mat[b2]), ACC_DTYPE(in_mat[b3]));
         acc = ACC_DTYPE(dot(a, b)) + acc;
     }
-#else
-    uint i = gl_SubgroupInvocationID.x;
-#endif
 
     for (; i < K; i += gl_SubgroupSize)
     {
