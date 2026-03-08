@@ -209,6 +209,7 @@ int main(const int argc, const char *argv[])
         _CHECK_JUMP(vkllm_graph_run(context, graph), err, cleanup_graph);
         _CHECK_JUMP(vkllm_graph_post_run(context, graph), err, cleanup_graph);
 
+#ifdef _LOG_NODE_TIME_COST
         if (i != 0)
         {
             for (uint32_t i = 0; i < graph->nodes->used_n; ++i)
@@ -228,6 +229,8 @@ int main(const int argc, const char *argv[])
                 vkllm_hashmap_insert(context->stats.node_time_cost, node->name, acc);
             }
         }
+#endif
+
 #if 0
         if (i == 0)
         {
@@ -289,6 +292,7 @@ int main(const int argc, const char *argv[])
         fprintf(stdout, "%s", model.meta.tokens->data[pred_tok].text);
     }
 
+#if _LOG_NODE_TIME_COST
     for (uint32_t i = 0; i < VKLLM_OP_COUNTS; ++i)
     {
         fprintf(stderr, "op %s total time cost: %lums\n", vkllm_op_s(i),
@@ -313,6 +317,7 @@ int main(const int argc, const char *argv[])
     {
         fprintf(stderr, "node %s total cost: %lu\n", entries[i].key, entries[i].value/(1000*1000));
     }
+#endif
 
 cleanup_graph:
     if (graph)
