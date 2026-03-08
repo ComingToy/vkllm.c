@@ -2,7 +2,7 @@
 #extension GL_EXT_control_flow_attributes : require
 #extension GL_KHR_shader_subgroup_basic : require
 #extension GL_KHR_shader_subgroup_arithmetic : require
-#ifdef _SUPPORT_FLOAT16_ARITHMETIC 
+#ifdef _SUPPORT_FLOAT16_ARITHMETIC
 #extension GL_EXT_shader_subgroup_extended_types_float16 : require
 #endif
 
@@ -88,6 +88,9 @@ void get_batch_offset(uint b, uint c, out uint a_batch_offset, out uint b_batch_
     }
 }
 
+// subgroup size = 32, 每个subgroup负责计算输出 NUM_ROWS行 x NUM_COLS列的数据，也就是一个tile size = [NUM_ROWS,
+// NUM_COLS]
+
 void main()
 {
     uint tid = get_thread_id();
@@ -108,11 +111,32 @@ void main()
     ACC_DTYPE acc = ACC_DTYPE(0);
 
     uint K = shape_vec.shapes[3];
-    for (uint i = gl_SubgroupInvocationID.x; i < K; i += gl_SubgroupSize)
+    uint iter_stride = 2 * gl_SubgroupSize;
+    uint a_glb_offs = a_batch_off + h * shape_vec.strides[2];
+    uint b_glb_offs = b_batch_off + w * shape_mat.strides[2];
+
+#if 1
+    uint i = 2 * gl_SubgroupInvocationID.x;
+    for (; i < K; i += iter_stride)
     {
-        uint ai = a_batch_off + h * shape_vec.strides[2] + i * shape_vec.strides[3];
-        uint bi = b_batch_off + w * shape_mat.strides[2] + i * shape_mat.strides[3];
-        acc += ACC_DTYPE(in_vec[ai]) * ACC_DTYPE(in_mat[bi]);
+        uint a0 = a_glb_offs + i * shape_vec.strides[3];
+        uint a1 = a0 + shape_vec.strides[3];
+        uint b0 = b_glb_offs + i * shape_mat.strides[3];
+        uint b1 = b0 + shape_mat.strides[3];
+
+        vec2 a = vec2(ACC_DTYPE(in_vec[a0]), ACC_DTYPE(in_vec[a1]));
+        vec2 b = vec2(ACC_DTYPE(in_mat[b0]), ACC_DTYPE(in_mat[b1]));
+        acc = ACC_DTYPE(dot(a, b)) + acc;
+    }
+#else
+    uint i = gl_SubgroupInvocationID.x;
+#endif
+
+    for (; i < K; i += gl_SubgroupSize)
+    {
+        uint a0 = a_glb_offs + i * shape_vec.strides[3];
+        uint b0 = b_glb_offs + i * shape_mat.strides[3];
+        acc = fma(ACC_DTYPE(in_vec[a0]), ACC_DTYPE(in_mat[b0]), acc);
     }
 
     uint ci = out_batch_off + h * shape_out.strides[2] + w * shape_out.strides[3];
