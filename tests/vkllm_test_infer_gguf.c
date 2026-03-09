@@ -105,25 +105,18 @@ static uint32_t extract_output_tok(struct vkllm_graph *graph)
         return 0;
     }
 
-    vkllm_fp16_pack *data = (vkllm_fp16_pack *)node->data.host;
-    uint32_t strides[] = {node->strides[0] / 2, node->strides[1] / 2, node->strides[2] / 2, node->strides[3] / 2};
-
-    vkllm_fp16_pack *p = data + (node->shapes[2] - 1) * strides[2];
-
-    float max_logits = vkllm_fp16_to_fp32(*p);
-    uint32_t max_index = 0;
-
-    for (uint32_t i = 0; i < node->shapes[3]; ++i)
+    if (node->dtype != vkllm_dtype_uint32)
     {
-        float val = vkllm_fp16_to_fp32(p[i]);
-        if (val > max_logits)
-        {
-            max_index = i;
-            max_logits = val;
-        }
+        log_error("output node must be uint32 type");
+        return 0;
     }
 
-    return max_index;
+    uint32_t *data = (uint32_t *)node->data.host;
+    uint32_t strides[] = {node->strides[0] / 4, node->strides[1] / 4, node->strides[2] / 4, node->strides[3] / 4};
+
+    uint32_t i =
+        (node->shapes[0] - 1) * strides[0] + (node->shapes[1] - 1) * strides[1] + (node->shapes[2] - 1) * strides[2];
+    return data[i];
 }
 
 static int hashmap_entry_cmp(const void *lhs, const void *rhs)
@@ -315,7 +308,7 @@ int main(const int argc, const char *argv[])
     qsort(entries, wi, sizeof(struct vkllm_hashmap_entry), hashmap_entry_cmp);
     for (uint32_t i = 0; i < wi; ++i)
     {
-        fprintf(stderr, "node %s total cost: %lu\n", entries[i].key, entries[i].value/(1000*1000));
+        fprintf(stderr, "node %s total cost: %lu\n", entries[i].key, entries[i].value / (1000 * 1000));
     }
 #endif
 
