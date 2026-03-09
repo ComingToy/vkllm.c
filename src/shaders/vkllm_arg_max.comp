@@ -15,7 +15,6 @@ layout(push_constant) uniform constants
 {
     ShapeConstant shape0;
     ShapeConstant shape1;
-    ShapeConstant shape2;
 };
 
 #define WORKGROUP_SIZE 32

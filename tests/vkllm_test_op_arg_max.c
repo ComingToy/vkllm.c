@@ -75,12 +75,11 @@ static struct
     uint32_t shapes[4];
     vkllm_dtype_t dtype;
 } tests[] = {
-    {{1, 1, 1, 100}, vkllm_dtype_float32},    {{1, 1, 1, 100}, vkllm_dtype_float16},
-    {{1, 1, 10, 128}, vkllm_dtype_float32},   {{1, 1, 10, 128}, vkllm_dtype_float16},
-    // {{2, 4, 8, 64}, vkllm_dtype_float32},     {{2, 4, 8, 64}, vkllm_dtype_float16},
-    // {{3, 5, 7, 256}, vkllm_dtype_float32},    {{1, 12, 16, 512}, vkllm_dtype_float16},
-    // {{8, 16, 32, 1024}, vkllm_dtype_float32}, {{1, 1, 1, 10}, vkllm_dtype_float32},
-    // {{4, 8, 16, 32}, vkllm_dtype_float16},
+    {{1, 1, 10, 128}, vkllm_dtype_float32},
+    {{2, 4, 8, 64}, vkllm_dtype_float32},     {{2, 4, 8, 64}, vkllm_dtype_float16},
+    {{3, 5, 7, 256}, vkllm_dtype_float32},    {{1, 12, 16, 512}, vkllm_dtype_float16},
+    {{8, 16, 32, 1024}, vkllm_dtype_float32}, {{1, 1, 1, 10}, vkllm_dtype_float32},
+    {{4, 8, 16, 32}, vkllm_dtype_float16},
 };
 
 START_TEST(test_op_arg_max)
@@ -115,7 +114,7 @@ START_TEST(test_op_arg_max)
 
     memset(output_host->data, 0, output_host->alloc_n);
 
-    random_tensor(input_host->data, input->shapes, input->strides, input->dtype, -10.0, 10.0);
+    random_tensor(input_host->data, input->shapes, input->strides, input->dtype, -1000.0, 1000.0);
 
     ck_assert_int_eq(vkllm_commands_begin(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_upload(context, commands, input, input_host->data, input_host->alloc_n),
@@ -125,7 +124,7 @@ START_TEST(test_op_arg_max)
     ck_assert_int_eq(vkllm_commands_end(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_submit(context, commands), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_commands_wait_exec(context, commands), VKLLM_ERR_OK);
-    ck_assert_int_eq(vkllm_tensor_flush_cache(context, output), VKLLM_ERR_OK);
+    ck_assert_int_eq(vkllm_tensor_invalid_cache(context, output), VKLLM_ERR_OK);
     ck_assert_int_eq(vkllm_op_arg_max_post_run(context, commands, output), VKLLM_ERR_OK);
 
     arg_max_op_host(input_host->data, (uint32_t *)output_host->data, input->shapes, input->strides, output->shapes,
@@ -133,6 +132,14 @@ START_TEST(test_op_arg_max)
 
     const uint32_t *gpu_output = (const uint32_t *)output->data.host;
     const uint32_t *host_output = (const uint32_t *)output_host->data;
+
+    uint32_t B = output->shapes[0];
+    uint32_t C = output->shapes[1];
+    uint32_t H = output->shapes[2];
+    uint32_t W = input->shapes[3];
+
+    struct vkllm_dtype_info info;
+    vkllm_get_dtype_info(input->dtype, &info);
 
     uint32_t n = output->bytes / sizeof(uint32_t);
     uint32_t n_errors = 0;
@@ -144,19 +151,36 @@ START_TEST(test_op_arg_max)
             n_errors++;
             if (n_errors <= 5)
             {
-                log_error("Mismatch at index %u: gpu=%u, host=%u", i, gpu_output[i], host_output[i]);
-            }
-        }
-    }
+                uint32_t b = i / (C * H);
+                uint32_t c = (i % (C * H)) / H;
+                uint32_t h = i % H;
 
-    for (uint32_t i = 0; i < n; ++i)
-    {
-        if (gpu_output[i] != host_output[i])
-        {
-            n_errors++;
-            if (n_errors <= 5)
-            {
-                log_error("Mismatch at index %u: gpu=%u, host=%u", i, gpu_output[i], host_output[i]);
+                log_error("Mismatch at index %u (b=%u, c=%u, h=%u): gpu=%u, host=%u", i, b, c, h, gpu_output[i],
+                          host_output[i]);
+                log_error("  Input data at [%u,%u,%u,*]:", b, c, h);
+
+                for (uint32_t w = 0; w < W; ++w)
+                {
+                    uint32_t in_idx = b * (input->strides[0] / info.bytes) + c * (input->strides[1] / info.bytes) +
+                                      h * (input->strides[2] / info.bytes) + w * (input->strides[3] / info.bytes);
+
+                    float val;
+                    if (input->dtype == vkllm_dtype_float32)
+                    {
+                        val = ((const float *)input_host->data)[in_idx];
+                    }
+                    else if (input->dtype == vkllm_dtype_float16)
+                    {
+                        val = vkllm_fp16_to_fp32(((const vkllm_fp16_pack *)input_host->data)[in_idx]);
+                    }
+                    else
+                    {
+                        val = -INFINITY;
+                    }
+
+                    log_error("    [%u]: %.6f%s", w, val,
+                              (w == gpu_output[i]) ? " (gpu max)" : ((w == host_output[i]) ? " (host max)" : ""));
+                }
             }
         }
     }

@@ -2,9 +2,9 @@
 #define __VKLLM_TEST_COMMON_H__
 
 #include "src/core/vkllm_common.h"
+#include "src/core/vkllm_context.h"
 #include "src/core/vkllm_dtypes.h"
 #include "src/core/vkllm_tensor.h"
-#include "src/core/vkllm_context.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,7 +30,8 @@ static inline void random_buf(void *a, const size_t n, vkllm_dtype_t dtype)
     }
 }
 
-static inline void random_tensor(void *data, uint32_t shapes[4], uint32_t strides[4], vkllm_dtype_t dtype, float min, float max)
+static inline void random_tensor(void *data, uint32_t shapes[4], uint32_t strides[4], vkllm_dtype_t dtype, float min,
+                                 float max)
 {
 
     struct vkllm_dtype_info info;
@@ -51,7 +52,7 @@ static inline void random_tensor(void *data, uint32_t shapes[4], uint32_t stride
                 for (uint32_t w = 0; w < shapes[3]; ++w)
                 {
                     uint32_t i = b * es[0] + c * es[1] + h * es[2] + w * es[3];
-					float val = (rand() % 1000) / 1000.0f;
+					float val = (rand() % 1000000000) / 1000000000.0f;
 					val = val * (max - min) + min;
                     if (dtype == vkllm_dtype_float16)
                     {
@@ -98,7 +99,7 @@ static inline uint32_t get_indice(uint32_t b, uint32_t c, uint32_t h, uint32_t w
     } while (0)
 
 static inline float compare_buf(const void *lhs, const void *rhs, uint32_t shapes[4], uint32_t strides[4],
-                                uint32_t bytes, vkllm_dtype_t dtype, const char* name)
+                                uint32_t bytes, vkllm_dtype_t dtype, const char *name)
 {
 
     // fprintf(stderr, "alpha: %f, bytes: %u, n: %u, en: %zu\n", alpha, bytes, n, bytes / sizeof(float));
@@ -194,7 +195,7 @@ static inline void print_n(const char *prefix, const float *buf, const size_t n)
 }
 
 static inline vkllm_err_t print_first_n(struct vkllm_context *context, struct vkllm_commands *commands,
-                                 struct vkllm_tensor *tensor, uint32_t b, uint32_t c, uint32_t h, uint32_t n)
+                                        struct vkllm_tensor *tensor, uint32_t b, uint32_t c, uint32_t h, uint32_t n)
 {
     if (!tensor->data.mapped)
     {
