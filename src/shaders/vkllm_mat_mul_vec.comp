@@ -116,7 +116,7 @@ void main()
     uint b_glb_offs = b_batch_off + w * shape_mat.strides[2];
 
     uint i = 4 * gl_SubgroupInvocationID.x;
-    for (; i < K; i += iter_stride)
+    [[unroll]] for (; i < K; i += iter_stride)
     {
         uint a0 = a_glb_offs + i * shape_vec.strides[3];
         uint a1 = a0 + shape_vec.strides[3];
@@ -133,7 +133,7 @@ void main()
         acc = ACC_DTYPE(dot(a, b)) + acc;
     }
 
-    for (; i < K; i += gl_SubgroupSize)
+    [[unroll]] for (; i < K; i += gl_SubgroupSize)
     {
         uint a0 = a_glb_offs + i * shape_vec.strides[3];
         uint b0 = b_glb_offs + i * shape_mat.strides[3];
