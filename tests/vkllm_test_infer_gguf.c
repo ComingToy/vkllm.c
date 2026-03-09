@@ -3,12 +3,14 @@
 #include "src/core/vkllm_context.h"
 #include "src/core/vkllm_errors.h"
 #include "src/core/vkllm_graph.h"
+#include "src/core/vkllm_hashmap.h"
 #include "src/core/vkllm_ops.h"
 #include "src/core/vkllm_pipeline.h"
 #include "src/core/vkllm_tensor.h"
 #include "src/models/vkllm_models_llama2.h"
 #include "tests/vkllm_test_common.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
 
@@ -103,25 +105,23 @@ static uint32_t extract_output_tok(struct vkllm_graph *graph)
         return 0;
     }
 
-    vkllm_fp16_pack *data = (vkllm_fp16_pack *)node->data.host;
-    uint32_t strides[] = {node->strides[0] / 2, node->strides[1] / 2, node->strides[2] / 2, node->strides[3] / 2};
-
-    vkllm_fp16_pack *p = data + (node->shapes[2] - 1) * strides[2];
-
-    float max_logits = vkllm_fp16_to_fp32(*p);
-    uint32_t max_index = 0;
-
-    for (uint32_t i = 0; i < node->shapes[3]; ++i)
+    if (node->dtype != vkllm_dtype_uint32)
     {
-        float val = vkllm_fp16_to_fp32(p[i]);
-        if (val > max_logits)
-        {
-            max_index = i;
-            max_logits = val;
-        }
+        log_error("output node must be uint32 type");
+        return 0;
     }
 
-    return max_index;
+    uint32_t *data = (uint32_t *)node->data.host;
+    uint32_t strides[] = {node->strides[0] / 4, node->strides[1] / 4, node->strides[2] / 4, node->strides[3] / 4};
+
+    uint32_t i =
+        (node->shapes[0] - 1) * strides[0] + (node->shapes[1] - 1) * strides[1] + (node->shapes[2] - 1) * strides[2];
+    return data[i];
+}
+
+static int hashmap_entry_cmp(const void *lhs, const void *rhs)
+{
+    return ((struct vkllm_hashmap_entry *)lhs)->value - ((struct vkllm_hashmap_entry *)rhs)->value;
 }
 
 int main(const int argc, const char *argv[])
@@ -202,6 +202,29 @@ int main(const int argc, const char *argv[])
         _CHECK_JUMP(vkllm_graph_run(context, graph), err, cleanup_graph);
         _CHECK_JUMP(vkllm_graph_post_run(context, graph), err, cleanup_graph);
 
+#ifdef _LOG_NODE_TIME_COST
+        if (i != 0)
+        {
+            for (uint32_t i = 0; i < graph->nodes->used_n; ++i)
+            {
+                struct vkllm_tensor *node = graph->nodes->data[i];
+                struct vkllm_pipeline *pipeline = node->pipeline;
+                if (!pipeline)
+                    continue;
+
+                uint64_t cost = 0;
+                vkllm_pipeline_query_exec_time(context, pipeline, &cost);
+                context->stats.op_time_costs[node->op] += cost;
+
+                uint64_t acc = 0;
+                vkllm_hashmap_get(context->stats.node_time_cost, node->name, &acc);
+                acc += cost;
+                vkllm_hashmap_insert(context->stats.node_time_cost, node->name, acc);
+            }
+        }
+#endif
+
+#if 0
         if (i == 0)
         {
             for (uint32_t i = 0; i < graph->nodes->used_n; ++i)
@@ -209,7 +232,6 @@ int main(const int argc, const char *argv[])
                 struct vkllm_tensor *node = graph->nodes->data[i];
                 log_info("node %s use pipeline %s", node->name, node->pipeline ? node->pipeline->name : "NULL");
             }
-#if 1
             for (uint32_t i = 0; i < graph->nodes->used_n; ++i)
             {
                 struct vkllm_tensor *node = graph->nodes->data[i];
@@ -263,10 +285,32 @@ int main(const int argc, const char *argv[])
         fprintf(stdout, "%s", model.meta.tokens->data[pred_tok].text);
     }
 
+#if _LOG_NODE_TIME_COST
     for (uint32_t i = 0; i < VKLLM_OP_COUNTS; ++i)
     {
-        fprintf(stderr, "op %s total time cost: %lu", vkllm_op_s(i), (unsigned long)context->stats.op_time_costs[i]);
+        fprintf(stderr, "op %s total time cost: %lums\n", vkllm_op_s(i),
+                (unsigned long)context->stats.op_time_costs[i] / 1000000);
     }
+
+    struct vkllm_hashmap_entry *entries =
+        malloc(sizeof(struct vkllm_hashmap_entry) * context->stats.node_time_cost->capacity);
+
+    uint32_t wi = 0;
+    for (uint32_t i = 0; i < context->stats.node_time_cost->capacity; ++i)
+    {
+        struct vkllm_hashmap_entry entry = context->stats.node_time_cost->entries[i];
+        if (entry.occupied)
+        {
+            entries[wi++] = entry;
+        }
+    }
+
+    qsort(entries, wi, sizeof(struct vkllm_hashmap_entry), hashmap_entry_cmp);
+    for (uint32_t i = 0; i < wi; ++i)
+    {
+        fprintf(stderr, "node %s total cost: %lu\n", entries[i].key, entries[i].value / (1000 * 1000));
+    }
+#endif
 
 cleanup_graph:
     if (graph)

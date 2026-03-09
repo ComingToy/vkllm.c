@@ -77,14 +77,34 @@ glsl_shader(
     extra_args = COMMON_ARGS,
     tool = "//tools:binary_to_array",
     macros = [
-        "-DIN0_DTYPE=float -DIN1_DTYPE=float -DSMEM_DTYPE=vec4 -DOUT_DTYPE=float -DACC_DTYPE=float",
-        "-D_SUPPORT_16BIT_STORAGE -D_SUPPORT_FLOAT16_ARITHMETIC -DIN0_DTYPE=float16_t -DIN1_DTYPE=float16_t -DSMEM_DTYPE=f16vec4 -DACC_DTYPE=float -DOUT_DTYPE=float16_t -DBROADCASE_A=0 -DBROADCASE_B=0",
-        "-D_SUPPORT_16BIT_STORAGE -DIN0_DTYPE=float16_t -DIN1_DTYPE=float16_t -DSMEM_DTYPE=vec4 -DLOAD_DTYPE=float -DACC_DTYPE=float -DOUT_DTYPE=float16_t -DBROADCASE_A=0 -DBROADCASE_B=0",
+        "-DIN0_DTYPE=float -DIN1_DTYPE=float -DSMEM_VEC2=vec2 -DOUT_DTYPE=float -DACC_DTYPE=float",
+        "-D_SUPPORT_16BIT_STORAGE -D_SUPPORT_FLOAT16_ARITHMETIC -DIN0_DTYPE=float16_t -DIN1_DTYPE=float16_t -DSMEM_VEC2=f16vec2 -DACC_DTYPE=float -DOUT_DTYPE=float16_t -DBROADCASE_A=0 -DBROADCASE_B=0",
+        "-D_SUPPORT_16BIT_STORAGE -DIN0_DTYPE=float16_t -DIN1_DTYPE=float16_t -DSMEM_VEC2=vec2 -DLOAD_DTYPE=float -DACC_DTYPE=float -DOUT_DTYPE=float16_t -DBROADCASE_A=0 -DBROADCASE_B=0",
     ],
     suffixes = [
         "f32f32f32",
         "f16f16f16",
         "f16f32f16",
+    ],
+)
+
+glsl_shader(
+    name = "vkllm_mat_mul_vec_shaders",
+    shaders = [
+        "vkllm_mat_mul_vec.comp",
+    ],
+    hdrs = COMP_SHADER_HDRS,
+    extra_args = COMMON_ARGS,
+    tool = "//tools:binary_to_array",
+    macros = [
+        "-DDTYPE=float -DACC_DTYPE=float -DOUT_DTYPE=float",
+        "-D_SUPPORT_16BIT_STORAGE -D_SUPPORT_FLOAT16_ARITHMETIC -DDTYPE=float16_t -DACC_DTYPE=float16_t -DOUT_DTYPE=float16_t",
+        "-D_SUPPORT_16BIT_STORAGE -DDTYPE=float16_t -DACC_DTYPE=float -DOUT_DTYPE=float16_t",
+    ],
+    suffixes = [
+        "f32f32",
+        "f16f16",
+        "f16f32"
     ],
 )
 
@@ -184,6 +204,25 @@ glsl_shader(
     ],
 )
 
+glsl_shader(
+    name = "vkllm_arg_max_shaders",
+    shaders = [
+        "vkllm_arg_max.comp",
+    ],
+    hdrs = COMP_SHADER_HDRS,
+    extra_args = COMMON_ARGS,
+    tool = "//tools:binary_to_array",
+    macros = [
+        "-DDTYPE=float -DLOAD_DTYPE=float",
+        "-D_SUPPORT_16BIT_STORAGE -DDTYPE=float16_t -DLOAD_DTYPE=float",
+        "-D_SUPPORT_16BIT_STORAGE -D_SUPPORT_FLOAT16_ARITHMETIC -DDTYPE=float16_t -DLOAD_DTYPE=float16_t",
+    ],
+    suffixes = [
+        "_f32f32",
+        "_f16f32",
+        "_f16f16",
+    ],
+)
 
 cc_shader_library(
     name = "vkllm_shaders",
@@ -197,6 +236,8 @@ cc_shader_library(
         ":vkllm_copy_shaders",
         ":vkllm_ffn_shaders",
         ":vkllm_update_rows",
+        ":vkllm_mat_mul_vec_shaders",
+        ":vkllm_arg_max_shaders",
     ],
     visibility = ["//visibility:public"]
 )

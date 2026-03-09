@@ -486,7 +486,8 @@ vkllm_err_t vkllm_models_llama2_free(struct vkllm_context *context, struct vkllm
 }
 
 vkllm_err_t vkllm_models_llama2_build_graph(struct vkllm_context *context, struct vkllm_models_llama2 *model,
-                                            struct vkllm_tensor *input_toks, struct vkllm_graph *graph, uint32_t offsets)
+                                            struct vkllm_tensor *input_toks, struct vkllm_graph *graph,
+                                            uint32_t offsets)
 {
     _CHECK_ARGS(context && model);
     _CHECK_ARGS(model->weights.tok_embed_weights && model->weights.output_norm_weight && model->weights.output_weight);
@@ -570,13 +571,25 @@ vkllm_err_t vkllm_models_llama2_build_graph(struct vkllm_context *context, struc
     struct vkllm_op_matmul_params matmul_params = {.scale = 1.0f, .act = 0};
     struct vkllm_tensor *logits = NULL;
     _CHECK_JUMP(vkllm_tensor_new(context, "logits", logits_shapes, output_norm->dtype, VKLLM_OP_MATMUL, logits_srcs, 2,
-                                 &matmul_params, sizeof(matmul_params), true, &logits),
+                                 &matmul_params, sizeof(matmul_params), false, &logits),
                 err, fail_free_output_norm);
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, logits), err, fail_free_logits);
-    _CHECK_JUMP(vkllm_graph_set_output(context, graph, logits), err, fail_free_logits);
+
+    struct vkllm_tensor *output = NULL;
+    uint32_t output_shapes[4] = {0};
+    _ASSIGN4(output_shapes, logits->shapes);
+    output_shapes[3] = 1;
+
+    _CHECK_JUMP(vkllm_tensor_new(context, "output", output_shapes, vkllm_dtype_uint32, VKLLM_OP_ARG_MAX, &logits, 1,
+                                 NULL, 0, true, &output),
+                err, fail_free_logits);
+    _CHECK_JUMP(vkllm_graph_add_node(context, graph, output), err, fail_free_output);
+    _CHECK_JUMP(vkllm_graph_set_output(context, graph, output), err, fail_free_output);
 
     return VKLLM_ERR_OK;
 
+fail_free_output:
+    vkllm_tensor_free(context, output);
 fail_free_logits:
     vkllm_tensor_free(context, logits);
 fail_free_output_norm:

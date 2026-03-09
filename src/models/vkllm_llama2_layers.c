@@ -251,7 +251,7 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     matmul_params.scale = 1.0f;
 
     snprintf(scope_buf, sizeof(scope_buf), "%s.attn_output", name);
-    _CHECK_JUMP(vkllm_tensor_new(context, "attn_output", output_shapes, input->dtype, VKLLM_OP_MATMUL, output_srcs, 2,
+    _CHECK_JUMP(vkllm_tensor_new(context, name, output_shapes, input->dtype, VKLLM_OP_MATMUL, output_srcs, 2,
                                  &matmul_params, sizeof(matmul_params), false, &output),
                 err, fail_free_attn_weights);
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, output), err, fail_free_attn_output);

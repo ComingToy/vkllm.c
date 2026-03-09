@@ -14,6 +14,7 @@ extern "C" {
 
 struct vkllm_gpu_device;
 struct vkllm_pipeline;
+struct vkllm_hashmap;
 
 struct vkllm_context
 {
@@ -50,6 +51,14 @@ struct vkllm_context
 
         struct
         {
+            // pipeline array size: a_boardcast_type x b_boardcast_type
+            struct vkllm_pipeline *f32f32[4][4];
+            struct vkllm_pipeline *f16f32[4][4];
+            struct vkllm_pipeline *f16f16[4][4];
+        } mat_mul_vec;
+
+        struct
+        {
             // 0: for normal style 1: for neox style
             struct vkllm_pipeline *f16f16[2];
             struct vkllm_pipeline *f16f32[2];
@@ -81,6 +90,13 @@ struct vkllm_context
             struct vkllm_pipeline *f16f32f32;
             struct vkllm_pipeline *f32f32f32;
         } ffn;
+
+        struct
+        {
+            struct vkllm_pipeline *f16f16;
+            struct vkllm_pipeline *f16f32;
+            struct vkllm_pipeline *f32f32;
+        } arg_max;
     } pipelines;
 
     struct
@@ -88,6 +104,7 @@ struct vkllm_context
         int tensor_alloc_counts;
         int tensor_free_counts;
         uint64_t op_time_costs[(int)VKLLM_OP_COUNTS];
+        struct vkllm_hashmap *node_time_cost;
     } stats;
 };
 

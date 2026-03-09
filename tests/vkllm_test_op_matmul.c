@@ -177,6 +177,9 @@ static struct
     bool transposed_b;
     bool act;
 } tests[] = {
+    {1, 1, 1, 1, 1, 1024, 2048, vkllm_dtype_float32, true, false},
+    {1, 1, 1, 1, 1, 1024, 2048, vkllm_dtype_float16, true, false},
+
 #if 1
     // Single batch tests (B=1, C=1, no broadcasting) with transposed B, no activation
     {1, 1, 1, 1, 512, 1024, 2048, vkllm_dtype_float16, true, false},
@@ -207,9 +210,7 @@ static struct
     // Multi-batch and multi-channel tests (B>1, C>1, no broadcasting) without transposed B, no activation
     {2, 4, 2, 4, 128, 256, 512, vkllm_dtype_float16, false, false},
     {4, 2, 4, 2, 256, 512, 1024, vkllm_dtype_float32, false, false},
-#endif
 
-#if 1
     // Broadcasting tests: B_a=1, B_b>1 (broadcast A's batch dimension), no activation
     {1, 1, 4, 1, 128, 256, 512, vkllm_dtype_float16, true, false},
     {1, 1, 8, 1, 64, 128, 256, vkllm_dtype_float32, true, false},
@@ -222,16 +223,12 @@ static struct
     {8, 1, 1, 1, 64, 128, 256, vkllm_dtype_float32, true, false},
     {4, 1, 1, 1, 128, 256, 512, vkllm_dtype_float16, false, false},
     {8, 1, 1, 1, 64, 128, 256, vkllm_dtype_float32, false, false},
-#endif
 
 // Broadcasting tests: C_a=1, C_b>1 (broadcast A's channel dimension), no activation
-#if 1
     {1, 1, 1, 4, 128, 256, 512, vkllm_dtype_float16, true, false},
     {1, 1, 1, 8, 64, 128, 256, vkllm_dtype_float32, true, false},
-#endif
     {1, 1, 1, 4, 128, 256, 512, vkllm_dtype_float16, false, false},
     {1, 1, 1, 8, 64, 128, 256, vkllm_dtype_float32, false, false},
-#if 1
     // Broadcasting tests: C_a>1, C_b=1 (broadcast B's channel dimension), no activation
     {1, 4, 1, 1, 128, 256, 512, vkllm_dtype_float16, true, false},
     {1, 8, 1, 1, 64, 128, 256, vkllm_dtype_float32, true, false},
@@ -255,9 +252,7 @@ static struct
     {1, 8, 8, 1, 64, 128, 256, vkllm_dtype_float32, true, false},
     {1, 4, 4, 1, 64, 128, 256, vkllm_dtype_float16, false, false},
     {1, 8, 8, 1, 64, 128, 256, vkllm_dtype_float32, false, false},
-#endif
 
-#if 1
     // Tests with SILU activation
     // Single batch tests with transposed B, SILU activation
     {1, 1, 1, 1, 512, 1024, 2048, vkllm_dtype_float16, true, true},
