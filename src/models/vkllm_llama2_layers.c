@@ -173,7 +173,9 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     // First reshape Q from [batch, 1, seq_len, num_head*head_dim] to [batch, seq_len, num_head, head_dim]
     uint32_t Q_reshaped_shapes[4] = {batch, seq_len, params.num_head, head_dim};
     struct vkllm_tensor *Q_ref = NULL;
-    _CHECK_JUMP(vkllm_tensor_copy_ref(context, Q, &Q_ref), err, fail_free_V);
+
+    snprintf(scope_buf, sizeof(scope_buf), "%s.Q_ref", name);
+    _CHECK_JUMP(vkllm_tensor_copy_ref(context, Q, scope_buf, &Q_ref), err, fail_free_V);
     _CHECK_JUMP(vkllm_tensor_reshape(context, Q_ref, Q_reshaped_shapes), err, fail_free_Q_ref);
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, Q_ref), err, fail_free_Q_ref);
 
@@ -185,7 +187,8 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     // First reshape K from [batch, 1, seq_len, num_head*head_dim] to [batch, seq_len, num_head, head_dim]
     uint32_t K_reshaped_shapes[4] = {batch, seq_len, params.num_head, head_dim};
     struct vkllm_tensor *K_ref = NULL;
-    _CHECK_JUMP(vkllm_tensor_copy_ref(context, K, &K_ref), err, fail_free_Q_ref);
+    snprintf(scope_buf, sizeof(scope_buf), "%s.K_ref", name);
+    _CHECK_JUMP(vkllm_tensor_copy_ref(context, K, scope_buf, &K_ref), err, fail_free_Q_ref);
     _CHECK_JUMP(vkllm_tensor_reshape(context, K_ref, K_reshaped_shapes), err, fail_free_K_ref);
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, K_ref), err, fail_free_K_ref);
 
@@ -197,7 +200,8 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     // First reshape V from [batch, 1, seq_len, num_head*head_dim] to [batch, seq_len, num_head, head_dim]
     uint32_t V_reshaped_shapes[4] = {batch, seq_len, params.num_head, head_dim};
     struct vkllm_tensor *V_ref = NULL;
-    _CHECK_JUMP(vkllm_tensor_copy_ref(context, V, &V_ref), err, fail_free_K_ref);
+    snprintf(scope_buf, sizeof(scope_buf), "%s.V_ref", name);
+    _CHECK_JUMP(vkllm_tensor_copy_ref(context, V, scope_buf, &V_ref), err, fail_free_K_ref);
     _CHECK_JUMP(vkllm_tensor_reshape(context, V_ref, V_reshaped_shapes), err, fail_free_V_ref);
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, V_ref), err, fail_free_V_ref);
 
@@ -251,7 +255,7 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     matmul_params.scale = 1.0f;
 
     snprintf(scope_buf, sizeof(scope_buf), "%s.attn_output", name);
-    _CHECK_JUMP(vkllm_tensor_new(context, name, output_shapes, input->dtype, VKLLM_OP_MATMUL, output_srcs, 2,
+    _CHECK_JUMP(vkllm_tensor_new(context, scope_buf, output_shapes, input->dtype, VKLLM_OP_MATMUL, output_srcs, 2,
                                  &matmul_params, sizeof(matmul_params), false, &output),
                 err, fail_free_attn_weights);
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, output), err, fail_free_attn_output);
@@ -261,7 +265,8 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     uint32_t output_permute_axis[4] = {
         0, 2, 1, 3}; // (batch, num_head, seq_len, head_dim) -> (batch, seq_len, num_head, head_dim)
     struct vkllm_tensor *output_ref = NULL;
-    _CHECK_JUMP(vkllm_tensor_copy_ref(context, output, &output_ref), err, fail_free_attn_output);
+    snprintf(scope_buf, sizeof(scope_buf), "%s.output_ref", name);
+    _CHECK_JUMP(vkllm_tensor_copy_ref(context, output, scope_buf, &output_ref), err, fail_free_attn_output);
     _CHECK_JUMP(vkllm_tensor_permute(context, output_ref, output_permute_axis), err, fail_free_output_ref);
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, output_ref), err, fail_free_output_ref);
 
@@ -272,7 +277,9 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
                                  1, NULL, 0, false, &concated_heads),
                 err, fail_free_cocnated_heads);
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, concated_heads), err, fail_free_cocnated_heads);
-    _CHECK_JUMP(vkllm_tensor_copy_ref(context, concated_heads, &concated_heads_ref), err, fail_free_cocnated_heads);
+    snprintf(scope_buf, sizeof(scope_buf), "%s.concated_heads_ref", name);
+    _CHECK_JUMP(vkllm_tensor_copy_ref(context, concated_heads, scope_buf, &concated_heads_ref), err,
+                fail_free_cocnated_heads);
     _CHECK_JUMP(vkllm_graph_add_node(context, graph, concated_heads_ref), err, fail_free_cocnated_heads);
 
     // Then reshape to [batch, 1, seq_len, num_head*head_dim]

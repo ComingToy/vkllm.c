@@ -258,14 +258,15 @@ vkllm_err_t vkllm_tensor_permute(struct vkllm_context *context, struct vkllm_ten
     return VKLLM_ERR_OK;
 }
 
-vkllm_err_t vkllm_tensor_copy_ref(struct vkllm_context *context, struct vkllm_tensor *tensor, struct vkllm_tensor **p)
+vkllm_err_t vkllm_tensor_copy_ref(struct vkllm_context *context, struct vkllm_tensor *tensor, const char *name,
+                                  struct vkllm_tensor **p)
 {
     _CHECK_ARGS(context && tensor && p);
 
     *p = (struct vkllm_tensor *)malloc(sizeof(struct vkllm_tensor));
     struct vkllm_tensor *t = *p;
 
-    snprintf((char *)t->name, sizeof(t->name), "%s_ref", tensor->name);
+    strncpy((char *)t->name, name, sizeof(t->name));
     t->dtype = tensor->dtype;
     for (uint32_t i = 0; i < 4; ++i)
     {
@@ -299,10 +300,10 @@ vkllm_err_t vkllm_tensor_copy_ref(struct vkllm_context *context, struct vkllm_te
 }
 
 vkllm_err_t vkllm_tensor_slice0(struct vkllm_context *context, struct vkllm_tensor *tensor, uint32_t *extents,
-                                struct vkllm_tensor **slice)
+                                const char *name, struct vkllm_tensor **slice)
 {
     _CHECK_ARGS(context && tensor && extents && slice);
-    _CHECK(vkllm_tensor_copy_ref(context, tensor, slice));
+    _CHECK(vkllm_tensor_copy_ref(context, tensor, name, slice));
     _CHECK(extents[0] <= tensor->shapes[0]);
     _CHECK(extents[1] <= tensor->shapes[1]);
     _CHECK(extents[2] <= tensor->shapes[2]);

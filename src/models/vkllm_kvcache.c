@@ -95,8 +95,11 @@ vkllm_err_t vkllm_kvcache_update(struct vkllm_context *context, struct vkllm_kvc
     // FIXME: multiple batch support
     uint32_t extents[4] = {b, c, h, w};
 
-    _CHECK(vkllm_tensor_slice0(context, kcache, extents, key));
-    _CHECK(vkllm_tensor_slice0(context, vcache, extents, value));
+    char name[128];
+    snprintf(name, sizeof(name), "%s_slice0", pkey->name);
+    _CHECK(vkllm_tensor_slice0(context, kcache, extents, name, key));
+    snprintf(name, sizeof(name), "%s_slice0", pvalue->name);
+    _CHECK(vkllm_tensor_slice0(context, vcache, extents, name, value));
 
     return VKLLM_ERR_OK;
 }
