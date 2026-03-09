@@ -1,5 +1,4 @@
 #version 450 core
-#extension GL_EXT_control_flow_attributes : require
 #include "vkllm_shader_header.comp.h"
 
 layout(binding = 0) readonly buffer in0_type
@@ -7,7 +6,7 @@ layout(binding = 0) readonly buffer in0_type
     DTYPE in0[];
 };
 
-layout(binding = 2) writeonly buffer out0_type
+layout(binding = 1) writeonly buffer out0_type
 {
     uint out0[];
 };
@@ -76,11 +75,11 @@ void main(void)
     memoryBarrierShared();
     barrier();
 
-    [[unroll]] for (int i = int(WORKGROUP_SIZE) / 2; i > 0; i >>= 1)
+    for (int i = int(WORKGROUP_SIZE) / 2; i > 0; i >>= 1)
     {
         if (local_w < i)
         {
-            if (max_vals[local_w + i] > max_vals[local_w + i])
+            if (max_vals[local_w + i] > max_vals[local_w])
             {
                 max_vals[local_w] = max_vals[local_w + i];
                 max_indices[local_w] = max_indices[local_w + i];

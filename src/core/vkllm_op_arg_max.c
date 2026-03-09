@@ -82,7 +82,7 @@ vkllm_err_t vkllm_op_arg_max_run(struct vkllm_context *context, struct vkllm_com
     uint32_t in_strides[4], out0_strides[4];
     _CHECK(vkllm_get_dtype_info(in0->dtype, &dtype_info));
     _DIV4_S(in0->strides, dtype_info.bytes, in_strides);
-    _DIV4_S(out0->strides, dtype_info.bytes, out0_strides);
+    _DIV4_S(out0->strides, sizeof(uint32_t), out0_strides);
 
     struct vkllm_shader_constants *constants = NULL;
     _CHECK(vkllm_shader_constants_new(&constants, 96));
@@ -93,38 +93,19 @@ vkllm_err_t vkllm_op_arg_max_run(struct vkllm_context *context, struct vkllm_com
 
     vkllm_err_t err = VKLLM_ERR_OK;
     struct vkllm_array_ptr *bindings = NULL;
-    _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 3), err, free_constants_out);
+    _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 2), err, free_constants_out);
 
     vkllm_array_ptr_append(bindings, in0);
     vkllm_array_ptr_append(bindings, out0);
-
-    struct vkllm_pipeline *pipeline = tensor->pipeline;
 
     uint32_t B = in0->shapes[0];
     uint32_t C = in0->shapes[1];
     uint32_t H = in0->shapes[2];
     uint32_t N = B * C * H;
 
-    uint32_t group_x = (N + pipeline->shader_info.local_x - 1) / pipeline->shader_info.local_x;
+    uint32_t group_x = N;
     uint32_t group_y = 1;
     uint32_t group_z = 1;
-
-    VkPhysicalDeviceLimits *limits = &context->device->vk_physical_dev.properties.limits;
-    if (group_x > limits->maxComputeWorkGroupCount[0])
-    {
-        log_info("group_x %u > %u, adjust to max\n", group_x, limits->maxComputeWorkGroupCount[0]);
-        group_x = limits->maxComputeWorkGroupCount[0];
-        N = N - group_x * pipeline->shader_info.local_x;
-        group_y = (N + pipeline->shader_info.local_y - 1) / pipeline->shader_info.local_y;
-        if (group_y > limits->maxComputeWorkGroupCount[1])
-        {
-            log_info("group_y %u > %u, adjust to max\n", group_y, limits->maxComputeWorkGroupCount[1]);
-            group_y = limits->maxComputeWorkGroupCount[1];
-            N = N - group_y * pipeline->shader_info.local_y;
-            group_z = (N + pipeline->shader_info.local_z - 1) / pipeline->shader_info.local_z;
-        }
-    }
-
     _CHECK_JUMP(
         vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, constants, group_x, group_y, group_z), err,
         free_bindings_out);

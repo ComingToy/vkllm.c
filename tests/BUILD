@@ -89,6 +89,14 @@ cc_test(
 )
 
 cc_test(
+    name = "vkllm_test_op_arg_max",
+    srcs = ["vkllm_test_op_arg_max.c"],
+    deps = DEPS,
+    copts = COPTS,
+    linkopts = LINK_OPTS,
+)
+
+cc_test(
     name = "vkllm_test_op_softmax",
     srcs = ["vkllm_test_op_softmax.c"],
     deps = DEPS,
