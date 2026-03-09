@@ -90,6 +90,13 @@ struct vkllm_context
             struct vkllm_pipeline *f16f32f32;
             struct vkllm_pipeline *f32f32f32;
         } ffn;
+
+        struct
+        {
+            struct vkllm_pipeline *f16f16;
+            struct vkllm_pipeline *f16f32;
+            struct vkllm_pipeline *f32f32;
+        } arg_max;
     } pipelines;
 
     struct

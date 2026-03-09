@@ -5,6 +5,7 @@
 #include "vkllm_common.h"
 #include "vkllm_context.h"
 #include "vkllm_hashset.h"
+#include "vkllm_op_arg_max.h"
 #include "vkllm_op_bin.h"
 #include "vkllm_op_copy.h"
 #include "vkllm_op_embedding.h"
@@ -125,6 +126,9 @@ static vkllm_err_t vkllm_graph_init_tensor(struct vkllm_context *context, struct
     case VKLLM_OP_UPDATE_ROWS:
         _CHECK(vkllm_op_update_rows_init(context, commands, tensor));
         break;
+    case VKLLM_OP_ARG_MAX:
+        _CHECK(vkllm_op_arg_max_init(context, commands, tensor));
+        break;
     case VKLLM_OP_REF:
         // Reference tensor, srcs already recursively initialized above
         break;
@@ -214,6 +218,9 @@ static vkllm_err_t vkllm_graph_run_tensor(struct vkllm_context *context, struct 
         break;
     case VKLLM_OP_UPDATE_ROWS:
         _CHECK(vkllm_op_update_rows_run(context, commands, tensor));
+        break;
+    case VKLLM_OP_ARG_MAX:
+        _CHECK(vkllm_op_arg_max_run(context, commands, tensor));
         break;
     case VKLLM_OP_REF:
         // Reference tensor, srcs already recursively executed above
@@ -308,6 +315,9 @@ static vkllm_err_t vkllm_graph_post_run_tensor(struct vkllm_context *context, st
         break;
     case VKLLM_OP_UPDATE_ROWS:
         _CHECK(vkllm_op_update_rows_post_run(context, commands, tensor));
+        break;
+    case VKLLM_OP_ARG_MAX:
+        _CHECK(vkllm_op_arg_max_post_run(context, commands, tensor));
         break;
     case VKLLM_OP_REF:
         // Reference tensor, srcs already recursively post-run above

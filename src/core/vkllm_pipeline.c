@@ -1,4 +1,5 @@
 #include "vkllm_pipeline.h"
+#include "vkllm_arg_max_shaders.h"
 #include "vkllm_array.h"
 #include "vkllm_bin_op_shaders.h"
 #include "vkllm_common.h"
@@ -703,6 +704,40 @@ static vkllm_err_t vkllm_create_mat_mul_vec_pipelines(struct vkllm_context *cont
     return VKLLM_ERR_OK;
 }
 
+static vkllm_err_t vkllm_create_arg_max_pipeline(struct vkllm_context *context)
+{
+    _CHECK_ARGS(context);
+
+    struct vkllm_shader_info shader_info = {
+        .binding_count = 2,
+        .push_constant_bytes = sizeof(uint32_t) * 16,
+        .local_x = 32,
+        .local_y = 1,
+        .local_z = 1,
+    };
+
+    context->pipelines.arg_max.f16f16 = NULL;
+    context->pipelines.arg_max.f16f32 = NULL;
+    context->pipelines.arg_max.f32f32 = NULL;
+
+    _CHECK(vkllm_pipeline_new(context, "pipeline_arg_max_f32f32", shader_info, _vkllm_arg_max_f32f32_spv(),
+                              _vkllm_arg_max_f32f32_size(), NULL, &context->pipelines.arg_max.f32f32));
+
+    if (context->device->support_16bit_storage)
+    {
+        _CHECK(vkllm_pipeline_new(context, "pipeline_arg_max_f16f32", shader_info, _vkllm_arg_max_f16f32_spv(),
+                                  _vkllm_arg_max_f16f32_size(), NULL, &context->pipelines.arg_max.f16f32));
+
+        if (context->device->support_fp16_arithmetic)
+        {
+            _CHECK(vkllm_pipeline_new(context, "pipeline_arg_max_f16f16", shader_info, _vkllm_arg_max_f16f16_spv(),
+                                      _vkllm_arg_max_f16f16_size(), NULL, &context->pipelines.arg_max.f16f16));
+        }
+    }
+
+    return VKLLM_ERR_OK;
+}
+
 vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context)
 {
     _CHECK(vkllm_create_all_bin_pipeline(context));
@@ -715,6 +750,7 @@ vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context)
     _CHECK(vkllm_create_copy_pipelines(context));
     _CHECK(vkllm_create_update_rows_pipelines(context));
     _CHECK(vkllm_create_mat_mul_vec_pipelines(context));
+    _CHECK(vkllm_create_arg_max_pipeline(context));
     return VKLLM_ERR_OK;
 }
 
@@ -774,6 +810,9 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
     vkllm_pipeline_free(context, context->pipelines.copy.f32);
     vkllm_pipeline_free(context, context->pipelines.update_rows.f16);
     vkllm_pipeline_free(context, context->pipelines.update_rows.f32);
+    vkllm_pipeline_free(context, context->pipelines.arg_max.f16f16);
+    vkllm_pipeline_free(context, context->pipelines.arg_max.f16f32);
+    vkllm_pipeline_free(context, context->pipelines.arg_max.f32f32);
 }
 #undef vkllm_free_op_pipelines
 #undef _vkllm_free_op_pipeline

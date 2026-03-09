@@ -204,6 +204,25 @@ glsl_shader(
     ],
 )
 
+glsl_shader(
+    name = "vkllm_arg_max_shaders",
+    shaders = [
+        "vkllm_arg_max.comp",
+    ],
+    hdrs = COMP_SHADER_HDRS,
+    extra_args = COMMON_ARGS,
+    tool = "//tools:binary_to_array",
+    macros = [
+        "-DDTYPE=float -DLOAD_DTYPE=float",
+        "-D_SUPPORT_16BIT_STORAGE -DDTYPE=float16_t -DLOAD_DTYPE=float",
+        "-D_SUPPORT_16BIT_STORAGE -D_SUPPORT_FLOAT16_ARITHMETIC -DDTYPE=float16_t -DLOAD_DTYPE=float16_t",
+    ],
+    suffixes = [
+        "_f32f32",
+        "_f16f32",
+        "_f16f16",
+    ],
+)
 
 cc_shader_library(
     name = "vkllm_shaders",
@@ -218,6 +237,7 @@ cc_shader_library(
         ":vkllm_ffn_shaders",
         ":vkllm_update_rows",
         ":vkllm_mat_mul_vec_shaders",
+        ":vkllm_arg_max_shaders",
     ],
     visibility = ["//visibility:public"]
 )
