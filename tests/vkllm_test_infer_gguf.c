@@ -285,7 +285,7 @@ int main(const int argc, const char *argv[])
         fprintf(stdout, "%s", model.meta.tokens->data[pred_tok].text);
     }
 
-#if _LOG_NODE_TIME_COST
+#ifdef _LOG_NODE_TIME_COST
     for (uint32_t i = 0; i < VKLLM_OP_COUNTS; ++i)
     {
         fprintf(stderr, "op %s total time cost: %lums\n", vkllm_op_s(i),
