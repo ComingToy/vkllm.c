@@ -201,9 +201,16 @@ static vkllm_err_t vkllm_op_mat_mul_vec_run(struct vkllm_context *context, struc
     vkllm_array_ptr_append(bindings, in1);
     vkllm_array_ptr_append(bindings, tensor);
 
+    // One workgroup = (subgroup_size, NUM_ROWS=2, 1): each y lane is a
+    // subgroup computing one output row, so workgroups cover ceil(N/2) row
+    // pairs along x (overflow into z, matching the shader's dense linear
+    // workgroup id).
+    const uint32_t num_rows_per_wg = 2;
     uint32_t N = _MUL4(tensor->shapes);
-    uint32_t group_x = (N + tensor->pipeline->shader_info.local_x - 1) / tensor->pipeline->shader_info.local_x;
-    uint32_t group_y = context->device->subgroup_size, group_z = 1;
+    uint32_t group_x = (N + num_rows_per_wg - 1) / num_rows_per_wg;
+    uint32_t group_y = 1, group_z = 0;
+    _CHECK(vkllm_calc_linear_group_counts(context, group_x, 1, &group_x, &group_z));
+    const uint32_t local_y = num_rows_per_wg;
 
     _CHECK_JUMP(
         vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, &pc, group_x, group_y, group_z), err,
