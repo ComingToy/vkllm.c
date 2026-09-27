@@ -62,6 +62,10 @@ extern vkllm_err_t vkllm_tensor_copy_ref(struct vkllm_context *context, struct v
                                          struct vkllm_tensor **p);
 extern vkllm_err_t vkllm_tensor_slice0(struct vkllm_context *context, struct vkllm_tensor *tensor, uint32_t extents[4],
                                        struct vkllm_tensor **slice);
+// Shrink `tensor`'s view to `extents` in place (extents must be <= current
+// shapes; strides and storage are untouched).
+extern vkllm_err_t vkllm_tensor_view(struct vkllm_context *context, struct vkllm_tensor *tensor,
+                                     const uint32_t *extents);
 extern vkllm_err_t vkllm_tensor_s(struct vkllm_context *context, struct vkllm_tensor *tensor, char *buf, size_t len);
 #ifdef __cplusplus
 }

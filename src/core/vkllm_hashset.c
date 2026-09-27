@@ -39,7 +39,7 @@ vkllm_err_t vkllm_hashset_new(struct vkllm_hashset **set, size_t init_capacity)
     (*set)->size = 0;
     (*set)->tombstones = 0;
     (*set)->entries = (struct vkllm_hashset_entry *)calloc(init_capacity, sizeof(struct vkllm_hashset_entry));
-    
+
     if ((*set)->entries == NULL)
     {
         free(*set);
@@ -63,7 +63,7 @@ void vkllm_hashset_free(struct vkllm_hashset *set)
 // Resize the hash set (internal helper)
 vkllm_err_t vkllm_hashset_resize(struct vkllm_hashset *set, size_t new_capacity)
 {
-    if (!set)
+    if (!set || new_capacity == 0)
     {
         return VKLLM_ERR_ARGS;
     }
@@ -88,7 +88,7 @@ vkllm_err_t vkllm_hashset_resize(struct vkllm_hashset *set, size_t new_capacity)
         if (old_entries[i].occupied)
         {
             uint64_t hash = vkllm_hashset_hash(old_entries[i].key, new_capacity);
-            
+
             // Linear probing to find an empty slot
             for (size_t j = 0; j < new_capacity; j++)
             {
@@ -117,7 +117,8 @@ vkllm_err_t vkllm_hashset_insert(struct vkllm_hashset *set, uint64_t key)
         return VKLLM_ERR_ARGS;
     }
 
-    // Resize if load factor exceeds 0.75
+    // Resize if load factor exceeds 0.75 (live entries and tombstones both
+    // extend probe chains, so both count against the load factor)
     if ((set->size + set->tombstones) * 4 >= set->capacity * 3)
     {
         size_t new_capacity = set->capacity * 2;
@@ -130,18 +131,31 @@ vkllm_err_t vkllm_hashset_insert(struct vkllm_hashset *set, uint64_t key)
 
     uint64_t hash = vkllm_hashset_hash(key, set->capacity);
 
-    // Linear probing to find insertion position
+    // Probe the whole chain once: reuse the first tombstone seen, but keep
+    // scanning to the end of the chain so duplicates are still detected.
+    size_t insert_idx = (size_t)-1;
+
     for (size_t i = 0; i < set->capacity; i++)
     {
         size_t idx = (hash + i) % set->capacity;
-        
+
         if (!set->entries[idx].occupied)
         {
-            // Found empty slot, insert here
-            set->entries[idx].key = key;
-            set->entries[idx].occupied = true;
-            set->size++;
-            return VKLLM_ERR_OK;
+            if (set->entries[idx].key == 0 && !set->entries[idx].deleted)
+            {
+                // Truly empty slot: end of chain, key is not present.
+                if (insert_idx == (size_t)-1)
+                {
+                    insert_idx = idx;
+                }
+                break;
+            }
+
+            // Tombstone: candidate slot, keep probing for duplicates.
+            if (insert_idx == (size_t)-1)
+            {
+                insert_idx = idx;
+            }
         }
         else if (set->entries[idx].key == key)
         {
@@ -150,8 +164,22 @@ vkllm_err_t vkllm_hashset_insert(struct vkllm_hashset *set, uint64_t key)
         }
     }
 
-    // Should never reach here if resize works correctly
-    return VKLLM_ERR_ALLOC;
+    if (insert_idx == (size_t)-1)
+    {
+        // Should never reach here if resize works correctly
+        return VKLLM_ERR_ALLOC;
+    }
+
+    if (set->entries[insert_idx].deleted)
+    {
+        set->tombstones--;
+    }
+
+    set->entries[insert_idx].key = key;
+    set->entries[insert_idx].occupied = true;
+    set->entries[insert_idx].deleted = false;
+    set->size++;
+    return VKLLM_ERR_OK;
 }
 
 // Check if a key exists in the hash set
@@ -168,10 +196,15 @@ bool vkllm_hashset_contains(const struct vkllm_hashset *set, uint64_t key)
     for (size_t i = 0; i < set->capacity; i++)
     {
         size_t idx = (hash + i) % set->capacity;
-        
+
         if (!set->entries[idx].occupied)
         {
-            // Found empty slot, key doesn't exist
+            if (set->entries[idx].deleted)
+            {
+                // Tombstone: the chain continues past this slot.
+                continue;
+            }
+            // Truly empty slot: key doesn't exist
             return false;
         }
         else if (set->entries[idx].key == key)
@@ -198,16 +231,22 @@ vkllm_err_t vkllm_hashset_remove(struct vkllm_hashset *set, uint64_t key)
     for (size_t i = 0; i < set->capacity; i++)
     {
         size_t idx = (hash + i) % set->capacity;
-        
+
         if (!set->entries[idx].occupied)
         {
+            if (set->entries[idx].deleted)
+            {
+                // Tombstone: the chain continues past this slot.
+                continue;
+            }
             // Key not found
             return VKLLM_ERR_OK;
         }
         else if (set->entries[idx].key == key)
         {
-            // Found the key, mark as deleted
+            // Mark as tombstone so probe chains crossing this slot stay intact.
             set->entries[idx].occupied = false;
+            set->entries[idx].deleted = true;
             set->entries[idx].key = 0;
             set->size--;
             set->tombstones++;
@@ -223,7 +262,7 @@ void vkllm_hashset_clear(struct vkllm_hashset *set)
 {
     if (!set)
         return;
-    
+
     memset(set->entries, 0, set->capacity * sizeof(struct vkllm_hashset_entry));
     set->size = 0;
     set->tombstones = 0;

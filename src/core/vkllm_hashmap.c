@@ -68,7 +68,7 @@ void vkllm_hashmap_free(struct vkllm_hashmap *map)
 
 vkllm_err_t vkllm_hashmap_resize(struct vkllm_hashmap *map, size_t new_capacity)
 {
-    if (!map)
+    if (!map || new_capacity == 0)
         return VKLLM_ERR_ARGS;
 
     struct vkllm_hashmap_entry *old_entries = map->entries;
@@ -85,6 +85,7 @@ vkllm_err_t vkllm_hashmap_resize(struct vkllm_hashmap *map, size_t new_capacity)
     map->size = 0;
     map->tombstones = 0;
 
+    // Rehash only live entries; tombstone keys were already freed on remove.
     for (size_t i = 0; i < old_capacity; i++)
     {
         if (old_entries[i].occupied && old_entries[i].key)
@@ -103,10 +104,6 @@ vkllm_err_t vkllm_hashmap_resize(struct vkllm_hashmap *map, size_t new_capacity)
                     break;
                 }
             }
-        }
-        else if (old_entries[i].key)
-        {
-            free(old_entries[i].key);
         }
     }
 
@@ -129,24 +126,31 @@ vkllm_err_t vkllm_hashmap_insert(struct vkllm_hashmap *map, const char *key, uin
 
     uint64_t hash = vkllm_hashmap_hash(key, map->capacity);
 
+    // Probe the whole chain once: reuse the first tombstone seen, but keep
+    // scanning to the end of the chain so duplicates are still detected.
+    size_t insert_idx = (size_t)-1;
+
     for (size_t i = 0; i < map->capacity; i++)
     {
         size_t idx = (hash + i) % map->capacity;
 
         if (!map->entries[idx].occupied)
         {
-            char *key_copy = vkllm_hashmap_strdup(key);
-            if (!key_copy)
-                return VKLLM_ERR_ALLOC;
+            if (!map->entries[idx].deleted)
+            {
+                // Truly empty slot: end of chain, key is not present.
+                if (insert_idx == (size_t)-1)
+                {
+                    insert_idx = idx;
+                }
+                break;
+            }
 
-            if (map->entries[idx].key)
-                free(map->entries[idx].key);
-
-            map->entries[idx].key = key_copy;
-            map->entries[idx].value = value;
-            map->entries[idx].occupied = true;
-            map->size++;
-            return VKLLM_ERR_OK;
+            // Tombstone: candidate slot, keep probing for duplicates.
+            if (insert_idx == (size_t)-1)
+            {
+                insert_idx = idx;
+            }
         }
         else if (map->entries[idx].key && strcmp(map->entries[idx].key, key) == 0)
         {
@@ -155,7 +159,22 @@ vkllm_err_t vkllm_hashmap_insert(struct vkllm_hashmap *map, const char *key, uin
         }
     }
 
-    return VKLLM_ERR_ALLOC;
+    if (insert_idx == (size_t)-1)
+        return VKLLM_ERR_ALLOC;
+
+    char *key_copy = vkllm_hashmap_strdup(key);
+    if (!key_copy)
+        return VKLLM_ERR_ALLOC;
+
+    if (map->entries[insert_idx].deleted)
+        map->tombstones--;
+
+    map->entries[insert_idx].key = key_copy;
+    map->entries[insert_idx].value = value;
+    map->entries[insert_idx].occupied = true;
+    map->entries[insert_idx].deleted = false;
+    map->size++;
+    return VKLLM_ERR_OK;
 }
 
 bool vkllm_hashmap_get(const struct vkllm_hashmap *map, const char *key, uint64_t *out_value)
@@ -169,8 +188,15 @@ bool vkllm_hashmap_get(const struct vkllm_hashmap *map, const char *key, uint64_
     {
         size_t idx = (hash + i) % map->capacity;
 
-        if (!map->entries[idx].occupied && !map->entries[idx].key)
+        if (!map->entries[idx].occupied)
+        {
+            if (map->entries[idx].deleted)
+            {
+                // Tombstone: the chain continues past this slot.
+                continue;
+            }
             return false;
+        }
         else if (map->entries[idx].key && strcmp(map->entries[idx].key, key) == 0)
         {
             if (out_value)
@@ -198,14 +224,23 @@ vkllm_err_t vkllm_hashmap_remove(struct vkllm_hashmap *map, const char *key)
     {
         size_t idx = (hash + i) % map->capacity;
 
-        if (!map->entries[idx].occupied && !map->entries[idx].key)
+        if (!map->entries[idx].occupied)
+        {
+            if (map->entries[idx].deleted)
+            {
+                // Tombstone: the chain continues past this slot.
+                continue;
+            }
             return VKLLM_ERR_OK;
+        }
         else if (map->entries[idx].key && strcmp(map->entries[idx].key, key) == 0)
         {
+            // Mark as tombstone so probe chains crossing this slot stay intact.
             free(map->entries[idx].key);
             map->entries[idx].key = NULL;
             map->entries[idx].value = 0;
             map->entries[idx].occupied = false;
+            map->entries[idx].deleted = true;
             map->size--;
             map->tombstones++;
             return VKLLM_ERR_OK;
@@ -229,6 +264,7 @@ void vkllm_hashmap_clear(struct vkllm_hashmap *map)
         }
         map->entries[i].value = 0;
         map->entries[i].occupied = false;
+        map->entries[i].deleted = false;
     }
     map->size = 0;
     map->tombstones = 0;

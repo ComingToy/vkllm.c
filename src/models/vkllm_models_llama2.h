@@ -3,6 +3,8 @@
 
 #include "src/core/vkllm_array.h"
 #include "vkllm_llama2_layers.h"
+
+struct vkllm_hashmap;
 struct block_weights
 {
     struct vkllm_tensor *attn_norm_weight;
@@ -123,6 +125,9 @@ struct vkllm_models_llama2
         bool add_bos_token;
         bool add_eos_token;
         struct vkllm_array_token *tokens;
+        // text -> token id index over `tokens` (built once at load; makes
+        // tokenize lookups O(1) instead of a linear scan over the vocab).
+        struct vkllm_hashmap *token_index;
     } meta;
 
     struct
@@ -142,6 +147,12 @@ extern vkllm_err_t vkllm_models_llama2_free(struct vkllm_context *context, struc
 extern vkllm_err_t vkllm_models_llama2_build_graph(struct vkllm_context *context, struct vkllm_models_llama2 *model,
                                                    struct vkllm_tensor *input_toks, struct vkllm_graph *graph,
                                                    uint32_t offsets);
+// Re-configure a reusable graph for the next step at absolute position
+// `offset` with `seq_len` input tokens (decode: 1). Cheap: only offsets and
+// view shapes change; the graph can then be re-run as-is.
+extern vkllm_err_t vkllm_models_llama2_prepare_step(struct vkllm_context *context,
+                                                    struct vkllm_models_llama2 *model, struct vkllm_graph *graph,
+                                                    uint32_t offset, uint32_t seq_len);
 extern vkllm_err_t vkllm_models_llama2_tokenize(struct vkllm_models_llama2 *model, const char *sentence,
                                                 struct vkllm_array_token_id **token_ids);
 

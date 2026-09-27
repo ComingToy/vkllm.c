@@ -27,6 +27,7 @@ vkllm_err_t vkllm_graph_new(struct vkllm_context *context, struct vkllm_graph **
 
     _CHECK_JUMP(vkllm_array_tensor_new(&p->input_nodes, 8), err, fail_new_inputs);
     _CHECK_JUMP(vkllm_array_tensor_new(&p->nodes, 128), err, fail_new_nodes);
+    _CHECK_JUMP(vkllm_array_tensor_new(&p->external_nodes, 8), err, fail_new_external);
     p->output_node = NULL;
 
     _CHECK_JUMP(vkllm_commands_new(context, &p->commands), err, fail_new_commands);
@@ -34,6 +35,8 @@ vkllm_err_t vkllm_graph_new(struct vkllm_context *context, struct vkllm_graph **
     return err;
 
 fail_new_commands:
+    vkllm_array_tensor_free(p->external_nodes);
+fail_new_external:
     vkllm_array_tensor_free(p->nodes);
 fail_new_nodes:
     vkllm_array_tensor_free(p->input_nodes);
@@ -51,12 +54,38 @@ vkllm_err_t vkllm_graph_add_input(struct vkllm_context *context, struct vkllm_gr
     return VKLLM_ERR_OK;
 }
 
+// Ownership: appending transfers ownership of `tensor` to the graph. Once a
+// tensor has been added (even if the append below fails), the graph is
+// responsible for freeing it — callers must NOT free tensors after add_node.
 vkllm_err_t vkllm_graph_add_node(struct vkllm_context *context, struct vkllm_graph *graph, struct vkllm_tensor *tensor)
 {
     _CHECK_ARGS(context && graph && tensor);
 
-    _CHECK(vkllm_array_tensor_append(graph->nodes, tensor));
+    vkllm_err_t err = vkllm_array_tensor_append(graph->nodes, tensor);
+    if (err != VKLLM_ERR_OK)
+    {
+        // The array rejected the tensor; consume it here so ownership stays
+        // single and callers never free a tensor they no longer own.
+        vkllm_tensor_free(context, tensor);
+    }
 
+    return err;
+}
+
+// Register a tensor the graph must execute but does NOT own (e.g. KV cache
+// tensors owned by the model). It participates in init/run traversal and is
+// skipped by vkllm_graph_free.
+vkllm_err_t vkllm_graph_add_external(struct vkllm_context *context, struct vkllm_graph *graph,
+                                     struct vkllm_tensor *tensor)
+{
+    _CHECK_ARGS(context && graph && tensor);
+    vkllm_err_t err = vkllm_array_tensor_append(graph->external_nodes, tensor);
+    if (err != VKLLM_ERR_OK)
+    {
+        log_error("add_external: append failed for %s (used=%zu alloc=%zu): %s", tensor->name,
+                  graph->external_nodes->used_n, graph->external_nodes->alloc_n, vkllm_err_s(err));
+        return err;
+    }
     return VKLLM_ERR_OK;
 }
 
@@ -66,6 +95,24 @@ vkllm_err_t vkllm_graph_set_output(struct vkllm_context *context, struct vkllm_g
     _CHECK_ARGS(context && graph && tensor);
     graph->output_node = tensor;
     return VKLLM_ERR_OK;
+}
+
+// Linear lookup by name; graphs are small (hundreds of nodes) and this is
+// only used at build/prepare time, not on the hot path.
+struct vkllm_tensor *vkllm_graph_find_node(struct vkllm_graph *graph, const char *name)
+{
+    if (!graph || !name)
+        return NULL;
+
+    for (size_t i = 0; i < graph->nodes->used_n; i++)
+    {
+        if (strncmp(graph->nodes->data[i]->name, name, sizeof(graph->nodes->data[i]->name)) == 0)
+        {
+            return graph->nodes->data[i];
+        }
+    }
+
+    return NULL;
 }
 
 // Helper function to recursively initialize a tensor and its dependencies
@@ -154,6 +201,17 @@ vkllm_err_t vkllm_graph_init(struct vkllm_context *context, struct vkllm_graph *
 
     // Recursively initialize starting from the output node
     err = vkllm_graph_init_tensor(context, graph->commands, graph->output_node, visited);
+
+    // Initialize external (model-owned) tensors: KV cache update-rows ops.
+    if (err == VKLLM_ERR_OK)
+    {
+        for (size_t i = 0; i < graph->external_nodes->used_n; i++)
+        {
+            err = vkllm_graph_init_tensor(context, graph->commands, graph->external_nodes->data[i], visited);
+            if (err != VKLLM_ERR_OK)
+                break;
+        }
+    }
 
     // Clean up the visited hash set
     vkllm_hashset_free(visited);
@@ -248,6 +306,17 @@ vkllm_err_t vkllm_graph_run(struct vkllm_context *context, struct vkllm_graph *g
 
     // Recursively execute starting from the output node
     err = vkllm_graph_run_tensor(context, graph->commands, graph->output_node, visited);
+
+    // Execute external (model-owned) tensors: KV cache update-rows writes.
+    if (err == VKLLM_ERR_OK)
+    {
+        for (size_t i = 0; i < graph->external_nodes->used_n; i++)
+        {
+            err = vkllm_graph_run_tensor(context, graph->commands, graph->external_nodes->data[i], visited);
+            if (err != VKLLM_ERR_OK)
+                break;
+        }
+    }
 
     // Clean up the visited hash set
     vkllm_hashset_free(visited);
@@ -345,6 +414,17 @@ vkllm_err_t vkllm_graph_post_run(struct vkllm_context *context, struct vkllm_gra
     // Recursively post-run starting from the output node
     err = vkllm_graph_post_run_tensor(context, graph->commands, graph->output_node, visited);
 
+    // Post-run external (model-owned) tensors: KV cache update-rows ops.
+    if (err == VKLLM_ERR_OK)
+    {
+        for (size_t i = 0; i < graph->external_nodes->used_n; i++)
+        {
+            err = vkllm_graph_post_run_tensor(context, graph->commands, graph->external_nodes->data[i], visited);
+            if (err != VKLLM_ERR_OK)
+                break;
+        }
+    }
+
     // Clean up the visited hash set
     vkllm_hashset_free(visited);
 
@@ -362,6 +442,7 @@ vkllm_err_t vkllm_graph_free(struct vkllm_context *context, struct vkllm_graph *
 
     vkllm_array_tensor_free(graph->nodes);
     vkllm_array_tensor_free(graph->input_nodes);
+    vkllm_array_tensor_free(graph->external_nodes);
     vkllm_commands_free(context, graph->commands);
     free(graph);
 

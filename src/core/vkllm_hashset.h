@@ -12,10 +12,15 @@ extern "C"
 #include <stdint.h>
 
 // Hash set bucket entry
+// A slot is in one of three states:
+//   empty:      occupied == false && deleted == false
+//   tombstone:  occupied == false && deleted == true  (probe chain continues)
+//   occupied:   occupied == true
 struct vkllm_hashset_entry
 {
     uint64_t key;
     bool occupied;
+    bool deleted;
 };
 
 // Hash set structure with open addressing and linear probing

@@ -227,9 +227,11 @@ static vkllm_err_t defer_download_task(void *args)
     uint8_t *data = p->data;
     size_t bytes = p->bytes;
 
-    vkllm_tensor_flush_cache(context, staging);
+    // GPU wrote the staging buffer; invalidate the host cache before reading.
+    vkllm_tensor_invalid_cache(context, staging);
     memcpy(data, staging->data.host, bytes);
     vkllm_tensor_free(context, staging);
+    free(p);
     return VKLLM_ERR_OK;
 }
 
@@ -258,12 +260,21 @@ vkllm_err_t vkllm_commands_download(struct vkllm_context *context, struct vkllm_
 
     vkllm_commands_sync_tensor(context, commands, staging, VK_ACCESS_HOST_READ_BIT, VK_PIPELINE_STAGE_HOST_BIT);
 
-    static download_task_args_t args;
-    args.staging = staging;
-    args.data = data;
-    args.bytes = bytes;
+    // One heap-allocated args per download: tasks are deferred until the
+    // fence is waited on, so a shared static instance would be overwritten
+    // by subsequent downloads before the tasks run.
+    download_task_args_t *args = (download_task_args_t *)malloc(sizeof(download_task_args_t));
+    if (!args)
+    {
+        vkllm_tensor_free(context, staging);
+        return VKLLM_ERR_ALLOC;
+    }
 
-    struct vkllm_commands_task task = {.func = defer_download_task, .context = context, .priv = &args};
+    args->staging = staging;
+    args->data = data;
+    args->bytes = bytes;
+
+    struct vkllm_commands_task task = {.func = defer_download_task, .context = context, .priv = args};
     vkllm_array_commands_task_append(commands->defer_tasks, task);
     return VKLLM_ERR_OK;
 }

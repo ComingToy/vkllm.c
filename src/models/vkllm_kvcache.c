@@ -16,7 +16,10 @@ vkllm_err_t vkllm_kvcache_new(struct vkllm_context *context, uint32_t kcache_sha
     struct vkllm_kvcache *p = *kvcache;
     p->kcaches = NULL;
     p->vcaches = NULL;
+    p->kviews = NULL;
+    p->vviews = NULL;
     p->layer_counts = layer_counts;
+    p->cur_len = 0;
     _ASSIGN4(p->kcache_shape, kcache_shape);
     _ASSIGN4(p->vcache_shape, vcache_shape);
 
@@ -62,11 +65,59 @@ cleanup_malloc:
     return err;
 }
 
-vkllm_err_t vkllm_kvcache_update(struct vkllm_context *context, struct vkllm_kvcache *kvcache,
-                                 struct vkllm_tensor **key, struct vkllm_tensor **value, uint32_t layer,
-                                 uint32_t offset)
+static vkllm_err_t kvcache_make_views(struct vkllm_context *context, struct vkllm_kvcache *kvcache)
 {
-    _CHECK_ARGS(context && kvcache && key && value);
+    if (kvcache->kviews)
+        return VKLLM_ERR_OK;
+
+    vkllm_err_t err = vkllm_array_tensor_new(&kvcache->kviews, kvcache->layer_counts);
+    if (err != VKLLM_ERR_OK)
+    {
+        log_error("make_views: kviews array new failed: %s", vkllm_err_s(err));
+        return err;
+    }
+
+    err = vkllm_array_tensor_new(&kvcache->vviews, kvcache->layer_counts);
+    if (err != VKLLM_ERR_OK)
+    {
+        log_error("make_views: vviews array new failed: %s", vkllm_err_s(err));
+        return err;
+    }
+
+    for (uint32_t i = 0; i < kvcache->layer_counts; ++i)
+    {
+        struct vkllm_tensor *kview = NULL, *vview = NULL;
+        // Views start at FULL context length so that any later logical
+        // length (prefill or any decode step) is a shrink — tensor_view
+        // only allows shrinking.
+        uint32_t extents[4];
+        _ASSIGN4(extents, kvcache->kcache_shape);
+        err = vkllm_tensor_slice0(context, kvcache->kcaches->data[i], extents, &kview);
+        if (err != VKLLM_ERR_OK)
+        {
+            log_error("make_views: k slice %u failed: %s", i, vkllm_err_s(err));
+            return err;
+        }
+        vkllm_array_tensor_append(kvcache->kviews, kview);
+
+        _ASSIGN4(extents, kvcache->vcache_shape);
+        err = vkllm_tensor_slice0(context, kvcache->vcaches->data[i], extents, &vview);
+        if (err != VKLLM_ERR_OK)
+        {
+            log_error("make_views: v slice %u failed: %s", i, vkllm_err_s(err));
+            return err;
+        }
+        vkllm_array_tensor_append(kvcache->vviews, vview);
+    }
+
+    return VKLLM_ERR_OK;
+}
+
+vkllm_err_t vkllm_kvcache_bind(struct vkllm_context *context, struct vkllm_kvcache *kvcache,
+                               struct vkllm_graph *graph, struct vkllm_tensor **key, struct vkllm_tensor **value,
+                               uint32_t layer, uint32_t offset)
+{
+    _CHECK_ARGS(context && kvcache && graph && key && value);
     struct vkllm_tensor *pkey = *key, *pvalue = *value;
     _CHECK_ARGS(pkey && pvalue);
     _CHECK_ARGS(layer < kvcache->kcaches->used_n && layer < kvcache->vcaches->used_n);
@@ -90,20 +141,73 @@ vkllm_err_t vkllm_kvcache_update(struct vkllm_context *context, struct vkllm_kvc
     vcache->srcs[0] = pvalue;
     memcpy(vcache->params, &offset, sizeof(offset));
 
-    uint32_t b = pkey->shapes[0], c = pkey->shapes[1], h = pkey->shapes[2] + offset, w = pkey->shapes[3];
+    // Lazily create the persistent views once, then only re-view them.
+    _CHECK(kvcache_make_views(context, kvcache));
 
-    // FIXME: multiple batch support
-    uint32_t extents[4] = {b, c, h, w};
+    // Cache tensors run as part of the graph but stay owned by the model.
+    _CHECK(vkllm_graph_add_external(context, graph, kcache));
+    _CHECK(vkllm_graph_add_external(context, graph, vcache));
 
-    _CHECK(vkllm_tensor_slice0(context, kcache, extents, key));
-    _CHECK(vkllm_tensor_slice0(context, vcache, extents, value));
+    uint32_t cur_len = offset + pkey->shapes[2];
+    // Views may be re-set to any length within the full cache (views created
+    // by a previous graph build may have been shrunk below the new length).
+    uint32_t kext[4] = {pkey->shapes[0], pkey->shapes[1], cur_len, pkey->shapes[3]};
+    uint32_t vext[4] = {pvalue->shapes[0], pvalue->shapes[1], cur_len, pvalue->shapes[3]};
+    kvcache->kviews->data[layer]->shapes[2] = kext[2];
+    kvcache->vviews->data[layer]->shapes[2] = vext[2];
+    kvcache->cur_len = cur_len;
 
+    *key = kvcache->kviews->data[layer];
+    *value = kvcache->vviews->data[layer];
+
+    return VKLLM_ERR_OK;
+}
+
+vkllm_err_t vkllm_kvcache_advance(struct vkllm_context *context, struct vkllm_kvcache *kvcache, uint32_t offset,
+                                  uint32_t seq_len)
+{
+    _CHECK_ARGS(context && kvcache);
+    _CHECK_ARGS(kvcache->kviews && kvcache->vviews);
+    _CHECK_ARGS(offset + seq_len <= kvcache->kcache_shape[2]);
+
+    for (uint32_t i = 0; i < kvcache->layer_counts; ++i)
+    {
+        // Move the update-rows write offset for this step.
+        memcpy(kvcache->kcaches->data[i]->params, &offset, sizeof(offset));
+        memcpy(kvcache->vcaches->data[i]->params, &offset, sizeof(offset));
+
+        // Grow the attention views to cover [0, offset + seq_len). Direct
+        // shape assignment: the view may currently be shorter (previous
+        // step) and tensor_view only allows shrinking; the capacity check
+        // is offset + seq_len <= kcache_shape[2] above.
+        uint32_t cur_len = offset + seq_len;
+        kvcache->kviews->data[i]->shapes[2] = cur_len;
+        kvcache->vviews->data[i]->shapes[2] = cur_len;
+    }
+
+    kvcache->cur_len = offset + seq_len;
     return VKLLM_ERR_OK;
 }
 
 void vkllm_kvcache_free(struct vkllm_context *context, struct vkllm_kvcache *kvcache)
 {
     struct vkllm_kvcache *p = kvcache;
+    if (p->vviews)
+    {
+        for (uint32_t i = 0; i < p->vviews->used_n; ++i)
+        {
+            vkllm_tensor_free(context, p->vviews->data[i]);
+        }
+        vkllm_array_tensor_free(p->vviews);
+    }
+    if (p->kviews)
+    {
+        for (uint32_t i = 0; i < p->kviews->used_n; ++i)
+        {
+            vkllm_tensor_free(context, p->kviews->data[i]);
+        }
+        vkllm_array_tensor_free(p->kviews);
+    }
     if (p->vcaches)
     {
         for (uint32_t i = 0; i < p->vcaches->used_n; ++i)

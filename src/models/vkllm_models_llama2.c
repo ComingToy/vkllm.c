@@ -4,6 +4,8 @@
 #include "../core/vkllm_op_embedding.h"
 #include "../core/vkllm_op_matmul.h"
 #include "../core/vkllm_op_rmsnorm.h"
+#include "../core/vkllm_op_rope.h"
+#include "../core/vkllm_op_softmax.h"
 #include "../core/vkllm_tensor.h"
 #include "gguflib.h"
 #include "src/core/vkllm_common.h"
@@ -186,6 +188,11 @@ static vkllm_err_t parse_meta_kv(gguf_ctx *ctx, gguf_key *key, struct vkllm_mode
     return VKLLM_ERR_OK;
 }
 
+// Create the device tensor for one gguf weight and record its upload into
+// the caller's command buffer. The caller batches end/submit/wait across
+// ALL weights (one fence sync for the whole model instead of one per
+// tensor).
+
 static vkllm_err_t create_tensor_from_gguf(struct vkllm_context *context, struct vkllm_commands *commands,
                                            gguf_tensor *gguf_t, struct vkllm_tensor **ptensor)
 {
@@ -295,6 +302,7 @@ vkllm_err_t vkllm_models_llama2_load(struct vkllm_context *context, struct vkllm
             free(tok_ctx.scores);
         if (tok_ctx.token_types)
             free(tok_ctx.token_types);
+
     }
 
     _CHECK(vkllm_array_block_weights_new(&model->weights.blocks, model->meta.block_count));
@@ -384,6 +392,7 @@ vkllm_err_t vkllm_models_llama2_load(struct vkllm_context *context, struct vkllm
                 }
             }
         }
+
     }
 
     _CHECK_JUMP(vkllm_models_llama2_create_kvcache(context, model), err, cleanup_commands);
@@ -485,6 +494,9 @@ vkllm_err_t vkllm_models_llama2_free(struct vkllm_context *context, struct vkllm
     return VKLLM_ERR_OK;
 }
 
+// Ownership: all intermediate tensors are added to graph->nodes (ownership
+// transfers to the graph). On error the caller frees the graph; this function
+// never frees it.
 vkllm_err_t vkllm_models_llama2_build_graph(struct vkllm_context *context, struct vkllm_models_llama2 *model,
                                             struct vkllm_tensor *input_toks, struct vkllm_graph *graph,
                                             uint32_t offsets)
@@ -493,7 +505,6 @@ vkllm_err_t vkllm_models_llama2_build_graph(struct vkllm_context *context, struc
     _CHECK_ARGS(model->weights.tok_embed_weights && model->weights.output_norm_weight && model->weights.output_weight);
     _CHECK_ARGS(model->weights.blocks && model->weights.blocks->used_n > 0);
 
-    vkllm_err_t err = VKLLM_ERR_OK;
     struct vkllm_tensor *embedded = NULL;
     struct vkllm_tensor *hidden = NULL;
 
@@ -502,26 +513,21 @@ vkllm_err_t vkllm_models_llama2_build_graph(struct vkllm_context *context, struc
     uint32_t hidden_dim = model->meta.embedding_length;
     uint32_t vocab_size = model->meta.vocab_size;
 
-    _CHECK_JUMP(vkllm_graph_add_input(context, graph, input_toks), err, fail_free_graph);
+    _CHECK(vkllm_graph_add_input(context, graph, input_toks));
 
     uint32_t embed_shapes[4] = {batch, 1, seq_len, hidden_dim};
     struct vkllm_tensor *embed_srcs[] = {input_toks, model->weights.tok_embed_weights};
     uint32_t unk_tok = model->meta.padding_token_id;
-    _CHECK_JUMP(vkllm_tensor_new(context, "embedded", embed_shapes, vkllm_dtype_float16, VKLLM_OP_EMBEDDING, embed_srcs,
-                                 2, &unk_tok, sizeof(unk_tok), false, &embedded),
-                err, fail_free_graph);
-    _CHECK_JUMP(vkllm_graph_add_node(context, graph, embedded), err, fail_free_embedded);
+    _CHECK(vkllm_tensor_new(context, "embedded", embed_shapes, vkllm_dtype_float16, VKLLM_OP_EMBEDDING, embed_srcs,
+                            2, &unk_tok, sizeof(unk_tok), false, &embedded));
+    _CHECK(vkllm_graph_add_node(context, graph, embedded));
 
     hidden = embedded;
 
     for (uint32_t i = 0; i < model->meta.block_count && i < model->weights.blocks->used_n; i++)
     {
         struct block_weights *bw = model->weights.blocks->data[i];
-        if (!bw)
-        {
-            err = VKLLM_ERR_ARGS;
-            goto fail_free_embedded;
-        }
+        _CHECK_ARGS(bw);
 
         struct vkllm_llama2_self_attn_layer_params attn_params = {
             .WK = bw->WK,
@@ -550,55 +556,96 @@ vkllm_err_t vkllm_models_llama2_build_graph(struct vkllm_context *context, struc
             .ffn = ffn_params,
         };
 
-        char block_name[64];
-        snprintf(block_name, sizeof(block_name), "block.%u", i);
-        _CHECK_JUMP(
-            vkllm_llama2_build_transformer_block(context, graph, model->weights.kvcache, hidden, block_params, i), err,
-            fail_free_embedded);
-        hidden = graph->nodes->data[graph->nodes->used_n - 1];
+        _CHECK(vkllm_llama2_build_transformer_block(context, graph, model->weights.kvcache, hidden, block_params, i,
+                                                    &hidden));
     }
 
     struct vkllm_tensor *output_norm = NULL;
     struct vkllm_tensor *norm_srcs[] = {hidden, model->weights.output_norm_weight};
     struct vkllm_op_rmsnorm_params norm_params = {.power = 2.0f, .eps = model->meta.layer_norm_rms_epsilon};
-    _CHECK_JUMP(vkllm_tensor_new(context, "output_norm", hidden->shapes, hidden->dtype, VKLLM_OP_RMSNORM, norm_srcs, 2,
-                                 &norm_params, sizeof(norm_params), false, &output_norm),
-                err, fail_free_embedded);
-    _CHECK_JUMP(vkllm_graph_add_node(context, graph, output_norm), err, fail_free_output_norm);
+    _CHECK(vkllm_tensor_new(context, "output_norm", hidden->shapes, hidden->dtype, VKLLM_OP_RMSNORM, norm_srcs, 2,
+                            &norm_params, sizeof(norm_params), false, &output_norm));
+    _CHECK(vkllm_graph_add_node(context, graph, output_norm));
 
     uint32_t logits_shapes[4] = {batch, 1, seq_len, vocab_size};
     struct vkllm_tensor *logits_srcs[] = {output_norm, model->weights.output_weight};
-    struct vkllm_op_matmul_params matmul_params = {.scale = 1.0f, .act = 0};
+    // output_weight is [vocab, hidden] rows — transposed layout.
+    struct vkllm_op_matmul_params matmul_params = {.scale = 1.0f, .act = 0, .transposed_b = true};
     struct vkllm_tensor *logits = NULL;
-    _CHECK_JUMP(vkllm_tensor_new(context, "logits", logits_shapes, output_norm->dtype, VKLLM_OP_MATMUL, logits_srcs, 2,
-                                 &matmul_params, sizeof(matmul_params), false, &logits),
-                err, fail_free_output_norm);
-    _CHECK_JUMP(vkllm_graph_add_node(context, graph, logits), err, fail_free_logits);
+    _CHECK(vkllm_tensor_new(context, "logits", logits_shapes, output_norm->dtype, VKLLM_OP_MATMUL, logits_srcs, 2,
+                            &matmul_params, sizeof(matmul_params), false, &logits));
+    _CHECK(vkllm_graph_add_node(context, graph, logits));
 
     struct vkllm_tensor *output = NULL;
     uint32_t output_shapes[4] = {0};
     _ASSIGN4(output_shapes, logits->shapes);
     output_shapes[3] = 1;
 
-    _CHECK_JUMP(vkllm_tensor_new(context, "output", output_shapes, vkllm_dtype_uint32, VKLLM_OP_ARG_MAX, &logits, 1,
-                                 NULL, 0, true, &output),
-                err, fail_free_logits);
-    _CHECK_JUMP(vkllm_graph_add_node(context, graph, output), err, fail_free_output);
-    _CHECK_JUMP(vkllm_graph_set_output(context, graph, output), err, fail_free_output);
+    _CHECK(vkllm_tensor_new(context, "output", output_shapes, vkllm_dtype_uint32, VKLLM_OP_ARG_MAX, &logits, 1, NULL,
+                            0, true, &output));
+    _CHECK(vkllm_graph_add_node(context, graph, output));
+    _CHECK(vkllm_graph_set_output(context, graph, output));
 
     return VKLLM_ERR_OK;
+}
 
-fail_free_output:
-    vkllm_tensor_free(context, output);
-fail_free_logits:
-    vkllm_tensor_free(context, logits);
-fail_free_output_norm:
-    vkllm_tensor_free(context, output_norm);
-fail_free_embedded:
-    vkllm_tensor_free(context, embedded);
-fail_free_graph:
-    vkllm_graph_free(context, graph);
-    return err;
+// Re-configure a reusable graph for the next decode step at absolute
+// position `offset` with `seq_len` new tokens (decode: seq_len == 1).
+// Updates the RoPE / softmax offsets and grows the KV cache views. No
+// allocations, no pipeline changes — the same graph can then be re-run.
+vkllm_err_t vkllm_models_llama2_prepare_step(struct vkllm_context *context, struct vkllm_models_llama2 *model,
+                                             struct vkllm_graph *graph, uint32_t offset, uint32_t seq_len)
+{
+    _CHECK_ARGS(context && model && graph && model->weights.kvcache);
+
+    _CHECK(vkllm_kvcache_advance(context, model->weights.kvcache, offset, seq_len));
+
+    // Per-layer parameters that encode the absolute position.
+    struct vkllm_kvcache *kvcache = model->weights.kvcache;
+    uint32_t cur_len = offset + seq_len;
+
+    for (uint32_t i = 0; i < kvcache->layer_counts; ++i)
+    {
+        struct vkllm_tensor *kview = kvcache->kviews->data[i];
+
+        // Attention scores: [.., seq_len, cur_len] — the N dim follows the
+        // K view length. Direct shape assignment (not tensor_view): the new
+        // cur_len can exceed the previous step's view (tensor_view only
+        // shrinks); capacity was allocated at full context length.
+        uint32_t scores_ext[4] = {kview->shapes[0], kview->shapes[1], seq_len, cur_len};
+        char name[128];
+
+        snprintf(name, sizeof(name), "block.%u.attn.scores", i);
+        struct vkllm_tensor *scores = vkllm_graph_find_node(graph, name);
+        _CHECK_ARGS(scores);
+        scores->shapes[2] = scores_ext[2];
+        scores->shapes[3] = scores_ext[3];
+
+        snprintf(name, sizeof(name), "block.%u.attn.attn_weights", i);
+        struct vkllm_tensor *attn_weights = vkllm_graph_find_node(graph, name);
+        _CHECK_ARGS(attn_weights);
+        attn_weights->shapes[2] = scores_ext[2];
+        attn_weights->shapes[3] = scores_ext[3];
+
+        snprintf(name, sizeof(name), "block.%u.attn.RQ", i);
+        struct vkllm_tensor *rq = vkllm_graph_find_node(graph, name);
+        _CHECK_ARGS(rq);
+        struct vkllm_op_rope_params *rope_params = (struct vkllm_op_rope_params *)rq->params;
+        rope_params->offset = offset;
+
+        snprintf(name, sizeof(name), "block.%u.attn.RK", i);
+        struct vkllm_tensor *rk = vkllm_graph_find_node(graph, name);
+        _CHECK_ARGS(rk);
+        rope_params = (struct vkllm_op_rope_params *)rk->params;
+        rope_params->offset = offset;
+
+        snprintf(name, sizeof(name), "block.%u.attn.attn_weights", i);
+        struct vkllm_op_softmax_params *softmax_params =
+            (struct vkllm_op_softmax_params *)attn_weights->params;
+        softmax_params->offsets = offset;
+    }
+
+    return VKLLM_ERR_OK;
 }
 
 static int find_token_by_text(struct vkllm_models_llama2 *model, const char *text, size_t len)

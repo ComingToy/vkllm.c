@@ -328,7 +328,12 @@ START_TEST(test_op_matmul)
     uint32_t shapes_c[4] = {B_c, C_c, M, N};
     struct vkllm_tensor *srcs[] = {input_a, input_b};
     struct vkllm_tensor *output;
-    struct vkllm_op_matmul_params params = {1.0f, tests[_i].act};
+    // transposed_b must be set explicitly: the test data stores the layout
+    // it generated B's buffer with, and shape inference cannot recover it
+    // (square matrices are ambiguous).
+    struct vkllm_op_matmul_params params = {.scale = 1.0f,
+                                            .act = tests[_i].act,
+                                            .transposed_b = tests[_i].transposed_b};
     ck_assert_int_eq(vkllm_tensor_new(context, "output", shapes_c, tests[_i].dtype, VKLLM_OP_MATMUL, srcs, 2,
                                       (uint8_t *)&params, sizeof(params), true, &output),
                      VKLLM_ERR_OK);

@@ -15,6 +15,7 @@ struct vkllm_hashmap_entry
     char *key;
     uint64_t value;
     bool occupied;
+    bool deleted; // tombstone marker: !occupied && deleted keeps probe chains intact
 };
 
 struct vkllm_hashmap

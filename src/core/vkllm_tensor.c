@@ -84,6 +84,11 @@ vkllm_err_t vkllm_tensor_new(struct vkllm_context *context, const char *name, co
 
     struct vkllm_gpu_device *device = context->device;
     *p = (struct vkllm_tensor *)malloc(sizeof(struct vkllm_tensor) + params_bytes);
+    if (!*p)
+    {
+        log_error("alloc tensor failed.");
+        return VKLLM_ERR_ALLOC;
+    }
 
     struct vkllm_tensor *t = *p;
 
@@ -206,8 +211,12 @@ vkllm_err_t vkllm_tensor_new_staging(struct vkllm_context *context, struct vkllm
 
 static bool is_padding(struct vkllm_context *context, vkllm_dtype_t dtype, uint32_t w)
 {
+    __UNUSED(context);
     struct vkllm_dtype_info dtype_info;
-    _CHECK(vkllm_get_dtype_info(dtype, &dtype_info));
+    if (vkllm_get_dtype_info(dtype, &dtype_info) != VKLLM_ERR_OK)
+    {
+        return false;
+    }
 
     uint32_t blocks = (w + dtype_info.items_per_block - 1) / dtype_info.items_per_block;
     uint32_t bytes = blocks * dtype_info.bytes_per_block;
@@ -288,6 +297,7 @@ vkllm_err_t vkllm_tensor_copy_ref(struct vkllm_context *context, struct vkllm_te
 
     t->op = VKLLM_OP_REF;
     t->pipeline = NULL;
+    t->vk_desc_set = VK_NULL_HANDLE;
     t->srcs[0] = tensor;
     for (uint32_t i = 1; i < VKLLM_MAX_SRCS; ++i)
     {
@@ -303,10 +313,10 @@ vkllm_err_t vkllm_tensor_slice0(struct vkllm_context *context, struct vkllm_tens
 {
     _CHECK_ARGS(context && tensor && extents && slice);
     _CHECK(vkllm_tensor_copy_ref(context, tensor, slice));
-    _CHECK(extents[0] <= tensor->shapes[0]);
-    _CHECK(extents[1] <= tensor->shapes[1]);
-    _CHECK(extents[2] <= tensor->shapes[2]);
-    _CHECK(extents[3] <= tensor->shapes[3]);
+    _CHECK_ARGS(extents[0] <= tensor->shapes[0]);
+    _CHECK_ARGS(extents[1] <= tensor->shapes[1]);
+    _CHECK_ARGS(extents[2] <= tensor->shapes[2]);
+    _CHECK_ARGS(extents[3] <= tensor->shapes[3]);
 
     struct vkllm_tensor *t = *slice;
     snprintf((char *)t->name, sizeof(t->name), "%s_slice0", tensor->name);
@@ -315,6 +325,27 @@ vkllm_err_t vkllm_tensor_slice0(struct vkllm_context *context, struct vkllm_tens
     t->shapes[1] = extents[1];
     t->shapes[2] = extents[2];
     t->shapes[3] = extents[3];
+
+    return VKLLM_ERR_OK;
+}
+
+// Shrink an existing view (or tensor) to `extents` in place. Only shrinking
+// is allowed — the new extents must be <= the current shapes, so the
+// underlying buffer stays valid. Strides are untouched (slice semantics:
+// rows keep their original pitch). Used to re-view a pre-allocated KV cache
+// slice at each decode step without reallocating anything.
+vkllm_err_t vkllm_tensor_view(struct vkllm_context *context, struct vkllm_tensor *tensor, const uint32_t *extents)
+{
+    _CHECK_ARGS(context && tensor && extents);
+    _CHECK_ARGS(extents[0] <= tensor->shapes[0]);
+    _CHECK_ARGS(extents[1] <= tensor->shapes[1]);
+    _CHECK_ARGS(extents[2] <= tensor->shapes[2]);
+    _CHECK_ARGS(extents[3] <= tensor->shapes[3]);
+
+    tensor->shapes[0] = extents[0];
+    tensor->shapes[1] = extents[1];
+    tensor->shapes[2] = extents[2];
+    tensor->shapes[3] = extents[3];
 
     return VKLLM_ERR_OK;
 }

@@ -1,6 +1,6 @@
 
 #ifndef _VKLLM_ERR_OP
-define _VKLLM_ERR_OP(_err) 
+#define _VKLLM_ERR_OP(_err)
 #endif
 
 _VKLLM_ERR_OP(VKLLM_ERR_OK)

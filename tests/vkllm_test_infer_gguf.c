@@ -171,27 +171,55 @@ int main(const int argc, const char *argv[])
     }
 
     uint32_t offset = 0;
-    struct vkllm_graph *graph = NULL;
     struct vkllm_array_token_id *output_tokens = NULL;
     vkllm_array_token_id_new(&output_tokens, 32);
 
     double total_time_ms = 0.0;
     struct timeval tv_start, tv_end;
+    struct vkllm_graph *graph = NULL;
+    struct vkllm_tensor *input_toks = NULL;
 
-    for (uint32_t i = 0; i < num_tokens; ++i)
+    // Prefill: one throwaway graph over the whole prompt (seq = n_prompt).
     {
-        struct vkllm_tensor *input_toks = NULL;
         uint32_t input_shapes[] = {1, 1, 1, token_ids->used_n};
-
         _CHECK_JUMP(vkllm_tensor_new(context, "input_toks", input_shapes, vkllm_dtype_uint32, VKLLM_OP_NONE, NULL, 0,
                                      NULL, 0, true, &input_toks),
                     err, cleanup_token_ids);
         _CHECK_JUMP(vkllm_graph_new(context, &graph), err, cleanup_token_ids);
-
-        _CHECK_JUMP(vkllm_models_llama2_build_graph(context, &model, input_toks, graph, offset), err, cleanup_graph);
+        _CHECK_JUMP(vkllm_models_llama2_build_graph(context, &model, input_toks, graph, 0), err, cleanup_graph);
         _CHECK_JUMP(vkllm_graph_init(context, graph), err, cleanup_graph);
         _CHECK_JUMP(vkllm_commands_upload(context, graph->commands, input_toks, (const uint8_t *)token_ids->data,
                                           sizeof(uint32_t) * token_ids->used_n),
+                    err, cleanup_graph);
+        _CHECK_JUMP(vkllm_graph_run(context, graph), err, cleanup_graph);
+        _CHECK_JUMP(vkllm_graph_post_run(context, graph), err, cleanup_graph);
+
+        vkllm_tensor_invalid_cache(context, graph->output_node);
+        uint32_t pred_tok = extract_output_tok(graph);
+        vkllm_array_token_id_append(output_tokens, pred_tok);
+
+        offset = token_ids->used_n;
+        token_ids->used_n = 0;
+        vkllm_array_token_id_append(token_ids, pred_tok);
+
+        vkllm_graph_free(context, graph);
+        graph = NULL;
+    }
+
+    // Decode: build the seq=1 graph once, then re-run it every step.
+    uint32_t input_shapes[] = {1, 1, 1, 1};
+    _CHECK_JUMP(vkllm_tensor_new(context, "input_toks", input_shapes, vkllm_dtype_uint32, VKLLM_OP_NONE, NULL, 0,
+                                 NULL, 0, true, &input_toks),
+                err, cleanup_token_ids);
+    _CHECK_JUMP(vkllm_graph_new(context, &graph), err, cleanup_token_ids);
+    _CHECK_JUMP(vkllm_models_llama2_build_graph(context, &model, input_toks, graph, offset), err, cleanup_graph);
+    _CHECK_JUMP(vkllm_graph_init(context, graph), err, cleanup_graph);
+
+    for (uint32_t i = 1; i < num_tokens; ++i)
+    {
+        _CHECK_JUMP(vkllm_models_llama2_prepare_step(context, &model, graph, offset, 1), err, cleanup_graph);
+        _CHECK_JUMP(vkllm_commands_upload(context, graph->commands, input_toks, (const uint8_t *)token_ids->data,
+                                          sizeof(uint32_t)),
                     err, cleanup_graph);
 
         if (i == 1)
@@ -202,73 +230,13 @@ int main(const int argc, const char *argv[])
         _CHECK_JUMP(vkllm_graph_run(context, graph), err, cleanup_graph);
         _CHECK_JUMP(vkllm_graph_post_run(context, graph), err, cleanup_graph);
 
-#ifdef _LOG_NODE_TIME_COST
-        if (i != 0)
-        {
-            for (uint32_t i = 0; i < graph->nodes->used_n; ++i)
-            {
-                struct vkllm_tensor *node = graph->nodes->data[i];
-                struct vkllm_pipeline *pipeline = node->pipeline;
-                if (!pipeline)
-                    continue;
-
-                uint64_t cost = 0;
-                vkllm_pipeline_query_exec_time(context, pipeline, &cost);
-                context->stats.op_time_costs[node->op] += cost;
-
-                uint64_t acc = 0;
-                vkllm_hashmap_get(context->stats.node_time_cost, node->name, &acc);
-                acc += cost;
-                vkllm_hashmap_insert(context->stats.node_time_cost, node->name, acc);
-            }
-        }
-#endif
-
-#if 0
-        if (i == 0)
-        {
-            for (uint32_t i = 0; i < graph->nodes->used_n; ++i)
-            {
-                struct vkllm_tensor *node = graph->nodes->data[i];
-                log_info("node %s use pipeline %s", node->name, node->pipeline ? node->pipeline->name : "NULL");
-            }
-            for (uint32_t i = 0; i < graph->nodes->used_n; ++i)
-            {
-                struct vkllm_tensor *node = graph->nodes->data[i];
-                if (strcmp(node->name, "block.0.attn.norm") == 0 || strcmp(node->name, "block.0.attn.RQ") == 0 ||
-                    strcmp("embedded", node->name) == 0 || strcmp("block.0.attn.Q_ref", node->name) == 0)
-                {
-                    print_tensor_mean(context, graph->commands, node);
-                    uint32_t seq_len = node->shapes[2], num_head = model.meta.head_count,
-                             hiddden = node->shapes[3] / model.meta.head_count;
-                    uint32_t shape[] = {1, seq_len, num_head, hiddden};
-                    // _CHECK_JUMP(vkllm_tensor_reshape(context, node, shape), err, cleanup_model);
-                    log_info("tensor %s shape = [%u, %u, %u, %u]", node->name, node->shapes[0], node->shapes[1],
-                             node->shapes[2], node->shapes[3]);
-                    print_first_n(context, graph->commands, node, 0, 0, 0, 32);
-                    print_first_n(context, graph->commands, node, 0, 0, 1, 32);
-                    // print_first_n(context, model.graph->commands, node, 0, 0, 1, 100);
-                }
-            }
-
-            {
-                struct vkllm_tensor *node = model.weights.blocks->data[0]->WQ;
-                print_tensor_mean(context, graph->commands, node);
-                print_first_n(context, graph->commands, node, 0, 0, 0, 64);
-                print_first_n(context, graph->commands, node, 0, 0, 1, 64);
-            }
-        }
-#endif
-
         vkllm_tensor_invalid_cache(context, graph->output_node);
         uint32_t pred_tok = extract_output_tok(graph);
 
-        offset += token_ids->used_n;
+        offset += 1;
         vkllm_array_token_id_append(output_tokens, pred_tok);
         token_ids->used_n = 0;
         vkllm_array_token_id_append(token_ids, pred_tok);
-        vkllm_graph_free(context, graph);
-        graph = NULL;
     }
 
     gettimeofday(&tv_end, NULL);

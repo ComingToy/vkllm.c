@@ -13,6 +13,11 @@ struct vkllm_op_matmul_params
 {
     float scale;
     int32_t act;
+    // Explicit layout of srcs[1]: true = B stored [N, K] (row-per-output,
+    // e.g. GGUF weights), false = B stored [K, N]. Must be declared by the
+    // caller — it cannot always be inferred from shapes (square matrices
+    // are ambiguous) and a wrong guess silently selects the wrong pipeline.
+    bool transposed_b;
 };
 
 extern vkllm_err_t vkllm_op_matmul_init(struct vkllm_context *context, struct vkllm_commands *commands,

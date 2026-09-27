@@ -11,8 +11,17 @@ static const struct vkllm_op_matmul_params *get_matmul_params(const struct vkllm
     return (const struct vkllm_op_matmul_params *)tensor->params;
 }
 
-static inline bool is_transposed_b(struct vkllm_tensor *tensor)
+// Prefer the explicitly declared layout. Fall back to shape inference only
+// when the caller left transposed_b unspecified (== -1), so existing callers
+// using positional initializers keep their old behavior.
+static int matmul_transposed_b(const struct vkllm_tensor *tensor)
 {
+    const struct vkllm_op_matmul_params *params = get_matmul_params(tensor);
+    if (params->transposed_b == 0 || params->transposed_b == 1)
+    {
+        return (int)params->transposed_b;
+    }
+
     struct vkllm_tensor *a = tensor->srcs[0];
     struct vkllm_tensor *b = tensor->srcs[1];
 
@@ -26,7 +35,7 @@ static inline bool is_transposed_b(struct vkllm_tensor *tensor)
 static inline bool is_mat_mul_vec(struct vkllm_tensor *tensor)
 {
     struct vkllm_tensor *in0 = tensor->srcs[0];
-    return in0->shapes[2] == 1 && is_transposed_b(tensor);
+    return in0->shapes[2] == 1 && matmul_transposed_b(tensor);
 }
 
 #define BOARDCAST_AXIS0 0
@@ -68,7 +77,7 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
     _CHECK_ARGS(context && tensor && pipeline);
     *pipeline = NULL;
 
-    int tranposed_b = (int)is_transposed_b(tensor);
+    int tranposed_b = matmul_transposed_b(tensor);
     int a_boardcast_type = boardcast_type(tensor->srcs[0], tensor->srcs[1]);
     int b_boardcast_type = boardcast_type(tensor->srcs[1], tensor->srcs[0]);
 
@@ -235,9 +244,17 @@ vkllm_err_t vkllm_op_mat_mul_mat_run(struct vkllm_context *context, struct vkllm
 
     uint32_t K = in0->shapes[3];
 
-    if (!is_transposed_b(tensor))
+    if (!matmul_transposed_b(tensor))
     {
-        _CHECK_ARGS(in1->shapes[3] == N && in1->shapes[2] == K);
+        if (!(in1->shapes[3] == N && in1->shapes[2] == K))
+        {
+            log_error("matmul %s shape mismatch: in0 [%u,%u,%u,%u], in1 [%u,%u,%u,%u], out [%u,%u,%u,%u], "
+                      "expected in1 == [%u,%u,%u,%u]",
+                      tensor->name, in0->shapes[0], in0->shapes[1], in0->shapes[2], in0->shapes[3], in1->shapes[0],
+                      in1->shapes[1], in1->shapes[2], in1->shapes[3], tensor->shapes[0], tensor->shapes[1],
+                      tensor->shapes[2], tensor->shapes[3], in1->shapes[0], in1->shapes[1], K, N);
+            return VKLLM_ERR_ARGS;
+        }
     }
 
     vkllm_err_t err = VKLLM_ERR_OK;

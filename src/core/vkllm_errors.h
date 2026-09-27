@@ -6,9 +6,10 @@ extern "C" {
 #endif
 #define _VKLLM_ERR_OP(_err) _err,
 
+// VKLLM_ERR_OK is 0 (C convention: zero = success), so process exit codes
+// and boolean-ish checks behave as expected.
 typedef enum
 {
-    VKLLM_ERR_START = 0,
 #include "vkllm_errors.inc"
 } vkllm_err_t;
 
