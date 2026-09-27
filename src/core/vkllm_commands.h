@@ -44,9 +44,10 @@ extern vkllm_err_t vkllm_commands_download(struct vkllm_context *context, struct
 extern void vkllm_commands_sync_tensor(struct vkllm_context *context, struct vkllm_commands *commands,
                                        struct vkllm_tensor *tensor, VkAccessFlagBits dst_access,
                                        VkPipelineStageFlagBits dst_stage);
+struct vkllm_push_constants;
 extern vkllm_err_t vkllm_commands_pipeline(struct vkllm_context *context, struct vkllm_commands *commands,
                                            struct vkllm_tensor *tensor, struct vkllm_array_ptr *bindings,
-                                           struct vkllm_array_u32 *indices, struct vkllm_shader_constants *constants,
+                                           struct vkllm_array_u32 *indices, struct vkllm_push_constants *constants,
                                            uint32_t group_x, uint32_t group_y, uint32_t group_z);
 extern vkllm_err_t vkllm_commands_submit(struct vkllm_context *context, struct vkllm_commands *commands);
 extern vkllm_err_t vkllm_commands_wait_exec(struct vkllm_context *context, struct vkllm_commands *commands);

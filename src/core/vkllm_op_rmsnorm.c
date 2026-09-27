@@ -75,22 +75,22 @@ vkllm_err_t vkllm_op_rmsnorm_run(struct vkllm_context *context, struct vkllm_com
     _DIV4_S(in1->strides, in1_dtype_info.bytes, in1_strides);
 
     vkllm_err_t err = VKLLM_ERR_OK;
-    struct vkllm_shader_constants *constants = NULL;
-    _CHECK(vkllm_shader_constants_new(&constants, 128));
+    struct vkllm_push_constants pc;
+    vkllm_push_constants_reset(&pc);
 
     // Push constants: in_shape, w_shape, power, eps
-    vkllm_shader_constants_append_n(constants, in0->shapes, 4);
-    vkllm_shader_constants_append_n(constants, in0_strides, 4);
-    vkllm_shader_constants_append_n(constants, in1->shapes, 4);
-    vkllm_shader_constants_append_n(constants, in1_strides, 4);
+    vkllm_push_u32_n(&pc, in0->shapes, 4);
+    vkllm_push_u32_n(&pc, in0_strides, 4);
+    vkllm_push_u32_n(&pc, in1->shapes, 4);
+    vkllm_push_u32_n(&pc, in1_strides, 4);
 
     struct vkllm_op_rmsnorm_params *params = (struct vkllm_op_rmsnorm_params *)tensor->params;
 
-    vkllm_shader_constants_append(constants, params->power);
-    vkllm_shader_constants_append(constants, params->eps);
+    vkllm_push_u32(&pc, params->power);
+    vkllm_push_u32(&pc, params->eps);
 
     struct vkllm_array_ptr *bindings = NULL;
-    _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 3), err, free_constants_out);
+    _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 3), err, out);
     vkllm_array_ptr_append(bindings, in0);
     vkllm_array_ptr_append(bindings, in1);
     vkllm_array_ptr_append(bindings, tensor);
@@ -111,15 +111,14 @@ vkllm_err_t vkllm_op_rmsnorm_run(struct vkllm_context *context, struct vkllm_com
     }
 
     _CHECK_JUMP(
-        vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, constants, group_x, group_y, group_z), err,
+        vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, &pc, group_x, group_y, group_z), err,
         free_bindings_out);
 
     tensor->access_flags = VK_ACCESS_SHADER_WRITE_BIT;
     tensor->pipeline_stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 free_bindings_out:
     vkllm_array_ptr_free(bindings);
-free_constants_out:
-    vkllm_shader_constants_free(constants);
+out:
     return err;
 }
 

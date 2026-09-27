@@ -435,28 +435,38 @@ err_create_instance:
     return ret;
 }
 
-vkllm_err_t compute_group_counts(struct vkllm_context *context, uint32_t N, uint32_t local_x, uint32_t local_y,
-                                 uint32_t local_z, uint32_t *group_x, uint32_t *group_y, uint32_t *group_z)
+// Compute a (group_x, 1, group_z) grid covering at least N work items with
+// workgroup size (local_x, 1, 1). x is filled first (up to the device max);
+// the overflow spills into z — shader thread ids (get_thread_id) are the
+// z-major linear id over the whole grid, so tid = z * (group_x*local_x) + x
+// stays a dense enumeration and the per-op bounds checks discard the tail.
+// Returns VKLLM_ERR_ARGS if even (max_x, max_z) cannot cover N.
+vkllm_err_t vkllm_calc_linear_group_counts(struct vkllm_context *context, uint64_t N, uint32_t local_x,
+                                           uint32_t *group_x, uint32_t *group_z)
 {
-    _CHECK_ARGS(context && group_x && group_y && group_z);
-    VkPhysicalDeviceLimits *limits = &context->device->vk_physical_dev.properties.limits;
-    *group_x = 1;
-    *group_y = 1;
-    *group_z = 1;
+    _CHECK_ARGS(context && group_x && group_z && local_x > 0);
 
-    if (*group_x > limits->maxComputeWorkGroupCount[0])
+    const uint32_t max_x = context->device->vk_physical_dev.properties.limits.maxComputeWorkGroupCount[0];
+    const uint32_t max_z = context->device->vk_physical_dev.properties.limits.maxComputeWorkGroupCount[2];
+
+    uint64_t gx = (N + local_x - 1) / local_x;
+    uint64_t gz = 1;
+
+    if (gx > max_x)
     {
-        *group_x = limits->maxComputeWorkGroupCount[0];
-        N = N - *group_x * local_x;
-        *group_y = (N + local_y - 1) / local_y;
-        if (*group_y > limits->maxComputeWorkGroupCount[1])
-        {
-            *group_y = limits->maxComputeWorkGroupCount[1];
-            N = N - *group_y * local_y;
-            *group_z = (N + local_z - 1) / local_z;
-        }
+        gz = (gx + max_x - 1) / max_x;
+        gx = max_x;
     }
 
+    if (gz > max_z)
+    {
+        log_error("grid too large: N=%llu items with local_x=%u exceed max group counts (%u, %u)",
+                  (unsigned long long)N, local_x, max_x, max_z);
+        return VKLLM_ERR_ARGS;
+    }
+
+    *group_x = (uint32_t)gx;
+    *group_z = (uint32_t)gz;
     return VKLLM_ERR_OK;
 }
 

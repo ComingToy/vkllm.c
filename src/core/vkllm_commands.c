@@ -281,7 +281,7 @@ vkllm_err_t vkllm_commands_download(struct vkllm_context *context, struct vkllm_
 
 vkllm_err_t vkllm_commands_pipeline(struct vkllm_context *context, struct vkllm_commands *commands,
                                     struct vkllm_tensor *tensor, struct vkllm_array_ptr *bindings,
-                                    struct vkllm_array_u32 *indices, struct vkllm_shader_constants *constants,
+                                    struct vkllm_array_u32 *indices, struct vkllm_push_constants *constants,
                                     uint32_t group_x, uint32_t group_y, uint32_t group_z)
 {
     _CHECK_ARGS(context && tensor->pipeline && bindings && constants);
@@ -302,19 +302,45 @@ vkllm_err_t vkllm_commands_pipeline(struct vkllm_context *context, struct vkllm_
 
     for (uint32_t i = 0; i < bindings->used_n; ++i)
     {
-        struct vkllm_tensor *tensor = (struct vkllm_tensor *)bindings->data[i];
-        vkllm_commands_sync_tensor(context, commands, tensor, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+        struct vkllm_tensor *binding = (struct vkllm_tensor *)bindings->data[i];
+        vkllm_commands_sync_tensor(context, commands, binding, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     }
 
-    _CHECK(vkllm_commands_update_bindings(context, tensor->vk_desc_set, bindings, indices));
+    // Descriptor set contents only change when the bound buffers change.
+    // Compare against what was last written into this tensor's set and skip
+    // the update (and its allocations) when nothing moved. Weights and most
+    // intermediates hit the skip path on every re-run of a reused graph.
+    bool bindings_changed = (tensor->n_bound != bindings->used_n);
+    if (!bindings_changed)
+    {
+        for (uint32_t i = 0; i < bindings->used_n; ++i)
+        {
+            struct vkllm_tensor *binding = (struct vkllm_tensor *)bindings->data[i];
+            if (binding->data.vk_buf != tensor->bound_bufs[i])
+            {
+                bindings_changed = true;
+                break;
+            }
+        }
+    }
+
+    if (bindings_changed)
+    {
+        _CHECK(vkllm_commands_update_bindings(context, tensor->vk_desc_set, bindings, indices));
+        for (uint32_t i = 0; i < bindings->used_n; ++i)
+        {
+            tensor->bound_bufs[i] = ((struct vkllm_tensor *)bindings->data[i])->data.vk_buf;
+        }
+        tensor->n_bound = bindings->used_n;
+    }
 
     vkCmdBindPipeline(commands->vk_command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->vk_pipeline);
 
     if (constants->bytes > 0)
     {
         vkCmdPushConstants(commands->vk_command_buffer, pipeline->vk_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                           constants->bytes, constants->data->data);
+                           constants->bytes, constants->data);
     }
 
     vkCmdBindDescriptorSets(commands->vk_command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->vk_pipeline_layout,

@@ -38,6 +38,12 @@ struct vkllm_tensor
     VkAccessFlagBits access_flags;
     VkPipelineStageFlagBits pipeline_stage;
     VkDescriptorSet vk_desc_set;
+    // Descriptor-set dirty tracking: buffers currently written into
+    // vk_desc_set (n_bound == 0 means "never written"). Lets
+    // vkllm_commands_pipeline skip redundant vkUpdateDescriptorSets when a
+    // reused graph re-dispatches with unchanged bindings.
+    uint32_t n_bound;
+    VkBuffer bound_bufs[VKLLM_MAX_SRCS];
 
     vkllm_op_t op;
     struct vkllm_pipeline *pipeline;

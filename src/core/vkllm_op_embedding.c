@@ -4,6 +4,7 @@
 #include "vkllm_common.h"
 #include "vkllm_context.h"
 #include "vkllm_dtypes.h"
+#include "vkllm_gpu_device.h"
 #include "vkllm_pipeline.h"
 #include "vkllm_tensor.h"
 
@@ -79,17 +80,17 @@ vkllm_err_t vkllm_op_embedding_run(struct vkllm_context *context, struct vkllm_c
     _DIV4_S(in1->strides, in1_dtype_info.bytes, in1_strides);
     _DIV4_S(tensor->strides, dtype_info.bytes, strides);
 
-    struct vkllm_shader_constants *constants = NULL;
-    vkllm_shader_constants_new(&constants, 128);
-    vkllm_shader_constants_append_n(constants, in0->shapes, 4);
-    vkllm_shader_constants_append_n(constants, in0_strides, 4);
-    vkllm_shader_constants_append_n(constants, in1->shapes, 4);
-    vkllm_shader_constants_append_n(constants, in1_strides, 4);
-    vkllm_shader_constants_append_n(constants, tensor->shapes, 4);
-    vkllm_shader_constants_append_n(constants, strides, 4);
+    struct vkllm_push_constants pc;
+    vkllm_push_constants_reset(&pc);
+    vkllm_push_u32_n(&pc, in0->shapes, 4);
+    vkllm_push_u32_n(&pc, in0_strides, 4);
+    vkllm_push_u32_n(&pc, in1->shapes, 4);
+    vkllm_push_u32_n(&pc, in1_strides, 4);
+    vkllm_push_u32_n(&pc, tensor->shapes, 4);
+    vkllm_push_u32_n(&pc, strides, 4);
 
     uint32_t unk_tok = *(uint32_t *)tensor->params;
-    vkllm_shader_constants_append(constants, unk_tok);
+    vkllm_push_u32(&pc, unk_tok);
 
     struct vkllm_array_ptr *bindings = NULL;
     vkllm_array_ptr_new(&bindings, 3);
@@ -99,10 +100,9 @@ vkllm_err_t vkllm_op_embedding_run(struct vkllm_context *context, struct vkllm_c
 
     struct vkllm_pipeline *pipeline = tensor->pipeline;
     uint32_t N = _MUL4(in0->shapes);
-    uint32_t group_x = (N + pipeline->shader_info.local_x - 1) / pipeline->shader_info.local_x;
-    vkllm_err_t err = vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, constants, group_x, 1, 1);
-
-    vkllm_shader_constants_free(constants);
+    uint32_t group_x = 0, group_z = 0;
+    vkllm_calc_linear_group_counts(context, N, pipeline->shader_info.local_x, &group_x, &group_z);
+    vkllm_err_t err = vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, &pc, group_x, 1, group_z);
     vkllm_array_ptr_free(bindings);
     tensor->access_flags = VK_ACCESS_SHADER_WRITE_BIT;
     tensor->pipeline_stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;

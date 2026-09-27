@@ -87,16 +87,16 @@ vkllm_err_t vkllm_op_softmax_run(struct vkllm_context *context, struct vkllm_com
     // Assuming params are stored as: [seq_mask (int32), offsets (uint32)]
     struct vkllm_op_softmax_params *params = (struct vkllm_op_softmax_params *)tensor->params;
 
-    struct vkllm_shader_constants *constants = NULL;
-    _CHECK(vkllm_shader_constants_new(&constants, 40));
-    vkllm_shader_constants_append_n(constants, tensor->shapes, 4);
-    vkllm_shader_constants_append_n(constants, strides, 4);
-    vkllm_shader_constants_append(constants, params->seq_mask);
-    vkllm_shader_constants_append(constants, params->offsets);
+    struct vkllm_push_constants pc;
+    vkllm_push_constants_reset(&pc);
+    vkllm_push_u32_n(&pc, tensor->shapes, 4);
+    vkllm_push_u32_n(&pc, strides, 4);
+    vkllm_push_u32(&pc, params->seq_mask);
+    vkllm_push_u32(&pc, params->offsets);
 
     vkllm_err_t err = VKLLM_ERR_OK;
     struct vkllm_array_ptr *bindings = NULL;
-    _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 2), err, free_constants_out);
+    _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 2), err, out);
 
     vkllm_array_ptr_append(bindings, in0);
     vkllm_array_ptr_append(bindings, tensor);
@@ -109,21 +109,19 @@ vkllm_err_t vkllm_op_softmax_run(struct vkllm_context *context, struct vkllm_com
 
     // Each workgroup processes one row
     // The shader uses subgroup operations to process elements within a row
-    uint32_t local_x = pipeline->shader_info.local_x;
-    uint32_t group_x = (nthreads + local_x - 1) / local_x;
-    uint32_t group_y = 1;
-    uint32_t group_z = 1;
+    uint32_t group_x = 0, group_z = 0;
+    _CHECK(vkllm_calc_linear_group_counts(context, nthreads, pipeline->shader_info.local_x, &group_x, &group_z));
+    const uint32_t group_y = 1;
 
     _CHECK_JUMP(
-        vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, constants, group_x, group_y, group_z), err,
+        vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, &pc, group_x, group_y, group_z), err,
         free_bindings_out);
 
     tensor->access_flags = VK_ACCESS_SHADER_WRITE_BIT;
     tensor->pipeline_stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 free_bindings_out:
     vkllm_array_ptr_free(bindings);
-free_constants_out:
-    vkllm_shader_constants_free(constants);
+out:
     return err;
 }
 

@@ -132,6 +132,8 @@ vkllm_err_t vkllm_tensor_new(struct vkllm_context *context, const char *name, co
     t->access_flags = 0;
     t->pipeline_stage = 0;
     t->vk_desc_set = VK_NULL_HANDLE;
+    t->n_bound = 0;
+    memset(t->bound_bufs, 0, sizeof(t->bound_bufs));
 
     err = vkllm_create_vk_buffer(t);
     if (err != VKLLM_ERR_OK)
@@ -298,6 +300,8 @@ vkllm_err_t vkllm_tensor_copy_ref(struct vkllm_context *context, struct vkllm_te
     t->op = VKLLM_OP_REF;
     t->pipeline = NULL;
     t->vk_desc_set = VK_NULL_HANDLE;
+    t->n_bound = 0;
+    memset(t->bound_bufs, 0, sizeof(t->bound_bufs));
     t->srcs[0] = tensor;
     for (uint32_t i = 1; i < VKLLM_MAX_SRCS; ++i)
     {

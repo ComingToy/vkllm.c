@@ -83,17 +83,17 @@ vkllm_err_t vkllm_op_update_rows_run(struct vkllm_context *context, struct vkllm
 
     struct vkllm_op_update_rows_params *params = (struct vkllm_op_update_rows_params *)tensor->params;
 
-    struct vkllm_shader_constants *constants = NULL;
-    _CHECK(vkllm_shader_constants_new(&constants, sizeof(uint32_t) * 34));
-    vkllm_shader_constants_append_n(constants, in0->shapes, 4);
-    vkllm_shader_constants_append_n(constants, in0_strides, 4);
-    vkllm_shader_constants_append_n(constants, tensor->shapes, 4);
-    vkllm_shader_constants_append_n(constants, out_strides, 4);
-    vkllm_shader_constants_append(constants, params->offset_rows);
+    struct vkllm_push_constants pc;
+    vkllm_push_constants_reset(&pc);
+    vkllm_push_u32_n(&pc, in0->shapes, 4);
+    vkllm_push_u32_n(&pc, in0_strides, 4);
+    vkllm_push_u32_n(&pc, tensor->shapes, 4);
+    vkllm_push_u32_n(&pc, out_strides, 4);
+    vkllm_push_u32(&pc, params->offset_rows);
 
     vkllm_err_t err = VKLLM_ERR_OK;
     struct vkllm_array_ptr *bindings = NULL;
-    _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 2), err, free_constants_out);
+    _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 2), err, out);
 
     vkllm_array_ptr_append(bindings, in0);
     vkllm_array_ptr_append(bindings, tensor);
@@ -101,19 +101,19 @@ vkllm_err_t vkllm_op_update_rows_run(struct vkllm_context *context, struct vkllm
     struct vkllm_pipeline *pipeline = tensor->pipeline;
 
     uint32_t N = _MUL4(in0->shapes);
-    uint32_t group_x = (N + pipeline->shader_info.local_x - 1) / pipeline->shader_info.local_x;
-    uint32_t group_y = 1, group_z = 1;
+    uint32_t group_x = 0, group_z = 0;
+    _CHECK(vkllm_calc_linear_group_counts(context, N, pipeline->shader_info.local_x, &group_x, &group_z));
+    const uint32_t group_y = 1;
 
     _CHECK_JUMP(
-        vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, constants, group_x, group_y, group_z), err,
+        vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, &pc, group_x, group_y, group_z), err,
         free_bindings_out);
 
     tensor->access_flags = VK_ACCESS_SHADER_WRITE_BIT;
     tensor->pipeline_stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 free_bindings_out:
     vkllm_array_ptr_free(bindings);
-free_constants_out:
-    vkllm_shader_constants_free(constants);
+out:
     return err;
 }
 

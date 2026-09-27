@@ -86,25 +86,25 @@ vkllm_err_t vkllm_op_rope_run(struct vkllm_context *context, struct vkllm_comman
     _DIV4_S(in0->strides, dtype_info.bytes, in_strides);
     _DIV4_S(tensor->strides, dtype_info.bytes, out_strides);
 
-    struct vkllm_shader_constants *constants = NULL;
-    _CHECK(vkllm_shader_constants_new(&constants, 128));
-    vkllm_shader_constants_append_n(constants, in0->shapes, 4);
-    vkllm_shader_constants_append_n(constants, in_strides, 4);
-    vkllm_shader_constants_append_n(constants, tensor->shapes, 4);
-    vkllm_shader_constants_append_n(constants, out_strides, 4);
-    vkllm_shader_constants_append(constants, offset);
+    struct vkllm_push_constants pc;
+    vkllm_push_constants_reset(&pc);
+    vkllm_push_u32_n(&pc, in0->shapes, 4);
+    vkllm_push_u32_n(&pc, in_strides, 4);
+    vkllm_push_u32_n(&pc, tensor->shapes, 4);
+    vkllm_push_u32_n(&pc, out_strides, 4);
+    vkllm_push_u32(&pc, offset);
     if (tensor->dtype == vkllm_dtype_float16)
     {
-        vkllm_shader_constants_append(constants, base);
+        vkllm_push_f32(&pc, base);
     }
     else
     {
-        vkllm_shader_constants_append(constants, base);
+        vkllm_push_f32(&pc, base);
     }
 
     vkllm_err_t err = VKLLM_ERR_OK;
     struct vkllm_array_ptr *bindings = NULL;
-    _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 2), err, free_constants_out);
+    _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 2), err, out);
 
     vkllm_array_ptr_append(bindings, in0);
     vkllm_array_ptr_append(bindings, tensor);
@@ -120,35 +120,19 @@ vkllm_err_t vkllm_op_rope_run(struct vkllm_context *context, struct vkllm_comman
     uint32_t W = tensor->shapes[3] / 2; // Process pairs
     uint32_t N = B * C * H * W;
 
-    uint32_t group_x = (N + pipeline->shader_info.local_x - 1) / pipeline->shader_info.local_x;
-    uint32_t group_y = 1, group_z = 1;
-
-    VkPhysicalDeviceLimits *limits = &context->device->vk_physical_dev.properties.limits;
-    if (group_x > limits->maxComputeWorkGroupCount[0])
-    {
-        log_info("group_x %u > %u, adjust to max\n", group_x, limits->maxComputeWorkGroupCount[0]);
-        group_x = limits->maxComputeWorkGroupCount[0];
-        N = N - group_x * pipeline->shader_info.local_x;
-        group_y = (N + pipeline->shader_info.local_y - 1) / pipeline->shader_info.local_y;
-        if (group_y > limits->maxComputeWorkGroupCount[1])
-        {
-            log_info("group_y %u > %u, adjust to max\n", group_y, limits->maxComputeWorkGroupCount[1]);
-            group_y = limits->maxComputeWorkGroupCount[1];
-            N = N - group_y * pipeline->shader_info.local_y;
-            group_z = (N + pipeline->shader_info.local_z - 1) / pipeline->shader_info.local_z;
-        }
-    }
+    uint32_t group_x = 0, group_z = 0;
+    _CHECK(vkllm_calc_linear_group_counts(context, N, pipeline->shader_info.local_x, &group_x, &group_z));
+    const uint32_t group_y = 1;
 
     _CHECK_JUMP(
-        vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, constants, group_x, group_y, group_z), err,
+        vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, &pc, group_x, group_y, group_z), err,
         free_bindings_out);
 
     tensor->access_flags = VK_ACCESS_SHADER_WRITE_BIT;
     tensor->pipeline_stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 free_bindings_out:
     vkllm_array_ptr_free(bindings);
-free_constants_out:
-    vkllm_shader_constants_free(constants);
+out:
     return err;
 }
 

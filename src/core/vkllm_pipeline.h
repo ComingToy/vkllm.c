@@ -7,6 +7,7 @@ extern "C" {
 
 #include "vkllm_array.h"
 #include <stdint.h>
+#include <string.h>
 #include <vulkan/vulkan.h>
 
 struct vkllm_gpu_device;
@@ -39,6 +40,57 @@ struct vkllm_pipeline
     VkQueryPool vk_query_pool;
     char *name[];
 };
+
+// Fixed-capacity push-constant block, filled with plain stores (no heap,
+// no realloc) and submitted to the command buffer in one vkCmdPushConstants.
+// Vulkan guarantees >= 128 bytes of push constants; 128 covers every op.
+#define VKLLM_PUSH_CONSTANTS_MAX 128
+struct vkllm_push_constants
+{
+    uint32_t bytes;
+    uint8_t data[VKLLM_PUSH_CONSTANTS_MAX];
+};
+
+static inline void vkllm_push_constants_reset(struct vkllm_push_constants *pc)
+{
+    pc->bytes = 0;
+}
+
+static inline vkllm_err_t vkllm_push_constants_append(struct vkllm_push_constants *pc, const void *src, uint32_t bytes)
+{
+    if (pc->bytes + bytes > VKLLM_PUSH_CONSTANTS_MAX)
+        return VKLLM_ERR_ARGS;
+    memcpy(pc->data + pc->bytes, src, bytes);
+    pc->bytes += bytes;
+    return VKLLM_ERR_OK;
+}
+
+// Typed appenders matching the old vkllm_shader_constants_append call sites.
+static inline vkllm_err_t vkllm_push_u32(struct vkllm_push_constants *pc, uint32_t v)
+{
+    return vkllm_push_constants_append(pc, &v, sizeof(v));
+}
+
+static inline vkllm_err_t vkllm_push_i32(struct vkllm_push_constants *pc, int32_t v)
+{
+    return vkllm_push_constants_append(pc, &v, sizeof(v));
+}
+
+static inline vkllm_err_t vkllm_push_f32(struct vkllm_push_constants *pc, float v)
+{
+    return vkllm_push_constants_append(pc, &v, sizeof(v));
+}
+
+static inline vkllm_err_t vkllm_push_u32_n(struct vkllm_push_constants *pc, const uint32_t *vs, uint32_t n)
+{
+    for (uint32_t i = 0; i < n; ++i)
+    {
+        vkllm_err_t err = vkllm_push_u32(pc, vs[i]);
+        if (err != VKLLM_ERR_OK)
+            return err;
+    }
+    return VKLLM_ERR_OK;
+}
 
 extern vkllm_err_t vkllm_shader_constants_new(struct vkllm_shader_constants **constants, uint32_t init_bytes);
 extern vkllm_err_t vkllm_shader_constants_copy(const struct vkllm_shader_constants *src,

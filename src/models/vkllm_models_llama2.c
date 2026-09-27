@@ -1,6 +1,7 @@
 #include "vkllm_models_llama2.h"
 #include "../core/vkllm_commands.h"
 #include "../core/vkllm_graph.h"
+#include "../core/vkllm_hashmap.h"
 #include "../core/vkllm_op_embedding.h"
 #include "../core/vkllm_op_matmul.h"
 #include "../core/vkllm_op_rmsnorm.h"
@@ -192,6 +193,46 @@ static vkllm_err_t parse_meta_kv(gguf_ctx *ctx, gguf_key *key, struct vkllm_mode
 // the caller's command buffer. The caller batches end/submit/wait across
 // ALL weights (one fence sync for the whole model instead of one per
 // tensor).
+static int find_token_by_text(struct vkllm_models_llama2 *model, const char *text, size_t len)
+{
+    // The token index keys are NUL-terminated strings; lookups come from
+    // byte-sliced pieces, so only pieces without embedded NULs can match.
+    if (memchr(text, '\0', len))
+        return -1;
+
+    char key[256];
+    if (len >= sizeof(key))
+        return -1;
+    memcpy(key, text, len);
+    key[len] = '\0';
+
+    uint64_t id = 0;
+    if (!vkllm_hashmap_get(model->meta.token_index, key, &id))
+        return -1;
+    return (int)id;
+}
+
+// Build the text -> id index once after the vocab is parsed. Later tokens
+// with duplicate text win (matching the previous linear scan's behavior,
+// which returned the LAST match... actually the first; keep first-wins by
+// skipping keys already present).
+static vkllm_err_t build_token_index(struct vkllm_models_llama2 *model)
+{
+    if (model->meta.token_index)
+        return VKLLM_ERR_OK;
+
+    _CHECK(vkllm_hashmap_new(&model->meta.token_index, model->meta.tokens->used_n * 2));
+    for (size_t i = 0; i < model->meta.tokens->used_n; i++)
+    {
+        struct vkllm_token *tok = &model->meta.tokens->data[i];
+        if (!vkllm_hashmap_contains(model->meta.token_index, tok->text))
+        {
+            _CHECK(vkllm_hashmap_insert(model->meta.token_index, tok->text, (uint64_t)i));
+        }
+    }
+    return VKLLM_ERR_OK;
+}
+
 
 static vkllm_err_t create_tensor_from_gguf(struct vkllm_context *context, struct vkllm_commands *commands,
                                            gguf_tensor *gguf_t, struct vkllm_tensor **ptensor)
@@ -219,11 +260,7 @@ static vkllm_err_t create_tensor_from_gguf(struct vkllm_context *context, struct
     if (err != VKLLM_ERR_OK)
         return err;
 
-    _CHECK(vkllm_commands_begin(context, commands));
     _CHECK(vkllm_commands_upload(context, commands, *ptensor, gguf_t->weights_data, gguf_t->bsize));
-    _CHECK(vkllm_commands_end(context, commands));
-    _CHECK(vkllm_commands_submit(context, commands));
-    _CHECK(vkllm_commands_wait_exec(context, commands));
 
     return VKLLM_ERR_OK;
 }
@@ -303,13 +340,23 @@ vkllm_err_t vkllm_models_llama2_load(struct vkllm_context *context, struct vkllm
         if (tok_ctx.token_types)
             free(tok_ctx.token_types);
 
+        _CHECK_JUMP(build_token_index(model), err, cleanup_commands);
     }
 
     _CHECK(vkllm_array_block_weights_new(&model->weights.blocks, model->meta.block_count));
 
+    // Batched weight upload: one command buffer per batch of tensors, a few
+    // fence syncs for the whole model instead of one per tensor. Staging
+    // buffers live until each batch's fence wait, so the batch size bounds
+    // the peak host-mapped memory (BATCH_FLUSH_BYTES below).
+    _CHECK_JUMP(vkllm_commands_begin(context, commands), err, cleanup_commands);
+    size_t batched_bytes = 0;
+#define WEIGHTS_BATCH_FLUSH_BYTES (256u * 1024 * 1024)
+
     gguf_tensor tensor;
     while (gguf_get_tensor(gguf, &tensor))
     {
+        size_t upload_bytes = tensor.bsize;
         const char *name = tensor.name;
         size_t namelen = tensor.namelen;
 
@@ -393,7 +440,21 @@ vkllm_err_t vkllm_models_llama2_load(struct vkllm_context *context, struct vkllm
             }
         }
 
+        batched_bytes += upload_bytes;
+        if (batched_bytes >= WEIGHTS_BATCH_FLUSH_BYTES)
+        {
+            _CHECK_JUMP(vkllm_commands_end(context, commands), err, cleanup_commands);
+            _CHECK_JUMP(vkllm_commands_submit(context, commands), err, cleanup_commands);
+            _CHECK_JUMP(vkllm_commands_wait_exec(context, commands), err, cleanup_commands);
+            _CHECK_JUMP(vkllm_commands_begin(context, commands), err, cleanup_commands);
+            batched_bytes = 0;
+        }
     }
+
+#undef WEIGHTS_BATCH_FLUSH_BYTES
+    _CHECK_JUMP(vkllm_commands_end(context, commands), err, cleanup_commands);
+    _CHECK_JUMP(vkllm_commands_submit(context, commands), err, cleanup_commands);
+    _CHECK_JUMP(vkllm_commands_wait_exec(context, commands), err, cleanup_commands);
 
     _CHECK_JUMP(vkllm_models_llama2_create_kvcache(context, model), err, cleanup_commands);
 
@@ -423,6 +484,12 @@ cleanup_gguf:
 vkllm_err_t vkllm_models_llama2_free(struct vkllm_context *context, struct vkllm_models_llama2 *model)
 {
     _CHECK_ARGS(context && model);
+
+    if (model->meta.token_index)
+    {
+        vkllm_hashmap_free(model->meta.token_index);
+        model->meta.token_index = NULL;
+    }
 
     if (model->meta.tokens)
     {
@@ -646,18 +713,6 @@ vkllm_err_t vkllm_models_llama2_prepare_step(struct vkllm_context *context, stru
     }
 
     return VKLLM_ERR_OK;
-}
-
-static int find_token_by_text(struct vkllm_models_llama2 *model, const char *text, size_t len)
-{
-    for (size_t i = 0; i < model->meta.tokens->used_n; i++)
-    {
-        struct vkllm_token *tok = &model->meta.tokens->data[i];
-        size_t tok_len = strlen(tok->text);
-        if (tok_len == len && memcmp(tok->text, text, len) == 0)
-            return (int)i;
-    }
-    return -1;
 }
 
 static int find_best_merge(struct vkllm_models_llama2 *model, char **pieces, size_t *piece_lens, size_t npieces,
