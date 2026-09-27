@@ -32,10 +32,31 @@ static int matmul_transposed_b(const struct vkllm_tensor *tensor)
     return a->shapes[2] == M && b->shapes[2] == N && a->shapes[3] == K && b->shapes[3] == K;
 }
 
+// GEMV requires a single activation row AND strictly contiguous fp16
+// weights: row pitch exactly K elements and K % 4 == 0 (the shader's
+// vectorized pair loads need both rows 4-element aligned; the fallback
+// scalar path inside the shader mis-indexes the second row on some
+// drivers when rows are unaligned — route those to the tiled matmul
+// instead, which is verified for all shapes).
+static bool gemv_weights_ok(const struct vkllm_tensor *tensor)
+{
+    const struct vkllm_tensor *in0 = tensor->srcs[0];
+    const struct vkllm_tensor *in1 = tensor->srcs[1];
+
+    struct vkllm_dtype_info in1_dtype_info;
+    if (vkllm_get_dtype_info(in1->dtype, &in1_dtype_info) != VKLLM_ERR_OK)
+        return false;
+
+    uint32_t K = in0->shapes[3];
+    uint32_t row_pitch = in1->strides[2] / in1_dtype_info.bytes;
+
+    return in1->strides[3] / in1_dtype_info.bytes == 1 && row_pitch == K && (K & 3u) == 0;
+}
+
 static inline bool is_mat_mul_vec(struct vkllm_tensor *tensor)
 {
     struct vkllm_tensor *in0 = tensor->srcs[0];
-    return in0->shapes[2] == 1 && matmul_transposed_b(tensor);
+    return in0->shapes[2] == 1 && matmul_transposed_b(tensor) && gemv_weights_ok(tensor);
 }
 
 #define BOARDCAST_AXIS0 0
@@ -201,16 +222,14 @@ static vkllm_err_t vkllm_op_mat_mul_vec_run(struct vkllm_context *context, struc
     vkllm_array_ptr_append(bindings, in1);
     vkllm_array_ptr_append(bindings, tensor);
 
-    // One workgroup = (subgroup_size, NUM_ROWS=2, 1): each y lane is a
-    // subgroup computing one output row, so workgroups cover ceil(N/2) row
-    // pairs along x (overflow into z, matching the shader's dense linear
-    // workgroup id).
-    const uint32_t num_rows_per_wg = 2;
+    // Each subgroup computes a PAIR of adjacent weight rows (activations
+    // shared), so one workgroup per row pair: ceil(N/2) along x with
+    // overflow into z.
     uint32_t N = _MUL4(tensor->shapes);
-    uint32_t group_x = (N + num_rows_per_wg - 1) / num_rows_per_wg;
+    uint32_t group_x = (N + 1) / 2;
     uint32_t group_y = 1, group_z = 0;
     _CHECK(vkllm_calc_linear_group_counts(context, group_x, 1, &group_x, &group_z));
-    const uint32_t local_y = num_rows_per_wg;
+    const uint32_t local_y = 1;
 
     _CHECK_JUMP(
         vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, &pc, group_x, group_y, group_z), err,

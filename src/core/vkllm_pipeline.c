@@ -649,14 +649,13 @@ static vkllm_err_t vkllm_create_mat_mul_vec_pipelines(struct vkllm_context *cont
         }
     }
 
-    // GEMV workgroup = (subgroup_size, NUM_ROWS=2, 1): the subgroup does
-    // the K reduction, the y dimension batches two output rows per
-    // workgroup.
+    // GEMV workgroup = (subgroup_size, 1, 1): the subgroup computes a pair
+    // of adjacent weight rows with shared activation loads.
     struct vkllm_shader_info shader_info = {.binding_count = 3,
                                             .push_constant_bytes =
                                                 sizeof(uint32_t) * 24 + sizeof(float) + sizeof(int32_t),
                                             .local_x = context->device->subgroup_size,
-                                            .local_y = 2,
+                                            .local_y = 1,
                                             .local_z = 1};
 
     for (int32_t i = 0; i < 4; ++i)

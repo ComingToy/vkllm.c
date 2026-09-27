@@ -55,20 +55,22 @@ layout(push_constant) uniform constants
 layout(constant_id = 0) const int a_boardcast_type = 0;
 layout(constant_id = 1) const int b_boardcast_type = 0;
 
-// One workgroup = (subgroup_size, NUM_ROWS, 1). Each y lane is a full
-// subgroup computing a different output row; the two subgroups run in
-// parallel on the same L2-resident activation strip. This doubles row
-// throughput per workgroup versus one subgroup per row.
-#define NUM_ROWS 2
+// Each subgroup computes TWO adjacent weight rows (row pair), sharing the
+// activation loads between them.
 
 void main()
 {
-    // Workgroup linear id -> first row of this group's row pair, in the
+    // Workgroup linear id -> first row of this subgroup's row PAIR, in the
     // flattened [b, c, h, w] output space (w is the matrix row / N dim).
+    // One subgroup computes two adjacent weight rows; the activation strip
+    // each lane reads is shared by both rows (activation traffic halves and
+    // the two weight rows hit adjacent cache lines).
     uint wg = gl_WorkGroupID.x + gl_NumWorkGroups.x * gl_WorkGroupID.z;
-    uint row_idx = wg * NUM_ROWS + gl_LocalInvocationID.y;
+    uint row0 = wg * 2;
 
     uint n_total = shape_out.shapes[2] * shape_out.shapes[3];
+    uint row_idx = row0;
+
     uint b = row_idx / (shape_out.shapes[1] * n_total);
     uint rem = row_idx - b * shape_out.shapes[1] * n_total;
     uint c = rem / n_total;
@@ -116,37 +118,65 @@ void main()
     uint a_row_off = a_batch_off + h * shape_vec.strides[2];
     uint b_row_off = b_batch_off + w * shape_mat.strides[2];
 
-    uint ci = out_batch_off + h * shape_out.strides[2] + w * shape_out.strides[3];
-
-    ACC_DTYPE acc = ACC_DTYPE(0);
     uint lane = gl_SubgroupInvocationID.x;
+    ACC_DTYPE acc0 = ACC_DTYPE(0);
+    ACC_DTYPE acc1 = ACC_DTYPE(0);
+    // Second row: same (b,c,h), w+1. Validity checked before writing.
+    uint w1 = w + 1;
+    uint b_row_off1 = b_row_off + shape_mat.strides[2];
+    uint a2_off = a_row_off;
+
+    bool has_row1 = (w1 < shape_out.shapes[3]);
 
 #ifdef _SUPPORT_16BIT_STORAGE
-    // Vectorized path: requires unit row pitch so a f16vec4 load covers
-    // four consecutive elements of one row. Each lane walks K in steps of
-    // 4*subgroup with an unrolled pair (two f16vec4 per lane per iteration).
-    if (shape_vec.strides[3] == 1 && shape_mat.strides[3] == 1)
+    // Vectorized path: strictly contiguous weights only — unit element
+    // pitch AND row pitch exactly K (so both rows of the pair start at
+    // multiples of 4 elements when K is a multiple of 4). Everything else
+    // falls back to the scalar path below.
+    // Vectorized path: strictly contiguous weights only — unit element
+    // pitch AND row pitch exactly K (so both rows of the pair start at
+    // multiples of 4 elements when K is a multiple of 4). The C side
+    // guarantees this precondition before selecting the GEMV pipeline;
+    // the check is kept here as a safety net.
+    if (shape_vec.strides[3] == 1 && shape_mat.strides[3] == 1 && shape_mat.strides[2] == K && (K & 3u) == 0)
     {
+        // Vectorized path: unit row pitch, four elements per load. The
+        // activation f16vec4 each lane loads feeds BOTH weight rows.
         uint nvec4 = K / 4;
         uint i = lane;
-        [[unroll]] for (; i + gl_SubgroupSize < nvec4; i += 2 * gl_SubgroupSize)
+        [[unroll]] for (; i + 2 * gl_SubgroupSize <= nvec4; i += 2 * gl_SubgroupSize)
         {
             f16vec4 v0 = in_vec_v4[(a_row_off + i * 4) / 4];
-            f16vec4 m0 = in_mat_v4[(b_row_off + i * 4) / 4];
             f16vec4 v1 = in_vec_v4[(a_row_off + (i + gl_SubgroupSize) * 4) / 4];
-            f16vec4 m1 = in_mat_v4[(b_row_off + (i + gl_SubgroupSize) * 4) / 4];
-            acc = ACC_DTYPE(dot(v0, m0)) + acc;
-            acc = ACC_DTYPE(dot(v1, m1)) + acc;
+            f16vec4 m00 = in_mat_v4[(b_row_off + i * 4) / 4];
+            f16vec4 m10 = in_mat_v4[(b_row_off1 + i * 4) / 4];
+            f16vec4 m01 = in_mat_v4[(b_row_off + (i + gl_SubgroupSize) * 4) / 4];
+            f16vec4 m11 = in_mat_v4[(b_row_off1 + (i + gl_SubgroupSize) * 4) / 4];
+            acc0 = ACC_DTYPE(dot(v0, m00)) + acc0;
+            acc1 = ACC_DTYPE(dot(v0, m10)) + acc1;
+            acc0 = ACC_DTYPE(dot(v1, m01)) + acc0;
+            acc1 = ACC_DTYPE(dot(v1, m11)) + acc1;
         }
         for (; i < nvec4; i += gl_SubgroupSize)
         {
             f16vec4 v = in_vec_v4[(a_row_off + i * 4) / 4];
-            f16vec4 m = in_mat_v4[(b_row_off + i * 4) / 4];
-            acc = ACC_DTYPE(dot(v, m)) + acc;
+            f16vec4 m0 = in_mat_v4[(b_row_off + i * 4) / 4];
+            f16vec4 m1 = in_mat_v4[(b_row_off1 + i * 4) / 4];
+            acc0 = ACC_DTYPE(dot(v, m0)) + acc0;
+            acc1 = ACC_DTYPE(dot(v, m1)) + acc1;
         }
+        // Scalar tail for K % 4 != 0: iterate individual elements. One lane
+        // per element (K - nvec4*4 < 4 <= subgroup size, so a single pass).
         for (uint k = nvec4 * 4 + lane; k < K; k += gl_SubgroupSize)
         {
-            acc = acc + ACC_DTYPE(in_vec[a_row_off + k]) * ACC_DTYPE(in_mat[b_row_off + k]);
+            ACC_DTYPE v = ACC_DTYPE(in_vec[a_row_off + k]);
+            ACC_DTYPE m0 = ACC_DTYPE(in_mat[b_row_off + k]);
+            ACC_DTYPE m1 = ACC_DTYPE(in_mat[b_row_off1 + k]);
+            acc0 = fma(v, m0, acc0);
+            if (has_row1)
+            {
+                acc1 = fma(v, m1, acc1);
+            }
         }
     }
     else
@@ -157,27 +187,44 @@ void main()
         uint i = 4 * lane;
         [[unroll]] for (; i + 4 <= K; i += iter_stride)
         {
-            vec4 a = vec4(ACC_DTYPE(in_vec[a_row_off + i * shape_vec.strides[3]]),
-                          ACC_DTYPE(in_vec[a_row_off + (i + 1) * shape_vec.strides[3]]),
-                          ACC_DTYPE(in_vec[a_row_off + (i + 2) * shape_vec.strides[3]]),
-                          ACC_DTYPE(in_vec[a_row_off + (i + 3) * shape_vec.strides[3]]));
-            vec4 b = vec4(ACC_DTYPE(in_mat[b_row_off + i * shape_mat.strides[3]]),
-                          ACC_DTYPE(in_mat[b_row_off + (i + 1) * shape_mat.strides[3]]),
-                          ACC_DTYPE(in_mat[b_row_off + (i + 2) * shape_mat.strides[3]]),
-                          ACC_DTYPE(in_mat[b_row_off + (i + 3) * shape_mat.strides[3]]));
-            acc = ACC_DTYPE(dot(a, b)) + acc;
+            vec4 a0 = vec4(ACC_DTYPE(in_vec[a_row_off + (i + 0) * shape_vec.strides[3]]),
+                           ACC_DTYPE(in_vec[a_row_off + (i + 1) * shape_vec.strides[3]]),
+                           ACC_DTYPE(in_vec[a_row_off + (i + 2) * shape_vec.strides[3]]),
+                           ACC_DTYPE(in_vec[a_row_off + (i + 3) * shape_vec.strides[3]]));
+            vec4 m00 = vec4(ACC_DTYPE(in_mat[b_row_off + (i + 0) * shape_mat.strides[3]]),
+                            ACC_DTYPE(in_mat[b_row_off + (i + 1) * shape_mat.strides[3]]),
+                            ACC_DTYPE(in_mat[b_row_off + (i + 2) * shape_mat.strides[3]]),
+                            ACC_DTYPE(in_mat[b_row_off + (i + 3) * shape_mat.strides[3]]));
+            vec4 m10 = vec4(ACC_DTYPE(in_mat[b_row_off1 + (i + 0) * shape_mat.strides[3]]),
+                            ACC_DTYPE(in_mat[b_row_off1 + (i + 1) * shape_mat.strides[3]]),
+                            ACC_DTYPE(in_mat[b_row_off1 + (i + 2) * shape_mat.strides[3]]),
+                            ACC_DTYPE(in_mat[b_row_off1 + (i + 3) * shape_mat.strides[3]]));
+            acc0 = ACC_DTYPE(dot(a0, m00)) + acc0;
+            acc1 = ACC_DTYPE(dot(a0, m10)) + acc1;
         }
         for (; i < K; i += gl_SubgroupSize)
         {
-            acc = fma(ACC_DTYPE(in_vec[a_row_off + i * shape_vec.strides[3]]),
-                      ACC_DTYPE(in_mat[b_row_off + i * shape_mat.strides[3]]), acc);
+            ACC_DTYPE v = ACC_DTYPE(in_vec[a_row_off + i * shape_vec.strides[3]]);
+            acc0 = fma(v, ACC_DTYPE(in_mat[b_row_off + i * shape_mat.strides[3]]), acc0);
+            if (has_row1)
+            {
+                acc1 = fma(v, ACC_DTYPE(in_mat[b_row_off1 + i * shape_mat.strides[3]]), acc1);
+            }
         }
     }
 
-    ACC_DTYPE v = subgroupAdd(acc) * ACC_DTYPE(scale);
-    v = act == 1 ? v / (ACC_DTYPE(1.0) + exp(-v)) : v;
+    // has_row1 is uniform across the subgroup (it depends only on the row
+    // pair index), so both subgroupAdds execute uniformly.
+    ACC_DTYPE v0 = subgroupAdd(acc0) * ACC_DTYPE(scale);
+    ACC_DTYPE v1 = subgroupAdd(acc1) * ACC_DTYPE(scale);
+    v0 = act == 1 ? v0 / (ACC_DTYPE(1.0) + exp(-v0)) : v0;
+    v1 = act == 1 ? v1 / (ACC_DTYPE(1.0) + exp(-v1)) : v1;
     if (subgroupElect())
     {
-        out_mat[ci] = OUT_DTYPE(v);
+        out_mat[out_batch_off + h * shape_out.strides[2] + w * shape_out.strides[3]] = OUT_DTYPE(v0);
+        if (has_row1)
+        {
+            out_mat[out_batch_off + h * shape_out.strides[2] + w1 * shape_out.strides[3]] = OUT_DTYPE(v1);
+        }
     }
 }
