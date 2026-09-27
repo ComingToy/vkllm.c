@@ -1,6 +1,7 @@
 #include "vkllm_llama2_layers.h"
 #include "../core/vkllm_context.h"
 #include "../core/vkllm_graph.h"
+#include "../core/vkllm_op_ffn_up_and_gate.h"
 #include "../core/vkllm_op_matmul.h"
 #include "../core/vkllm_op_rmsnorm.h"
 #include "../core/vkllm_op_softmax.h"
@@ -9,6 +10,7 @@
 #include "vkllm_kvcache.h"
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 // Ownership: every tensor created here is added to `graph->nodes` (which
 // takes ownership) before anything can fail afterwards, so there is no
@@ -19,7 +21,8 @@ vkllm_err_t vkllm_llama2_build_ffn_layer(struct vkllm_context *context, struct v
                                          uint32_t block_idx, struct vkllm_tensor **output)
 {
     _CHECK_ARGS(context && graph && input && params.WD && params.WG && params.WU && output);
-    struct vkllm_tensor *norm = NULL, *up = NULL, *gate = NULL, *down = NULL, *gate_mul = NULL, *out = NULL;
+    struct vkllm_tensor *norm = NULL, *up_gate = NULL, *down = NULL, *out = NULL;
+    struct vkllm_tensor *up = NULL, *gate = NULL, *gate_mul = NULL;
     char scope_buf[128];
     char name[64];
 
@@ -36,34 +39,61 @@ vkllm_err_t vkllm_llama2_build_ffn_layer(struct vkllm_context *context, struct v
                             &norm_params, sizeof(norm_params), false, &norm));
     _CHECK(vkllm_graph_add_node(context, graph, norm));
 
-    struct vkllm_tensor *up_srcs[] = {norm, params.WU};
     uint32_t ffn_up_shapes[] = {batch, channel, seq_len, up_dim};
-    struct vkllm_op_matmul_params up_matmul_params = {.scale = 1.0, .act = 0, .transposed_b = true};
+    struct vkllm_tensor *down_input = NULL;
 
-    snprintf(scope_buf, sizeof(scope_buf), "%s.up", name);
-    _CHECK(vkllm_tensor_new(context, scope_buf, ffn_up_shapes, norm->dtype, VKLLM_OP_MATMUL, up_srcs, 2,
-                            &up_matmul_params, sizeof(up_matmul_params), false, &up));
-    _CHECK(vkllm_graph_add_node(context, graph, up));
+    // The fused shader is currently DISABLED by default: on Apple GPUs its
+    // 128x128 tile with dual 8x8 accumulators (128 float registers per
+    // thread) spills and runs ~45% SLOWER than the separate path at every
+    // prompt length measured (95-1490 tokens). Opt in with
+    // VKLLM_FUSED_FFN=1 (the op itself is correct — see
+    // vkllm_test_op_ffn_up_and_gate and the standalone CPU-reference check).
+    const char *fuse = getenv("VKLLM_FUSED_FFN");
+    if (seq_len > 1 && fuse && fuse[0] == '1')
+    {
+        // Prefill: fused up+gate projection — one shader computes
+        // up * silu(gate) for the whole tile (saves a dispatch and an
+        // intermediate buffer vs. separate matmuls + mul).
+        struct vkllm_tensor *up_gate_srcs[] = {norm, params.WU, params.WG};
 
-    struct vkllm_tensor *gate_srcs[] = {norm, params.WG};
-    struct vkllm_op_matmul_params gate_matmul_params = {.scale = 1.0, .act = 1, .transposed_b = true};
-    snprintf(scope_buf, sizeof(scope_buf), "%s.gate", name);
-    _CHECK(vkllm_tensor_new(context, scope_buf, ffn_up_shapes, norm->dtype, VKLLM_OP_MATMUL, gate_srcs, 2,
-                            &gate_matmul_params, sizeof(gate_matmul_params), false, &gate));
-    _CHECK(vkllm_graph_add_node(context, graph, gate));
+        snprintf(scope_buf, sizeof(scope_buf), "%s.up_gate", name);
+        _CHECK(vkllm_tensor_new(context, scope_buf, ffn_up_shapes, norm->dtype, VKLLM_OP_FFN_UP_AND_GATE,
+                                up_gate_srcs, 3, NULL, 0, false, &up_gate));
+        _CHECK(vkllm_graph_add_node(context, graph, up_gate));
+        down_input = up_gate;
+    }
+    else
+    {
+        // Decode (seq_len == 1): the fused shader tiles 128x128 blocks and
+        // would waste 127/128 of its work on a single row; use the
+        // matrix-vector path instead (up + silu(gate) mat_muls + mul).
+        struct vkllm_op_matmul_params up_matmul_params = {.scale = 1.0, .act = 0, .transposed_b = true};
+        snprintf(scope_buf, sizeof(scope_buf), "%s.up", name);
+        _CHECK(vkllm_tensor_new(context, scope_buf, ffn_up_shapes, norm->dtype, VKLLM_OP_MATMUL,
+                                (struct vkllm_tensor *[]){norm, params.WU}, 2, &up_matmul_params,
+                                sizeof(up_matmul_params), false, &up));
+        _CHECK(vkllm_graph_add_node(context, graph, up));
 
-    struct vkllm_tensor *gate_mul_srcs[] = {up, gate};
-    int32_t bin_op = 2; // times
-    snprintf(scope_buf, sizeof(scope_buf), "%s.mul", name);
-    _CHECK(vkllm_tensor_new(context, scope_buf, ffn_up_shapes, gate->dtype, VKLLM_OP_BIN, gate_mul_srcs, 2, &bin_op,
-                            sizeof(bin_op), false, &gate_mul));
-    _CHECK(vkllm_graph_add_node(context, graph, gate_mul));
+        struct vkllm_op_matmul_params gate_matmul_params = {.scale = 1.0, .act = 1, .transposed_b = true};
+        snprintf(scope_buf, sizeof(scope_buf), "%s.gate", name);
+        _CHECK(vkllm_tensor_new(context, scope_buf, ffn_up_shapes, norm->dtype, VKLLM_OP_MATMUL,
+                                (struct vkllm_tensor *[]){norm, params.WG}, 2, &gate_matmul_params,
+                                sizeof(gate_matmul_params), false, &gate));
+        _CHECK(vkllm_graph_add_node(context, graph, gate));
 
-    struct vkllm_tensor *down_srcs[] = {gate_mul, params.WD};
+        int32_t bin_op = 2; // times
+        snprintf(scope_buf, sizeof(scope_buf), "%s.mul", name);
+        _CHECK(vkllm_tensor_new(context, scope_buf, ffn_up_shapes, gate->dtype, VKLLM_OP_BIN,
+                                (struct vkllm_tensor *[]){up, gate}, 2, &bin_op, sizeof(bin_op), false, &gate_mul));
+        _CHECK(vkllm_graph_add_node(context, graph, gate_mul));
+        down_input = gate_mul;
+    }
+
+    struct vkllm_tensor *down_srcs[] = {down_input, params.WD};
     struct vkllm_op_matmul_params down_params = {.scale = 1.0, .act = 0, .transposed_b = true};
     uint32_t ffn_down_shapes[] = {batch, channel, seq_len, params.WD->shapes[2]};
     snprintf(scope_buf, sizeof(scope_buf), "%s.down", name);
-    _CHECK(vkllm_tensor_new(context, scope_buf, ffn_down_shapes, gate_mul->dtype, VKLLM_OP_MATMUL, down_srcs, 2,
+    _CHECK(vkllm_tensor_new(context, scope_buf, ffn_down_shapes, down_input->dtype, VKLLM_OP_MATMUL, down_srcs, 2,
                             &down_params, sizeof(down_params), false, &down));
     _CHECK(vkllm_graph_add_node(context, graph, down));
 

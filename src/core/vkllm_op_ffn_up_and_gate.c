@@ -23,14 +23,9 @@ static vkllm_err_t vkllm_op_ffn_up_and_gate_get_pipeline(struct vkllm_context *c
 
         if (tensor->dtype == vkllm_dtype_float16)
         {
-            if (context->device->support_fp16_arithmetic)
-            {
-                *pipeline = context->pipelines.ffn.f16f32f16;
-            }
-            else
-            {
-                *pipeline = context->pipelines.ffn.f16f32f16;
-            }
+            // Both fp16-arithmetic and fp32-accumulation devices use the
+            // f16f32f16 variant (LOAD_DTYPE=float accumulate).
+            *pipeline = context->pipelines.ffn.f16f32f16;
         }
         else if (tensor->dtype == vkllm_dtype_float32)
         {
@@ -126,16 +121,28 @@ vkllm_err_t vkllm_op_ffn_up_and_gate_run(struct vkllm_context *context, struct v
     struct vkllm_dtype_info in2_dtype_info;
     _CHECK(vkllm_get_dtype_info(in2->dtype, &in2_dtype_info));
 
+    // The shader indexes buffers with these strides directly, so they must
+    // be element strides (byte strides / dtype size) like every other op.
+    uint32_t in0_strides[4], in1_strides[4], in2_strides[4], out_strides[4];
+    _DIV4_S(in0->strides, in0_dtype_info.bytes, in0_strides);
+    _DIV4_S(in1->strides, in1_dtype_info.bytes, in1_strides);
+    _DIV4_S(in2->strides, in2_dtype_info.bytes, in2_strides);
+    _DIV4_S(tensor->strides, dtype_info.bytes, out_strides);
+
     struct vkllm_push_constants pc;
     vkllm_push_constants_reset(&pc);
+    // Push layout must match the shader's interleaved ShapeConstant blocks:
+    // {shape_x, strides_x}, {shape_w_up, strides_up}, {shape_w_gate,
+    // strides_gate}, {shape_out, strides_out}. (The previous all-shapes-
+    // then-all-strides order silently fed wrong strides to the shader.)
     vkllm_push_u32_n(&pc, in0->shapes, 4);
+    vkllm_push_u32_n(&pc, in0_strides, 4);
     vkllm_push_u32_n(&pc, in1->shapes, 4);
+    vkllm_push_u32_n(&pc, in1_strides, 4);
     vkllm_push_u32_n(&pc, in2->shapes, 4);
+    vkllm_push_u32_n(&pc, in2_strides, 4);
     vkllm_push_u32_n(&pc, tensor->shapes, 4);
-    vkllm_push_u32_n(&pc, in0->strides, 4);
-    vkllm_push_u32_n(&pc, in1->strides, 4);
-    vkllm_push_u32_n(&pc, in2->strides, 4);
-    vkllm_push_u32_n(&pc, tensor->strides, 4);
+    vkllm_push_u32_n(&pc, out_strides, 4);
 
     struct vkllm_array_ptr *bindings = NULL;
     _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 4), err, out);

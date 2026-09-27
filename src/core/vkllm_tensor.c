@@ -316,11 +316,12 @@ vkllm_err_t vkllm_tensor_slice0(struct vkllm_context *context, struct vkllm_tens
                                 struct vkllm_tensor **slice)
 {
     _CHECK_ARGS(context && tensor && extents && slice);
-    _CHECK(vkllm_tensor_copy_ref(context, tensor, slice));
+    // Validate before allocating the ref so a rejected slice doesn't leak.
     _CHECK_ARGS(extents[0] <= tensor->shapes[0]);
     _CHECK_ARGS(extents[1] <= tensor->shapes[1]);
     _CHECK_ARGS(extents[2] <= tensor->shapes[2]);
     _CHECK_ARGS(extents[3] <= tensor->shapes[3]);
+    _CHECK(vkllm_tensor_copy_ref(context, tensor, slice));
 
     struct vkllm_tensor *t = *slice;
     snprintf((char *)t->name, sizeof(t->name), "%s_slice0", tensor->name);

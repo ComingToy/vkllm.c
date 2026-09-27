@@ -5,16 +5,6 @@
 #include "vkllm_common.h"
 #include "vkllm_context.h"
 #include "vkllm_hashset.h"
-#include "vkllm_op_arg_max.h"
-#include "vkllm_op_bin.h"
-#include "vkllm_op_copy.h"
-#include "vkllm_op_embedding.h"
-#include "vkllm_op_ffn_up_and_gate.h"
-#include "vkllm_op_matmul.h"
-#include "vkllm_op_rmsnorm.h"
-#include "vkllm_op_rope.h"
-#include "vkllm_op_softmax.h"
-#include "vkllm_op_update_rows.h"
 #include "vkllm_tensor.h"
 
 vkllm_err_t vkllm_graph_new(struct vkllm_context *context, struct vkllm_graph **graph)
@@ -140,48 +130,17 @@ static vkllm_err_t vkllm_graph_init_tensor(struct vkllm_context *context, struct
     // Mark this tensor as visited before initializing
     _CHECK(vkllm_hashset_insert(visited, tensor_key));
 
-    // Initialize this tensor based on its operation type
-    switch (tensor->op)
+    // Dispatch through the op table; unknown ops have no entry.
+    if (tensor->op < 0 || tensor->op >= VKLLM_OP_COUNTS)
     {
-    case VKLLM_OP_NONE:
-        // Input tensors or constants, no initialization needed
-        break;
-    case VKLLM_OP_COPY:
-        _CHECK(vkllm_op_copy_init(context, commands, tensor));
-        break;
-    case VKLLM_OP_BIN:
-        _CHECK(vkllm_op_bin_init(context, commands, tensor));
-        break;
-    case VKLLM_OP_EMBEDDING:
-        _CHECK(vkllm_op_embedding_init(context, commands, tensor));
-        break;
-    case VKLLM_OP_RMSNORM:
-        _CHECK(vkllm_op_rmsnorm_init(context, commands, tensor));
-        break;
-    case VKLLM_OP_MATMUL:
-        _CHECK(vkllm_op_matmul_init(context, commands, tensor));
-        break;
-    case VKLLM_OP_ROPE:
-        _CHECK(vkllm_op_rope_init(context, commands, tensor));
-        break;
-    case VKLLM_OP_SOFTMAX:
-        _CHECK(vkllm_op_softmax_init(context, commands, tensor));
-        break;
-    case VKLLM_OP_FFN_UP_AND_GATE:
-        _CHECK(vkllm_op_ffn_up_and_gate_init(context, commands, tensor));
-        break;
-    case VKLLM_OP_UPDATE_ROWS:
-        _CHECK(vkllm_op_update_rows_init(context, commands, tensor));
-        break;
-    case VKLLM_OP_ARG_MAX:
-        _CHECK(vkllm_op_arg_max_init(context, commands, tensor));
-        break;
-    case VKLLM_OP_REF:
-        // Reference tensor, srcs already recursively initialized above
-        break;
-    default:
-        log_error("Unknown operation type: %d", tensor->op);
+        log_error("unknown operation type: %d", (int)tensor->op);
         return VKLLM_ERR_ARGS;
+    }
+
+    const struct vkllm_op_desc *desc = &g_op_table[tensor->op];
+    if (desc->init)
+    {
+        _CHECK(desc->init(context, commands, tensor));
     }
 
     return VKLLM_ERR_OK;
@@ -244,48 +203,17 @@ static vkllm_err_t vkllm_graph_run_tensor(struct vkllm_context *context, struct 
     // Mark this tensor as visited before execution
     _CHECK(vkllm_hashset_insert(visited, tensor_key));
 
-    // Execute this tensor based on its operation type
-    switch (tensor->op)
+    // Dispatch through the op table; unknown ops have no entry.
+    if (tensor->op < 0 || tensor->op >= VKLLM_OP_COUNTS)
     {
-    case VKLLM_OP_NONE:
-        // Input tensors or constants, no execution needed
-        break;
-    case VKLLM_OP_COPY:
-        _CHECK(vkllm_op_copy_run(context, commands, tensor));
-        break;
-    case VKLLM_OP_BIN:
-        _CHECK(vkllm_op_bin_run(context, commands, tensor));
-        break;
-    case VKLLM_OP_EMBEDDING:
-        _CHECK(vkllm_op_embedding_run(context, commands, tensor));
-        break;
-    case VKLLM_OP_RMSNORM:
-        _CHECK(vkllm_op_rmsnorm_run(context, commands, tensor));
-        break;
-    case VKLLM_OP_MATMUL:
-        _CHECK(vkllm_op_matmul_run(context, commands, tensor));
-        break;
-    case VKLLM_OP_ROPE:
-        _CHECK(vkllm_op_rope_run(context, commands, tensor));
-        break;
-    case VKLLM_OP_SOFTMAX:
-        _CHECK(vkllm_op_softmax_run(context, commands, tensor));
-        break;
-    case VKLLM_OP_FFN_UP_AND_GATE:
-        _CHECK(vkllm_op_ffn_up_and_gate_run(context, commands, tensor));
-        break;
-    case VKLLM_OP_UPDATE_ROWS:
-        _CHECK(vkllm_op_update_rows_run(context, commands, tensor));
-        break;
-    case VKLLM_OP_ARG_MAX:
-        _CHECK(vkllm_op_arg_max_run(context, commands, tensor));
-        break;
-    case VKLLM_OP_REF:
-        // Reference tensor, srcs already recursively executed above
-        break;
-    default:
-        log_error("Unknown operation type: %d", tensor->op);
+        log_error("unknown operation type: %d", (int)tensor->op);
         return VKLLM_ERR_ARGS;
+    }
+
+    const struct vkllm_op_desc *desc = &g_op_table[tensor->op];
+    if (desc->run)
+    {
+        _CHECK(desc->run(context, commands, tensor));
     }
 
     return VKLLM_ERR_OK;
@@ -352,48 +280,17 @@ static vkllm_err_t vkllm_graph_post_run_tensor(struct vkllm_context *context, st
     // Mark this tensor as visited before post-run
     _CHECK(vkllm_hashset_insert(visited, tensor_key));
 
-    // Post-run this tensor based on its operation type
-    switch (tensor->op)
+    // Dispatch through the op table; unknown ops have no entry.
+    if (tensor->op < 0 || tensor->op >= VKLLM_OP_COUNTS)
     {
-    case VKLLM_OP_NONE:
-        // Input tensors or constants, no post-run needed
-        break;
-    case VKLLM_OP_COPY:
-        _CHECK(vkllm_op_copy_post_run(context, commands, tensor));
-        break;
-    case VKLLM_OP_BIN:
-        _CHECK(vkllm_op_bin_post_run(context, commands, tensor));
-        break;
-    case VKLLM_OP_EMBEDDING:
-        _CHECK(vkllm_op_embedding_post_run(context, commands, tensor));
-        break;
-    case VKLLM_OP_RMSNORM:
-        _CHECK(vkllm_op_rmsnorm_post_run(context, commands, tensor));
-        break;
-    case VKLLM_OP_MATMUL:
-        _CHECK(vkllm_op_matmul_post_run(context, commands, tensor));
-        break;
-    case VKLLM_OP_ROPE:
-        _CHECK(vkllm_op_rope_post_run(context, commands, tensor));
-        break;
-    case VKLLM_OP_SOFTMAX:
-        _CHECK(vkllm_op_softmax_post_run(context, commands, tensor));
-        break;
-    case VKLLM_OP_FFN_UP_AND_GATE:
-        _CHECK(vkllm_op_ffn_up_and_gate_post_run(context, commands, tensor));
-        break;
-    case VKLLM_OP_UPDATE_ROWS:
-        _CHECK(vkllm_op_update_rows_post_run(context, commands, tensor));
-        break;
-    case VKLLM_OP_ARG_MAX:
-        _CHECK(vkllm_op_arg_max_post_run(context, commands, tensor));
-        break;
-    case VKLLM_OP_REF:
-        // Reference tensor, srcs already recursively post-run above
-        break;
-    default:
-        log_error("Unknown operation type: %d", tensor->op);
+        log_error("unknown operation type: %d", (int)tensor->op);
         return VKLLM_ERR_ARGS;
+    }
+
+    const struct vkllm_op_desc *desc = &g_op_table[tensor->op];
+    if (desc->post_run)
+    {
+        _CHECK(desc->post_run(context, commands, tensor));
     }
 
     return VKLLM_ERR_OK;

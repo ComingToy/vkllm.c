@@ -93,14 +93,7 @@ vkllm_err_t vkllm_op_rope_run(struct vkllm_context *context, struct vkllm_comman
     vkllm_push_u32_n(&pc, tensor->shapes, 4);
     vkllm_push_u32_n(&pc, out_strides, 4);
     vkllm_push_u32(&pc, offset);
-    if (tensor->dtype == vkllm_dtype_float16)
-    {
-        vkllm_push_f32(&pc, base);
-    }
-    else
-    {
-        vkllm_push_f32(&pc, base);
-    }
+    vkllm_push_f32(&pc, base);
 
     vkllm_err_t err = VKLLM_ERR_OK;
     struct vkllm_array_ptr *bindings = NULL;

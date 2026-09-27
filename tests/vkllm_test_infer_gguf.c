@@ -126,9 +126,9 @@ static int hashmap_entry_cmp(const void *lhs, const void *rhs)
 
 int main(const int argc, const char *argv[])
 {
-    if (argc != 3)
+    if (argc < 3 || argc > 4)
     {
-        log_error("usage: %s <path to gguf> <num_tokens>", argv[0]);
+        log_error("usage: %s <path to gguf> <num_tokens> [prompt]", argv[0]);
         return -1;
     }
 
@@ -157,7 +157,37 @@ int main(const int argc, const char *argv[])
     }
 
     struct vkllm_array_token_id *token_ids;
-    err = vkllm_models_llama2_tokenize(&model, "Q: What is the largest animal? A:", &token_ids);
+    // Prompt argument: literal text, or "@file" to read from a file.
+    char *prompt = NULL;
+    if (argc > 3)
+    {
+        if (argv[3][0] == '@')
+        {
+            FILE *f = fopen(argv[3] + 1, "r");
+            if (!f)
+            {
+                log_error("cannot open prompt file: %s", argv[3] + 1);
+                return -1;
+            }
+            fseek(f, 0, SEEK_END);
+            long sz = ftell(f);
+            fseek(f, 0, SEEK_SET);
+            prompt = (char *)malloc(sz + 1);
+            size_t rd = fread(prompt, 1, sz, f);
+            prompt[rd] = '\0';
+            fclose(f);
+        }
+        else
+        {
+            prompt = strdup(argv[3]);
+        }
+    }
+    else
+    {
+        prompt = strdup("Q: What is the largest animal? A:");
+    }
+
+    err = vkllm_models_llama2_tokenize(&model, prompt, &token_ids);
     if (err != VKLLM_ERR_OK)
     {
         log_error("failed at tokenize: %s", vkllm_err_s(err));
@@ -191,8 +221,15 @@ int main(const int argc, const char *argv[])
         _CHECK_JUMP(vkllm_commands_upload(context, graph->commands, input_toks, (const uint8_t *)token_ids->data,
                                           sizeof(uint32_t) * token_ids->used_n),
                     err, cleanup_graph);
+        struct timeval pf_start, pf_end;
+        gettimeofday(&pf_start, NULL);
         _CHECK_JUMP(vkllm_graph_run(context, graph), err, cleanup_graph);
         _CHECK_JUMP(vkllm_graph_post_run(context, graph), err, cleanup_graph);
+        gettimeofday(&pf_end, NULL);
+        double prefill_ms =
+            (pf_end.tv_sec - pf_start.tv_sec) * 1000.0 + (pf_end.tv_usec - pf_start.tv_usec) / 1000.0;
+        log_info("PREFILL: %u tokens in %.2f ms (%.1f tok/s)", token_ids->used_n, prefill_ms,
+                 token_ids->used_n / prefill_ms * 1000.0);
 
         vkllm_tensor_invalid_cache(context, graph->output_node);
         uint32_t pred_tok = extract_output_tok(graph);
