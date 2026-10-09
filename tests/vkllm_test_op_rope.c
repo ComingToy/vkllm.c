@@ -105,6 +105,13 @@ static struct
     {{3, 4, 6, 32}, 10, 10000.0f, vkllm_dtype_float32},   {{8, 32, 32, 128}, 0, 10000.0f, vkllm_dtype_float16},
     {{2, 1, 5, 64}, 0, 10000.0f, vkllm_dtype_float16},    {{1, 2, 8, 256}, 5, 10000.0f, vkllm_dtype_float16},
     {{3, 4, 6, 32}, 10, 10000.0f, vkllm_dtype_float16},
+    // Large-position regression: fp16 theta computation garbles the rotation
+    // angle once positions exceed fp16 spacing (~1024); these positions
+    // previously errored 0.07 / 0.36 / 0.71 respectively.
+    {{1, 32, 1, 100}, 200, 10000.0f, vkllm_dtype_float16},
+    {{1, 32, 1, 100}, 1000, 10000.0f, vkllm_dtype_float16},
+    {{1, 32, 1, 100}, 2047, 10000.0f, vkllm_dtype_float16},
+    {{1, 32, 1, 100}, 2047, 10000.0f, vkllm_dtype_float32},
 };
 
 START_TEST(test_op_rope)
