@@ -17,6 +17,12 @@ layout(push_constant) uniform constants
     ShapeConstant out_shape;
     uint offsets;
     float base;
+#ifdef FUSED_KV
+    // Row offset of the first output row inside the (shared) output buffer:
+    // with FUSED_KV the output tensor aliases the KV cache, and this step's
+    // seq rows land at [row_offset, row_offset + seq).
+    uint row_offset;
+#endif
 };
 
 layout(constant_id = 0) const int neox_style = 0;
@@ -48,19 +54,27 @@ void main(void)
     }
 
     uint i0 = 0, i1 = 0, o0 = 0, o1 = 0;
+#ifdef FUSED_KV
+    // Output rows are shifted into the cache; out_shape carries the CACHE
+    // shapes/strides (the output tensor aliases the cache buffer).
+    const uint out_h = h + row_offset;
+#else
+    const uint out_h = h;
+#endif
 
     if (neox_style > 0)
     {
         i0 = b * in_shape.strides[0] + c * in_shape.strides[1] + h * in_shape.strides[2] + w * in_shape.strides[3];
         i1 = i0 + in_shape.strides[3] * in_shape.shapes[3] / 2;
-        o0 = b * out_shape.strides[0] + c * out_shape.strides[1] + h * out_shape.strides[2] + w * out_shape.strides[3];
+        o0 = b * out_shape.strides[0] + c * out_shape.strides[1] + out_h * out_shape.strides[2] +
+             w * out_shape.strides[3];
         o1 = o0 + out_shape.strides[3] * out_shape.shapes[3] / 2;
     }
     else
     {
         i0 = b * in_shape.strides[0] + c * in_shape.strides[1] + h * in_shape.strides[2] + 2 * w * in_shape.strides[3];
         i1 = i0 + in_shape.strides[3];
-        o0 = b * out_shape.strides[0] + c * out_shape.strides[1] + h * out_shape.strides[2] +
+        o0 = b * out_shape.strides[0] + c * out_shape.strides[1] + out_h * out_shape.strides[2] +
              2 * w * out_shape.strides[3];
         o1 = o0 + out_shape.strides[3];
     }

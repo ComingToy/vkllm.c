@@ -16,22 +16,21 @@ static vkllm_err_t vkllm_op_rope_get_pipeline(struct vkllm_context *context, str
     struct vkllm_tensor *in0 = tensor->srcs[0];
     struct vkllm_op_rope_params *params = (struct vkllm_op_rope_params *)tensor->params;
     int neox_style = (int)params->neox_style;
+    // Fused KV write: params->fused_write marks an output that aliases the
+    // KV cache buffer (row offset in params->cache_row).
+    bool kv = params->fused_write;
 
     if (in0->dtype == vkllm_dtype_float16)
     {
-        if (context->device->support_fp16_arithmetic)
-        {
-            *pipeline = context->pipelines.rope.f16f16[neox_style];
-        }
-        else
-        {
-            *pipeline = context->pipelines.rope.f16f32[neox_style];
-        }
+        // Always fp32 theta math for f16 inputs: fp16 angles lose precision
+        // at large positions (see the shader BUILD note). f16f32 is f16
+        // storage + fp32 compute.
+        *pipeline = kv ? context->pipelines.rope.f16f32kv[neox_style] : context->pipelines.rope.f16f32[neox_style];
         return VKLLM_ERR_OK;
     }
     else if (in0->dtype == vkllm_dtype_float32)
     {
-        *pipeline = context->pipelines.rope.f32f32[neox_style];
+        *pipeline = kv ? context->pipelines.rope.f32f32kv[neox_style] : context->pipelines.rope.f32f32[neox_style];
         return VKLLM_ERR_OK;
     }
     else
@@ -79,6 +78,7 @@ vkllm_err_t vkllm_op_rope_run(struct vkllm_context *context, struct vkllm_comman
     struct vkllm_op_rope_params *params = (struct vkllm_op_rope_params *)tensor->params;
     uint32_t offset = params ? params->offset : 0;
     float base = params ? params->base : 10000.0f;
+    uint32_t cache_row = params ? params->cache_row : 0;
 
     struct vkllm_dtype_info dtype_info;
     uint32_t out_strides[4], in_strides[4];
@@ -94,6 +94,11 @@ vkllm_err_t vkllm_op_rope_run(struct vkllm_context *context, struct vkllm_comman
     vkllm_push_u32_n(&pc, out_strides, 4);
     vkllm_push_u32(&pc, offset);
     vkllm_push_f32(&pc, base);
+    if (((struct vkllm_op_rope_params *)tensor->params)->fused_write)
+    {
+        // FUSED_KV pipeline: extra row_offset push constant.
+        vkllm_push_u32(&pc, cache_row);
+    }
 
     vkllm_err_t err = VKLLM_ERR_OK;
     struct vkllm_array_ptr *bindings = NULL;

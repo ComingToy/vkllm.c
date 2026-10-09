@@ -65,9 +65,14 @@ struct vkllm_context
         struct
         {
             // 0: for normal style 1: for neox style
-            struct vkllm_pipeline *f16f16[2];
+            // f16 variants are f16-storage / fp32-compute: rope's theta math
+            // must not run in fp16 (angle precision dies past pos ~1024).
             struct vkllm_pipeline *f16f32[2];
             struct vkllm_pipeline *f32f32[2];
+            // FUSED_KV variants: rope writes into the KV cache at a row
+            // offset (folds update-rows into the rope dispatch).
+            struct vkllm_pipeline *f16f32kv[2];
+            struct vkllm_pipeline *f32f32kv[2];
         } rope;
 
         struct

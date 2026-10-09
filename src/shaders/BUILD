@@ -125,14 +125,22 @@ glsl_shader(
     extra_args = COMMON_ARGS,
     tool = "//tools:binary_to_array",
     macros = [
-        "-D_SUPPORT_16BIT_STORAGE -D_SUPPORT_FLOAT16_ARITHMETIC -DDTYPE=float16_t -DLOAD_DTYPE=float16_t",
+        # Theta must be computed in fp32: fp16 arithmetic loses the angle
+        # precision at large positions (pos=1000 has 0.5 spacing in fp16,
+        # i.e. the rotation angle is garbage). Storage stays f16 (bandwidth),
+        # compute is fp32 — matches llama.cpp.
         "-D_SUPPORT_16BIT_STORAGE -DDTYPE=float16_t -DLOAD_DTYPE=float",
         "-DDTYPE=float -DLOAD_DTYPE=float",
+        # FUSED_KV: rope writes straight into the KV cache at a row offset
+        # (folds the update-rows copy into the rope dispatch).
+        "-D_SUPPORT_16BIT_STORAGE -DDTYPE=float16_t -DLOAD_DTYPE=float -DFUSED_KV",
+        "-DDTYPE=float -DLOAD_DTYPE=float -DFUSED_KV",
     ],
     suffixes = [
-        "_f16f16",
         "_f16f32",
         "_f32f32",
+        "_f16f32kv",
+        "_f32f32kv",
     ],
 )
 

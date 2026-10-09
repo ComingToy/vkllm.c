@@ -25,6 +25,11 @@ struct vkllm_kvcache
     // kcaches/vcaches. NULL until vkllm_kvcache_bind is called.
     struct vkllm_array_tensor *kviews;
     struct vkllm_array_tensor *vviews;
+    // Fused K writes: one rope tensor per layer whose output aliases the
+    // kcache buffer (the update-rows copy folded into the rope dispatch).
+    // Owned by the graph nodes; kept here so advance() can move each
+    // tensor's cache_row push constant. NULL entries = not fused.
+    struct vkllm_array_tensor *kwrites;
     uint32_t kcache_shape[4];
     uint32_t vcache_shape[4];
     uint32_t layer_counts;

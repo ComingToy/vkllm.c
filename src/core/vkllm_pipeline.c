@@ -500,12 +500,16 @@ static vkllm_err_t vkllm_create_rope_pipelines(struct vkllm_context *context)
                                             .local_x = 512,
                                             .local_y = 1,
                                             .local_z = 1};
+    // FUSED_KV variants carry one extra push constant (row_offset).
+    struct vkllm_shader_info shader_info_kv = shader_info;
+    shader_info_kv.push_constant_bytes += sizeof(uint32_t);
 
     for (uint32_t i = 0; i < 2; ++i)
     {
-        context->pipelines.rope.f16f16[i] = NULL;
         context->pipelines.rope.f16f32[i] = NULL;
         context->pipelines.rope.f32f32[i] = NULL;
+        context->pipelines.rope.f16f32kv[i] = NULL;
+        context->pipelines.rope.f32f32kv[i] = NULL;
     }
 
     for (int32_t i = 0; i < 2; ++i)
@@ -515,19 +519,21 @@ static vkllm_err_t vkllm_create_rope_pipelines(struct vkllm_context *context)
         vkllm_shader_constants_append(specializations, i);
         if (context->device->support_16bit_storage)
         {
+            // f16 storage, fp32 theta math — see the BUILD note: fp16
+            // arithmetic must not be used for the rotation angles.
             _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f16f32", shader_info, _vkllm_rope_f16f32_spv(),
                                       _vkllm_rope_f16f32_size(), specializations, &context->pipelines.rope.f16f32[i]));
 
-            if (context->device->support_fp16_arithmetic)
-            {
-                _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f16f16", shader_info, _vkllm_rope_f16f16_spv(),
-                                          _vkllm_rope_f16f16_size(), specializations,
-                                          &context->pipelines.rope.f16f16[i]));
-            }
+            _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f16f32kv", shader_info_kv, _vkllm_rope_f16f32kv_spv(),
+                                      _vkllm_rope_f16f32kv_size(), specializations,
+                                      &context->pipelines.rope.f16f32kv[i]));
         }
 
         _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f32f32", shader_info, _vkllm_rope_f32f32_spv(),
                                   _vkllm_rope_f32f32_size(), specializations, &context->pipelines.rope.f32f32[i]));
+
+        _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f32f32kv", shader_info_kv, _vkllm_rope_f32f32kv_spv(),
+                                  _vkllm_rope_f32f32kv_size(), specializations, &context->pipelines.rope.f32f32kv[i]));
         vkllm_shader_constants_free(specializations);
     }
 
@@ -829,9 +835,10 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
 
     for (uint32_t i = 0; i < 2; ++i)
     {
-        vkllm_pipeline_free(context, context->pipelines.rope.f16f16[i]);
         vkllm_pipeline_free(context, context->pipelines.rope.f16f32[i]);
         vkllm_pipeline_free(context, context->pipelines.rope.f32f32[i]);
+        vkllm_pipeline_free(context, context->pipelines.rope.f16f32kv[i]);
+        vkllm_pipeline_free(context, context->pipelines.rope.f32f32kv[i]);
     }
 
     vkllm_pipeline_free(context, context->pipelines.softmax.f16f16);
