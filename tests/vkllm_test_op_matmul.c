@@ -188,6 +188,12 @@ static struct
     {1, 1, 1, 1, 333, 1259, 365, vkllm_dtype_float32, true, false},
 
     // Single batch tests (B=1, C=1, no broadcasting) without transposed B, no activation
+    // M == 1 t0 cases route through the NT-GEMV kernel (attention-values shape).
+    {1, 1, 1, 1, 1, 1024, 2048, vkllm_dtype_float16, false, false},
+    {1, 1, 1, 1, 1, 140, 128, vkllm_dtype_float16, false, false},
+    {1, 32, 1, 32, 1, 140, 128, vkllm_dtype_float16, false, false},
+    {1, 32, 1, 32, 1, 140, 100, vkllm_dtype_float16, false, false},
+    {1, 1, 1, 1, 1, 333, 1259, vkllm_dtype_float16, false, false},
     {1, 1, 1, 1, 512, 1024, 2048, vkllm_dtype_float16, false, false},
     {1, 1, 1, 1, 333, 1259, 365, vkllm_dtype_float16, false, false},
     {1, 1, 1, 1, 512, 1024, 2048, vkllm_dtype_float32, false, false},

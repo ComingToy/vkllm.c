@@ -1,0 +1,73 @@
+#version 450 core
+
+#include "vkllm_shader_header.comp.h"
+
+// Non-transposed GEMV: out[1,N] = x[1,K] @ B[K,N], B stored row-major (K rows
+// of N). Each workgroup handles one row of a [B,C,1,K] x [B,C,K,N] batched
+// problem (the attention-values shape at decode: attn_weights @ V). Threads
+// map to output columns; B rows are streamed, so every memory op across the
+// workgroup is contiguous (coalesced) and the x element is uniform per row.
+// This replaces the 64x64 tiled matmul for M == 1, which wasted 63/64 of its
+// A-tile loads on this shape (~35us -> single-digit us per layer).
+
+layout(binding = 0) readonly buffer in0_type
+{
+    DTYPE in_vec[];
+};
+
+layout(binding = 1) readonly buffer in1_type
+{
+    DTYPE in_mat[];
+};
+
+layout(binding = 2) writeonly buffer out0_type
+{
+    DTYPE out_mat[];
+};
+
+layout(push_constant) uniform constants
+{
+    ShapeConstant shape_vec;  // x: [B, C, 1, K]
+    ShapeConstant shape_mat;  // B: [B, C, K, N] row-major
+    ShapeConstant shape_out;  // out: [B, C, 1, N]
+    float scale;
+};
+
+void main()
+{
+    // b*C + c, linear across the (x, z) grid (z is 1 unless the batch overflowed x).
+    const uint row = gl_WorkGroupID.z * gl_NumWorkGroups.x + gl_WorkGroupID.x;
+    const uint tid = gl_LocalInvocationID.x;
+
+    const uint B = shape_vec.shapes[0];
+    const uint C = shape_vec.shapes[1];
+    const uint K = shape_vec.shapes[3];
+    const uint N = shape_mat.shapes[3];
+
+    if (row >= B * C)
+    {
+        return;
+    }
+
+    const uint b = row / C;
+    const uint c = row - b * C;
+
+    // Strides are element counts as pushed by the host.
+    const uint x_base = b * shape_vec.strides[0] + c * shape_vec.strides[1];
+    const uint m_base = b * shape_mat.strides[0] + c * shape_mat.strides[1];
+    const uint o_base = b * shape_out.strides[0] + c * shape_out.strides[1];
+
+    // Threads map to output columns (n = tid, tid+W, ...); the K loop runs
+    // outermost per thread so x[k] reads broadcast across the workgroup
+    // (L1-cached) and mat reads stay coalesced across threads (each mat row
+    // of N is read by consecutive lanes).
+    for (uint n = tid; n < N; n += gl_WorkGroupSize.x)
+    {
+        ACC_DTYPE acc = ACC_DTYPE(0);
+        for (uint k = 0; k < K; ++k)
+        {
+            acc += ACC_DTYPE(in_vec[x_base + k]) * ACC_DTYPE(in_mat[m_base + k * shape_mat.strides[2] + n]);
+        }
+        out_mat[o_base + n] = DTYPE(acc * ACC_DTYPE(scale));
+    }
+}

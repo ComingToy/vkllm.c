@@ -10,6 +10,7 @@
 #include "vkllm_ffn_shaders.h"
 #include "vkllm_gpu_device.h"
 #include "vkllm_mat_mul_vec_shaders.h"
+#include "vkllm_mat_mul_vec_nt_shaders.h"
 #include "vkllm_matmul_shaders.h"
 #include "vkllm_rmsnorm_shaders.h"
 #include "vkllm_rope_shaders.h"
@@ -744,6 +745,39 @@ static vkllm_err_t vkllm_create_mat_mul_vec_pipelines(struct vkllm_context *cont
     return VKLLM_ERR_OK;
 }
 
+static vkllm_err_t vkllm_create_mat_mul_vec_nt_pipelines(struct vkllm_context *context)
+{
+    context->pipelines.mat_mul_vec_nt.f16f32 = NULL;
+    context->pipelines.mat_mul_vec_nt.f32f32 = NULL;
+    context->pipelines.mat_mul_vec_nt.f16f16 = NULL;
+
+    // One workgroup per (b,c) row; threads map to the N output columns.
+    // 128 lanes covers the head_dim=128 attention case exactly.
+    struct vkllm_shader_info shader_info = {.binding_count = 3,
+                                            .push_constant_bytes = sizeof(uint32_t) * 25 + sizeof(float),
+                                            .local_x = 128,
+                                            .local_y = 1,
+                                            .local_z = 1};
+
+    _CHECK(vkllm_pipeline_new(context, "mat_mul_vec_nt_f32f32", shader_info, _vkllm_mat_mul_vec_ntf32f32_spv(),
+                              _vkllm_mat_mul_vec_ntf32f32_size(), NULL, &context->pipelines.mat_mul_vec_nt.f32f32));
+
+    if (context->device->support_16bit_storage)
+    {
+        _CHECK(vkllm_pipeline_new(context, "mat_mul_vec_nt_f16f32", shader_info, _vkllm_mat_mul_vec_ntf16f32_spv(),
+                                  _vkllm_mat_mul_vec_ntf16f32_size(), NULL, &context->pipelines.mat_mul_vec_nt.f16f32));
+
+        if (context->device->support_fp16_arithmetic)
+        {
+            _CHECK(vkllm_pipeline_new(context, "mat_mul_vec_nt_f16f16", shader_info,
+                                      _vkllm_mat_mul_vec_ntf16f16_spv(), _vkllm_mat_mul_vec_ntf16f16_size(), NULL,
+                                      &context->pipelines.mat_mul_vec_nt.f16f16));
+        }
+    }
+
+    return VKLLM_ERR_OK;
+}
+
 static vkllm_err_t vkllm_create_arg_max_pipeline(struct vkllm_context *context)
 {
     _CHECK_ARGS(context);
@@ -790,6 +824,7 @@ vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context)
     _CHECK(vkllm_create_copy_pipelines(context));
     _CHECK(vkllm_create_update_rows_pipelines(context));
     _CHECK(vkllm_create_mat_mul_vec_pipelines(context));
+    _CHECK(vkllm_create_mat_mul_vec_nt_pipelines(context));
     _CHECK(vkllm_create_arg_max_pipeline(context));
     return VKLLM_ERR_OK;
 }
@@ -832,6 +867,10 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
             vkllm_pipeline_free(context, context->pipelines.mat_mul_vec.f16f16[i][k]);
         }
     }
+
+    vkllm_pipeline_free(context, context->pipelines.mat_mul_vec_nt.f16f32);
+    vkllm_pipeline_free(context, context->pipelines.mat_mul_vec_nt.f32f32);
+    vkllm_pipeline_free(context, context->pipelines.mat_mul_vec_nt.f16f16);
 
     for (uint32_t i = 0; i < 2; ++i)
     {

@@ -64,6 +64,15 @@ struct vkllm_context
 
         struct
         {
+            // Non-transposed GEMV (B row-major [K,N], M == 1): the
+            // attention-values shape; one workgroup per (b,c) row.
+            struct vkllm_pipeline *f16f32;
+            struct vkllm_pipeline *f32f32;
+            struct vkllm_pipeline *f16f16;
+        } mat_mul_vec_nt;
+
+        struct
+        {
             // 0: for normal style 1: for neox style
             // f16 variants are f16-storage / fp32-compute: rope's theta math
             // must not run in fp16 (angle precision dies past pos ~1024).

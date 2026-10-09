@@ -59,6 +59,30 @@ static inline bool is_mat_mul_vec(struct vkllm_tensor *tensor)
     return in0->shapes[2] == 1 && matmul_transposed_b(tensor) && gemv_weights_ok(tensor);
 }
 
+// Non-transposed GEMV: M == 1 activations x row-major B [K,N] (K-major
+// weights). This is the decode attention-values shape (attn_weights @ V),
+// where V rows are K (= cur_len) and columns are the head dim. The tiled
+// matmul wastes 63/64 of its A-tile loads here; the dedicated kernel streams
+// the B rows coalesced (see vkllm_mat_mul_vec_nt.comp).
+static inline bool is_mat_mul_vec_nt(struct vkllm_tensor *tensor)
+{
+    struct vkllm_tensor *in0 = tensor->srcs[0];
+    struct vkllm_tensor *in1 = tensor->srcs[1];
+
+    if (in0->shapes[2] != 1 || matmul_transposed_b(tensor))
+        return false;
+    // B strictly [B,C,K,N] row-major with unit inner stride.
+    struct vkllm_dtype_info in1_dtype_info;
+    if (vkllm_get_dtype_info(in1->dtype, &in1_dtype_info) != VKLLM_ERR_OK)
+        return false;
+    if (in1->strides[3] / in1_dtype_info.bytes != 1)
+        return false;
+    // Per-head N must be covered by one workgroup sweep (the shader loops
+    // n += WorkGroupSize, so any N works; keep the guard on the activation
+    // row being single).
+    return in0->shapes[2] == 1;
+}
+
 #define BOARDCAST_AXIS0 0
 #define BOARDCAST_AXIS1 1
 #define BOARDCAST_AXIS01 2
@@ -131,6 +155,10 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
                 *pipeline = fused_add ? context->pipelines.mat_mul_vec.f16f16fa[a_boardcast_type][b_boardcast_type]
                                       : context->pipelines.mat_mul_vec.f16f16[a_boardcast_type][b_boardcast_type];
             }
+            else if (is_mat_mul_vec_nt(tensor))
+            {
+                *pipeline = context->pipelines.mat_mul_vec_nt.f16f16;
+            }
             else
             {
                 *pipeline = context->pipelines.matmul.f16f16f16[a_boardcast_type][b_boardcast_type][tranposed_b];
@@ -142,6 +170,10 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
             {
                 *pipeline = fused_add ? context->pipelines.mat_mul_vec.f16f32fa[a_boardcast_type][b_boardcast_type]
                                       : context->pipelines.mat_mul_vec.f16f32[a_boardcast_type][b_boardcast_type];
+            }
+            else if (is_mat_mul_vec_nt(tensor))
+            {
+                *pipeline = context->pipelines.mat_mul_vec_nt.f16f32;
             }
             else
             {
@@ -155,6 +187,10 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
         {
             *pipeline = fused_add ? context->pipelines.mat_mul_vec.f32f32fa[a_boardcast_type][b_boardcast_type]
                                   : context->pipelines.mat_mul_vec.f32f32[a_boardcast_type][b_boardcast_type];
+        }
+        else if (is_mat_mul_vec_nt(tensor))
+        {
+            *pipeline = context->pipelines.mat_mul_vec_nt.f32f32;
         }
         else
         {
@@ -245,6 +281,72 @@ static vkllm_err_t vkllm_op_mat_mul_vec_run(struct vkllm_context *context, struc
     uint32_t group_x = (N + 1) / 2;
     uint32_t group_y = 1, group_z = 0;
     _CHECK(vkllm_calc_linear_group_counts(context, group_x, 1, &group_x, &group_z));
+
+    _CHECK_JUMP(
+        vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, &pc, group_x, group_y, group_z), err,
+        free_bindings_out);
+
+    tensor->access_flags = VK_ACCESS_SHADER_WRITE_BIT;
+    tensor->pipeline_stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+free_bindings_out:
+    vkllm_array_ptr_free(bindings);
+out:
+    return err;
+}
+
+vkllm_err_t vkllm_op_mat_mul_vec_nt_run(struct vkllm_context *context, struct vkllm_commands *commands,
+                                        struct vkllm_tensor *tensor)
+{
+    _CHECK_ARGS(context && commands && tensor);
+    _CHECK_ARGS(tensor->srcs[0] && tensor->srcs[1]);
+    _CHECK_ARGS(tensor->op == VKLLM_OP_MATMUL);
+
+    struct vkllm_tensor *in0 = tensor->srcs[0], *in1 = tensor->srcs[1];
+    _CHECK_ARGS(in0 && in1);
+
+    struct vkllm_dtype_info dtype_info;
+    _CHECK(vkllm_get_dtype_info(tensor->dtype, &dtype_info));
+    struct vkllm_dtype_info in0_dtype_info;
+    _CHECK(vkllm_get_dtype_info(in0->dtype, &in0_dtype_info));
+    struct vkllm_dtype_info in1_dtype_info;
+    _CHECK(vkllm_get_dtype_info(in1->dtype, &in1_dtype_info));
+
+    uint32_t strides0[4], strides1[4], strides2[4];
+    _DIV4_S(in0->strides, in0_dtype_info.bytes, strides0);
+    _DIV4_S(in1->strides, in1_dtype_info.bytes, strides1);
+    _DIV4_S(tensor->strides, dtype_info.bytes, strides2);
+
+    const struct vkllm_op_matmul_params *params = get_matmul_params(tensor);
+
+    struct vkllm_push_constants pc;
+    vkllm_push_constants_reset(&pc);
+    vkllm_push_u32_n(&pc, in0->shapes, 4);
+    vkllm_push_u32_n(&pc, strides0, 4);
+    vkllm_push_u32_n(&pc, in1->shapes, 4);
+    vkllm_push_u32_n(&pc, strides1, 4);
+    vkllm_push_u32_n(&pc, tensor->shapes, 4);
+    vkllm_push_u32_n(&pc, strides2, 4);
+    vkllm_push_f32(&pc, params->scale);
+
+    vkllm_err_t err = VKLLM_ERR_OK;
+    struct vkllm_array_ptr *bindings = NULL;
+    _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 3), err, out);
+    vkllm_array_ptr_append(bindings, in0);
+    vkllm_array_ptr_append(bindings, in1);
+    vkllm_array_ptr_append(bindings, tensor);
+
+    // One workgroup per (b,c) activation row; the shader maps lanes to the
+    // N output columns (n = tid, tid + WorkGroupSize, ...).
+    uint32_t rows = in0->shapes[0] * in0->shapes[1];
+    uint32_t group_x = rows;
+    uint32_t group_y = 1, group_z = 1;
+    if (group_x > context->device->vk_physical_dev.properties.limits.maxComputeWorkGroupCount[0])
+    {
+        // Large batches overflow x: split across z (the shader indexes rows
+        // linearly via gl_WorkGroupID.x, so this needs the linear helper).
+        group_z = (group_x + 511) / 512;
+        group_x = 512;
+    }
 
     _CHECK_JUMP(
         vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, &pc, group_x, group_y, group_z), err,
@@ -379,6 +481,11 @@ vkllm_err_t vkllm_op_matmul_run(struct vkllm_context *context, struct vkllm_comm
     if (is_mat_mul_vec(tensor))
     {
         return vkllm_op_mat_mul_vec_run(context, commands, tensor);
+    }
+
+    if (is_mat_mul_vec_nt(tensor))
+    {
+        return vkllm_op_mat_mul_vec_nt_run(context, commands, tensor);
     }
 
     return vkllm_op_mat_mul_mat_run(context, commands, tensor);
