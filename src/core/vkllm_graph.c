@@ -6,6 +6,7 @@
 #include "vkllm_context.h"
 #include "vkllm_hashset.h"
 #include "vkllm_tensor.h"
+#include <sys/time.h>
 
 vkllm_err_t vkllm_graph_new(struct vkllm_context *context, struct vkllm_graph **graph)
 {
@@ -222,6 +223,17 @@ static vkllm_err_t vkllm_graph_run_tensor(struct vkllm_context *context, struct 
 vkllm_err_t vkllm_graph_run(struct vkllm_context *context, struct vkllm_graph *graph)
 {
     _CHECK_ARGS(context && graph && graph->output_node && graph->commands);
+
+    // Optional phase profiling (decode-step CPU/GPU split), enabled once per
+    // process via VKLLM_STEP_PROFILE=1. Timers are cheap; the env lookup is
+    // cached in a static.
+    static int profile = -1;
+    if (profile < 0)
+        profile = getenv("VKLLM_STEP_PROFILE") != NULL;
+    struct timeval tv0, tv1, tv2, tv3;
+    if (profile)
+        gettimeofday(&tv0, NULL);
+
     _CHECK(vkllm_commands_begin(context, graph->commands));
 
     // Create a hash set to track visited tensors for O(1) lookup
@@ -250,8 +262,31 @@ vkllm_err_t vkllm_graph_run(struct vkllm_context *context, struct vkllm_graph *g
     vkllm_hashset_free(visited);
 
     _CHECK(vkllm_commands_end(context, graph->commands));
+
+    if (profile)
+        gettimeofday(&tv1, NULL);
+
     _CHECK(vkllm_commands_submit(context, graph->commands));
+
+    if (profile)
+        gettimeofday(&tv2, NULL);
+
     _CHECK(vkllm_commands_wait_exec(context, graph->commands));
+
+    if (profile)
+    {
+        gettimeofday(&tv3, NULL);
+        static uint64_t n_steps = 0;
+        static double rec_sum = 0, sub_sum = 0, wait_sum = 0;
+        rec_sum += (tv1.tv_sec - tv0.tv_sec) * 1000.0 + (tv1.tv_usec - tv0.tv_usec) / 1000.0;
+        sub_sum += (tv2.tv_sec - tv1.tv_sec) * 1000.0 + (tv2.tv_usec - tv1.tv_usec) / 1000.0;
+        wait_sum += (tv3.tv_sec - tv2.tv_sec) * 1000.0 + (tv3.tv_usec - tv2.tv_usec) / 1000.0;
+        if (++n_steps % 32 == 0)
+        {
+            log_info("step x%llu: record %.2f ms/step, submit %.2f ms/step, wait %.2f ms/step",
+                     (unsigned long long)n_steps, rec_sum / n_steps, sub_sum / n_steps, wait_sum / n_steps);
+        }
+    }
     return err;
 }
 
