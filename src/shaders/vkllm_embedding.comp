@@ -40,31 +40,35 @@ void get_indices(uint tid, in out uint b, out uint c, out uint h, out uint w)
 
 void main(void)
 {
+    // The host dispatches num_tokens * dim threads; thread tid maps to
+    // (token, element) = (tid / dim, tid % dim) so the row copy is parallel
+    // across the hidden dim. (The original one-thread-per-token loop
+    // serialized the whole row through a single lane — ~200us for 8KB.)
     uint tid = get_thread_id();
-    uint tid_b, tid_c, tid_h, tid_w;
-    get_indices(tid, tid_b, tid_c, tid_h, tid_w);
-
-    if (tid_b >= indices_shape.shapes[0] || tid_c >= indices_shape.shapes[1] || tid_h >= indices_shape.shapes[2] ||
-        tid_w >= indices_shape.shapes[3])
+    uint n_tokens = indices_shape.shapes[0] * indices_shape.shapes[1] * indices_shape.shapes[2] *
+                    indices_shape.shapes[3];
+    uint dim = params_shape.shapes[3];
+    if (tid >= n_tokens * dim)
     {
         return;
     }
 
-    uint off = tid_b * indices_shape.strides[0] + tid_c * indices_shape.strides[1] +
-               tid_h * indices_shape.strides[2] + tid_w * indices_shape.strides[3];
+    uint row = tid / dim;
+    uint w = tid - row * dim;
 
-    uint tok = indices[off];
+    uint tok = indices[row];
     if (tok >= params_shape.shapes[2])
     {
         tok = UNK_TOK;
     }
 
-    uint dim = params_shape.shapes[3];
-    uint out_off = tid_c * output_shape.strides[0] + tid_h * output_shape.strides[1] + tid_w * output_shape.strides[2];
-    uint params_off = (tok * params_shape.strides[2]);
-
-    for (uint w = 0; w < dim; ++w)
-    {
-        output0[out_off + w] = params[params_off + w];
-    }
+    // Output addressing via the pushed strides (rows may have padding);
+    // the params table rows are indexed directly by token id.
+    uint seq = indices_shape.shapes[3];
+    uint b = row / (indices_shape.shapes[2] * seq);
+    uint rem = row - b * indices_shape.shapes[2] * seq;
+    uint h = rem / seq;
+    uint t = rem - h * seq;
+    uint out_off = b * output_shape.strides[0] + h * output_shape.strides[1] + t * output_shape.strides[2];
+    output0[out_off + w] = params[tok * params_shape.strides[2] + w];
 }

@@ -346,7 +346,15 @@ vkllm_err_t vkllm_commands_pipeline(struct vkllm_context *context, struct vkllm_
     vkCmdBindDescriptorSets(commands->vk_command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->vk_pipeline_layout,
                             0, 1, &tensor->vk_desc_set, 0, NULL);
 
-    if (context->device->support_query_timestamp)
+    // Per-dispatch timestamps are opt-in (VKLLM_TIMESTAMP=1): on MoltenVK the
+    // hardware counter buffers are unavailable and the emulated fallback
+    // makes every reset/write pair cost tens of microseconds — devastating
+    // when wrapped around all ~500 dispatches of a decode step.
+    static int write_timestamps = -1;
+    if (write_timestamps < 0)
+        write_timestamps = context->device->support_query_timestamp && getenv("VKLLM_TIMESTAMP") != NULL;
+
+    if (write_timestamps)
     {
         vkCmdResetQueryPool(commands->vk_command_buffer, pipeline->vk_query_pool, 0, 2);
         vkCmdWriteTimestamp(commands->vk_command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, pipeline->vk_query_pool, 0);
@@ -354,7 +362,7 @@ vkllm_err_t vkllm_commands_pipeline(struct vkllm_context *context, struct vkllm_
 
     vkCmdDispatch(commands->vk_command_buffer, group_x, group_y, group_z);
 
-    if (context->device->support_query_timestamp)
+    if (write_timestamps)
     {
         vkCmdWriteTimestamp(commands->vk_command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, pipeline->vk_query_pool,
                             1);

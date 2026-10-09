@@ -99,7 +99,9 @@ vkllm_err_t vkllm_op_embedding_run(struct vkllm_context *context, struct vkllm_c
     vkllm_array_ptr_append(bindings, tensor);
 
     struct vkllm_pipeline *pipeline = tensor->pipeline;
-    uint32_t N = _MUL4(in0->shapes);
+    // One thread per output ELEMENT (tokens x hidden), not per token: the
+    // row copy is parallel across the hidden dim (see the shader note).
+    uint32_t N = _MUL4(in0->shapes) * in1->shapes[3];
     uint32_t group_x = 0, group_z = 0;
     vkllm_calc_linear_group_counts(context, N, pipeline->shader_info.local_x, &group_x, &group_z);
     vkllm_err_t err = vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, &pc, group_x, 1, group_z);

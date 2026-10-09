@@ -237,8 +237,10 @@ static vkllm_err_t init_physical_device(struct vkllm_context *context)
         pdev->support_int8_arithmetic = pdev->vk_physical_dev.feat_shader_fp16_int8.shaderInt8;
     }
 
-    pdev->support_query_timestamp = pdev->vk_physical_dev.properties.limits.timestampComputeAndGraphics &&
-                                    pdev->vk_physical_dev.features.pipelineStatisticsQuery;
+    // VK_QUERY_TYPE_TIMESTAMP only needs timestampComputeAndGraphics; the
+    // pipelineStatisticsQuery feature is for stats queries and is not
+    // exposed by MoltenVK — requiring it silently disabled all GPU timing.
+    pdev->support_query_timestamp = pdev->vk_physical_dev.properties.limits.timestampComputeAndGraphics;
     pdev->subgroup_size = pdev->vk_physical_dev.subgroup_properties.subgroupSize;
 
     return VKLLM_ERR_OK;

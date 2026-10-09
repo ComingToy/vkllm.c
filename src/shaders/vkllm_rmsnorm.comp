@@ -55,7 +55,6 @@ void main(void)
     }
 
     barrier();
-    memoryBarrierShared();
 
     for (int i = _RMS_NORM_BLOCK_X / 2; i > 0; i >>= 1)
     {
@@ -64,11 +63,9 @@ void main(void)
             sum[tid_x] += sum[tid_x + i];
         }
         barrier();
-        memoryBarrierShared();
     }
 
     barrier();
-    memoryBarrierShared();
 
     LOAD_DTYPE mean = sum[0] / LOAD_DTYPE(W);
     LOAD_DTYPE alpha = inversesqrt(mean + eps);
