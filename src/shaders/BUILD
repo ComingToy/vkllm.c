@@ -100,11 +100,19 @@ glsl_shader(
         "-DDTYPE=float -DACC_DTYPE=float -DOUT_DTYPE=float",
         "-D_SUPPORT_16BIT_STORAGE -D_SUPPORT_FLOAT16_ARITHMETIC -DDTYPE=float16_t -DACC_DTYPE=float16_t -DOUT_DTYPE=float16_t",
         "-D_SUPPORT_16BIT_STORAGE -DDTYPE=float16_t -DACC_DTYPE=float -DOUT_DTYPE=float16_t",
+        # Fused GEMV + residual-add variants (act == 2): an extra residual
+        # binding folds the epilogue add into the projection dispatch.
+        "-DDTYPE=float -DACC_DTYPE=float -DOUT_DTYPE=float -DFUSED_ADD",
+        "-D_SUPPORT_16BIT_STORAGE -D_SUPPORT_FLOAT16_ARITHMETIC -DDTYPE=float16_t -DACC_DTYPE=float16_t -DOUT_DTYPE=float16_t -DFUSED_ADD",
+        "-D_SUPPORT_16BIT_STORAGE -DDTYPE=float16_t -DACC_DTYPE=float -DOUT_DTYPE=float16_t -DFUSED_ADD",
     ],
     suffixes = [
         "f32f32",
         "f16f16",
-        "f16f32"
+        "f16f32",
+        "f32f32fa",
+        "f16f16fa",
+        "f16f32fa",
     ],
 )
 

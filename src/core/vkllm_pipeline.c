@@ -646,6 +646,9 @@ static vkllm_err_t vkllm_create_mat_mul_vec_pipelines(struct vkllm_context *cont
             context->pipelines.mat_mul_vec.f32f32[i][k] = NULL;
             context->pipelines.mat_mul_vec.f16f32[i][k] = NULL;
             context->pipelines.mat_mul_vec.f16f16[i][k] = NULL;
+            context->pipelines.mat_mul_vec.f32f32fa[i][k] = NULL;
+            context->pipelines.mat_mul_vec.f16f32fa[i][k] = NULL;
+            context->pipelines.mat_mul_vec.f16f16fa[i][k] = NULL;
         }
     }
 
@@ -657,6 +660,9 @@ static vkllm_err_t vkllm_create_mat_mul_vec_pipelines(struct vkllm_context *cont
                                             .local_x = context->device->subgroup_size,
                                             .local_y = 1,
                                             .local_z = 1};
+    // Fused-add variants carry one extra binding (the residual tensor).
+    struct vkllm_shader_info shader_info_fa = shader_info;
+    shader_info_fa.binding_count = 4;
 
     for (int32_t i = 0; i < 4; ++i)
     {
@@ -667,6 +673,15 @@ static vkllm_err_t vkllm_create_mat_mul_vec_pipelines(struct vkllm_context *cont
             vkllm_err_t err = vkllm_pipeline_new(context, "mat_mul_vec_pipelines_f32f32", shader_info,
                                                  _vkllm_mat_mul_vecf32f32_spv(), _vkllm_mat_mul_vecf32f32_size(),
                                                  specializations, &context->pipelines.mat_mul_vec.f32f32[i][k]);
+            if (err != VKLLM_ERR_OK)
+            {
+                vkllm_shader_constants_free(specializations);
+                return err;
+            }
+
+            err = vkllm_pipeline_new(context, "mat_mul_vec_pipelines_f32f32fa", shader_info_fa,
+                                     _vkllm_mat_mul_vecf32f32fa_spv(), _vkllm_mat_mul_vecf32f32fa_size(),
+                                     specializations, &context->pipelines.mat_mul_vec.f32f32fa[i][k]);
             if (err != VKLLM_ERR_OK)
             {
                 vkllm_shader_constants_free(specializations);
@@ -686,11 +701,28 @@ static vkllm_err_t vkllm_create_mat_mul_vec_pipelines(struct vkllm_context *cont
                     return err;
                 }
 
+                err = vkllm_pipeline_new(context, "mat_mul_vec_pipelines_f16f32fa", shader_info_fa,
+                                         _vkllm_mat_mul_vecf16f32fa_spv(), _vkllm_mat_mul_vecf16f32fa_size(),
+                                         specializations, &context->pipelines.mat_mul_vec.f16f32fa[i][k]);
+
+                if (err != VKLLM_ERR_OK)
+                {
+                    vkllm_shader_constants_free(specializations);
+                    return err;
+                }
+
                 if (context->device->support_fp16_arithmetic)
                 {
                     err = vkllm_pipeline_new(context, "mat_mul_vec_pipelines_f16f16", shader_info,
                                              _vkllm_mat_mul_vecf16f16_spv(), _vkllm_mat_mul_vecf16f16_size(),
                                              specializations, &context->pipelines.mat_mul_vec.f16f16[i][k]);
+                }
+
+                if (err == VKLLM_ERR_OK && context->device->support_fp16_arithmetic)
+                {
+                    err = vkllm_pipeline_new(context, "mat_mul_vec_pipelines_f16f16fa", shader_info_fa,
+                                             _vkllm_mat_mul_vecf16f16fa_spv(), _vkllm_mat_mul_vecf16f16fa_size(),
+                                             specializations, &context->pipelines.mat_mul_vec.f16f16fa[i][k]);
                 }
 
                 if (err != VKLLM_ERR_OK)

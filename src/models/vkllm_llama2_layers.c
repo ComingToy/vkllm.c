@@ -89,13 +89,22 @@ vkllm_err_t vkllm_llama2_build_ffn_layer(struct vkllm_context *context, struct v
         down_input = gate_mul;
     }
 
-    struct vkllm_tensor *down_srcs[] = {down_input, params.WD};
-    struct vkllm_op_matmul_params down_params = {.scale = 1.0, .act = 0, .transposed_b = true};
+    struct vkllm_tensor *down_srcs[] = {down_input, params.WD, input};
+    // act == 2 fuses the residual add into the down-projection GEMV (decode
+    // path only; prefill keeps the separate add so batched matmul applies).
+    struct vkllm_op_matmul_params down_params = {.scale = 1.0, .act = seq_len == 1 ? 2 : 0, .transposed_b = true};
     uint32_t ffn_down_shapes[] = {batch, channel, seq_len, params.WD->shapes[2]};
     snprintf(scope_buf, sizeof(scope_buf), "%s.down", name);
-    _CHECK(vkllm_tensor_new(context, scope_buf, ffn_down_shapes, down_input->dtype, VKLLM_OP_MATMUL, down_srcs, 2,
-                            &down_params, sizeof(down_params), false, &down));
+    _CHECK(vkllm_tensor_new(context, scope_buf, ffn_down_shapes, down_input->dtype, VKLLM_OP_MATMUL, down_srcs,
+                            seq_len == 1 ? 3 : 2, &down_params, sizeof(down_params), false, &down));
     _CHECK(vkllm_graph_add_node(context, graph, down));
+
+    if (seq_len == 1)
+    {
+        // The fused GEMV already added the residual.
+        *output = down;
+        return VKLLM_ERR_OK;
+    }
 
     struct vkllm_tensor *output_srcs[] = {input, down};
     int32_t add_op = 0;
@@ -303,15 +312,27 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
 
     struct vkllm_tensor *final_output = NULL;
     uint32_t final_output_shapes[] = {batch, 1, seq_len, hidden_dim};
-    struct vkllm_tensor *final_output_srcs[] = {concated_heads_ref, params.WO};
-    struct vkllm_op_matmul_params final_output_params = {.scale = 1.0, .act = 0, .transposed_b = true};
+    struct vkllm_tensor *final_output_srcs[] = {concated_heads_ref, params.WO, input};
+    // act == 2 fuses the residual add into the o_proj GEMV epilogue (one
+    // dispatch instead of matmul-then-add; decode path only — prefill keeps
+    // the separate ops so batched matmul stays available).
+    struct vkllm_op_matmul_params final_output_params = {.scale = 1.0, .act = seq_len == 1 ? 2 : 0,
+                                                         .transposed_b = true};
     snprintf(scope_buf, sizeof(scope_buf), "%s.final_output", name);
     _CHECK(vkllm_tensor_new(context, scope_buf, final_output_shapes, concated_heads->dtype, VKLLM_OP_MATMUL,
-                            final_output_srcs, 2, &final_output_params, sizeof(final_output_params), false,
-                            &final_output));
+                            final_output_srcs, seq_len == 1 ? 3 : 2, &final_output_params,
+                            sizeof(final_output_params), false, &final_output));
     _CHECK(vkllm_graph_add_node(context, graph, final_output));
 
     struct vkllm_tensor *final_output_add;
+    if (seq_len == 1)
+    {
+        // The fused GEMV already added the residual; the layer output IS the
+        // projection result.
+        *output = final_output;
+        return VKLLM_ERR_OK;
+    }
+
     struct vkllm_tensor *output_add_srcs[] = {input, final_output};
     int32_t bin_op = 0;
     snprintf(scope_buf, sizeof(scope_buf), "%s.final_output_add", name);

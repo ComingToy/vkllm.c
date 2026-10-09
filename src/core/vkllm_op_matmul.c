@@ -105,6 +105,11 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
     struct vkllm_tensor *in0 = tensor->srcs[0];
     struct vkllm_tensor *in1 = tensor->srcs[1];
 
+    // act == 2 selects the fused GEMV + residual-add epilogue (srcs[2] is the
+    // residual). Only valid on the GEMV path; the tiled matmul keeps act ∈ {0,1}.
+    const struct vkllm_op_matmul_params *params = get_matmul_params(tensor);
+    bool fused_add = params->act == 2 && tensor->srcs[2] != NULL;
+
     if (in0->dtype == vkllm_dtype_float16 && in1->dtype == vkllm_dtype_float16)
     {
         if (tensor->dtype != vkllm_dtype_float16)
@@ -123,7 +128,8 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
         {
             if (is_mat_mul_vec(tensor))
             {
-                *pipeline = context->pipelines.mat_mul_vec.f16f16[a_boardcast_type][b_boardcast_type];
+                *pipeline = fused_add ? context->pipelines.mat_mul_vec.f16f16fa[a_boardcast_type][b_boardcast_type]
+                                      : context->pipelines.mat_mul_vec.f16f16[a_boardcast_type][b_boardcast_type];
             }
             else
             {
@@ -134,7 +140,8 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
         {
             if (is_mat_mul_vec(tensor))
             {
-                *pipeline = context->pipelines.mat_mul_vec.f16f32[a_boardcast_type][b_boardcast_type];
+                *pipeline = fused_add ? context->pipelines.mat_mul_vec.f16f32fa[a_boardcast_type][b_boardcast_type]
+                                      : context->pipelines.mat_mul_vec.f16f32[a_boardcast_type][b_boardcast_type];
             }
             else
             {
@@ -146,7 +153,8 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
     {
         if (is_mat_mul_vec(tensor))
         {
-            *pipeline = context->pipelines.mat_mul_vec.f32f32[a_boardcast_type][b_boardcast_type];
+            *pipeline = fused_add ? context->pipelines.mat_mul_vec.f32f32fa[a_boardcast_type][b_boardcast_type]
+                                  : context->pipelines.mat_mul_vec.f32f32[a_boardcast_type][b_boardcast_type];
         }
         else
         {
@@ -203,6 +211,10 @@ static vkllm_err_t vkllm_op_mat_mul_vec_run(struct vkllm_context *context, struc
     const struct vkllm_op_matmul_params *params = get_matmul_params(tensor);
     const float scale = params->scale;
     const int32_t act = params->act;
+    // Fused residual-add path: srcs[2] is the residual and must share the
+    // output layout (the shader indexes it through shape_out).
+    struct vkllm_tensor *residual = act == 2 ? tensor->srcs[2] : NULL;
+    _CHECK_ARGS(!residual || residual->data.vk_buf != NULL);
 
     struct vkllm_push_constants pc;
     vkllm_push_constants_reset(&pc);
@@ -217,10 +229,14 @@ static vkllm_err_t vkllm_op_mat_mul_vec_run(struct vkllm_context *context, struc
 
     vkllm_err_t err = VKLLM_ERR_OK;
     struct vkllm_array_ptr *bindings = NULL;
-    _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 3), err, out);
+    _CHECK_JUMP(vkllm_array_ptr_new(&bindings, residual ? 4 : 3), err, out);
     vkllm_array_ptr_append(bindings, in0);
     vkllm_array_ptr_append(bindings, in1);
     vkllm_array_ptr_append(bindings, tensor);
+    if (residual)
+    {
+        vkllm_array_ptr_append(bindings, residual);
+    }
 
     // Each subgroup computes a PAIR of adjacent weight rows (activations
     // shared), so one workgroup per row pair: ceil(N/2) along x with
@@ -229,7 +245,6 @@ static vkllm_err_t vkllm_op_mat_mul_vec_run(struct vkllm_context *context, struc
     uint32_t group_x = (N + 1) / 2;
     uint32_t group_y = 1, group_z = 0;
     _CHECK(vkllm_calc_linear_group_counts(context, group_x, 1, &group_x, &group_z));
-    const uint32_t local_y = 1;
 
     _CHECK_JUMP(
         vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, &pc, group_x, group_y, group_z), err,

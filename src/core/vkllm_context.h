@@ -55,6 +55,11 @@ struct vkllm_context
             struct vkllm_pipeline *f32f32[4][4];
             struct vkllm_pipeline *f16f32[4][4];
             struct vkllm_pipeline *f16f16[4][4];
+            // Fused GEMV + residual-add variants (act == 2): same [4][4]
+            // boardcast grid, extra residual binding.
+            struct vkllm_pipeline *f32f32fa[4][4];
+            struct vkllm_pipeline *f16f32fa[4][4];
+            struct vkllm_pipeline *f16f16fa[4][4];
         } mat_mul_vec;
 
         struct

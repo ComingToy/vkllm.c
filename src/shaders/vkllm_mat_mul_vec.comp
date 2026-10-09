@@ -37,6 +37,15 @@ layout(binding = 2) writeonly buffer out0_type
     DTYPE out_mat[];
 };
 
+#ifdef FUSED_ADD
+// act == 2: out = gemv + residual. The residual tensor is passed as a third
+// source and shares the output layout (indexed through shape_out).
+layout(binding = 3) readonly buffer residual_type
+{
+    DTYPE residual[];
+};
+#endif
+
 layout(push_constant) uniform constants
 {
     ShapeConstant shape_vec;
@@ -221,10 +230,30 @@ void main()
     v1 = act == 1 ? v1 / (ACC_DTYPE(1.0) + exp(-v1)) : v1;
     if (subgroupElect())
     {
-        out_mat[out_batch_off + h * shape_out.strides[2] + w * shape_out.strides[3]] = OUT_DTYPE(v0);
-        if (has_row1)
+#ifdef FUSED_ADD
+        // act == 2 folds the residual add into the epilogue: one dispatch
+        // replaces the separate gemv-then-add pair (saving a full round trip
+        // of the projection output through memory).
+        if (act == 2)
         {
-            out_mat[out_batch_off + h * shape_out.strides[2] + w1 * shape_out.strides[3]] = OUT_DTYPE(v1);
+            uint o0 = out_batch_off + h * shape_out.strides[2] + w * shape_out.strides[3];
+            v0 += ACC_DTYPE(residual[o0]);
+            out_mat[o0] = OUT_DTYPE(v0);
+            if (has_row1)
+            {
+                uint o1 = out_batch_off + h * shape_out.strides[2] + w1 * shape_out.strides[3];
+                v1 += ACC_DTYPE(residual[o1]);
+                out_mat[o1] = OUT_DTYPE(v1);
+            }
+        }
+        else
+#endif
+        {
+            out_mat[out_batch_off + h * shape_out.strides[2] + w * shape_out.strides[3]] = OUT_DTYPE(v0);
+            if (has_row1)
+            {
+                out_mat[out_batch_off + h * shape_out.strides[2] + w1 * shape_out.strides[3]] = OUT_DTYPE(v1);
+            }
         }
     }
 }
