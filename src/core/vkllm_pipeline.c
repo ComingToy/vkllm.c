@@ -11,6 +11,7 @@
 #include "vkllm_gpu_device.h"
 #include "vkllm_mat_mul_vec_shaders.h"
 #include "vkllm_mat_mul_vec_nt_shaders.h"
+#include "vkllm_mat_mul_vec_dual_shaders.h"
 #include "vkllm_matmul_shaders.h"
 #include "vkllm_rmsnorm_shaders.h"
 #include "vkllm_rope_shaders.h"
@@ -333,10 +334,11 @@ vkllm_err_t vkllm_pipeline_query_exec_time(struct vkllm_context *context, struct
 
 static vkllm_err_t vkllm_create_all_bin_pipeline(struct vkllm_context *context)
 {
+    // +4B push constant for op == 4 (glu halves) carrying ff_len.
     struct vkllm_shader_info shader_info = {
-        .binding_count = 3, .push_constant_bytes = sizeof(uint32_t) * 8, .local_x = 512, .local_y = 1, .local_z = 1};
+        .binding_count = 3, .push_constant_bytes = sizeof(uint32_t) * 9, .local_x = 512, .local_y = 1, .local_z = 1};
 
-    for (uint32_t i = 0; i < 4; ++i)
+    for (uint32_t i = 0; i < VKLLM_BIN_OP_COUNTS; ++i)
     {
         context->pipelines.bin.f16f16f16[i] = NULL;
         context->pipelines.bin.f16f16f32[i] = NULL;
@@ -344,7 +346,7 @@ static vkllm_err_t vkllm_create_all_bin_pipeline(struct vkllm_context *context)
         context->pipelines.bin.f32f32f32[i] = NULL;
     }
 
-    for (int32_t i = 0; i < 4; ++i)
+    for (int32_t i = 0; i < VKLLM_BIN_OP_COUNTS; ++i)
     {
         char name[64];
         snprintf(name, sizeof(name), "binary_op_%u", i);
@@ -778,6 +780,32 @@ static vkllm_err_t vkllm_create_mat_mul_vec_nt_pipelines(struct vkllm_context *c
     return VKLLM_ERR_OK;
 }
 
+static vkllm_err_t vkllm_create_mat_mul_vec_dual_pipelines(struct vkllm_context *context)
+{
+    context->pipelines.mat_mul_vec_dual.f16f32 = NULL;
+    context->pipelines.mat_mul_vec_dual.f32f32 = NULL;
+
+    // One subgroup per output row (2FF rows total, dispatched by the host).
+    struct vkllm_shader_info shader_info = {.binding_count = 4,
+                                            .push_constant_bytes = sizeof(uint32_t) * 24 + sizeof(float),
+                                            .local_x = context->device->subgroup_size,
+                                            .local_y = 1,
+                                            .local_z = 1};
+
+    _CHECK(vkllm_pipeline_new(context, "mat_mul_vec_dual_f32f32", shader_info,
+                              _vkllm_mat_mul_vec_dualf32f32_spv(), _vkllm_mat_mul_vec_dualf32f32_size(), NULL,
+                              &context->pipelines.mat_mul_vec_dual.f32f32));
+
+    if (context->device->support_16bit_storage)
+    {
+        _CHECK(vkllm_pipeline_new(context, "mat_mul_vec_dual_f16f32", shader_info,
+                                  _vkllm_mat_mul_vec_dualf16f32_spv(), _vkllm_mat_mul_vec_dualf16f32_size(), NULL,
+                                  &context->pipelines.mat_mul_vec_dual.f16f32));
+    }
+
+    return VKLLM_ERR_OK;
+}
+
 static vkllm_err_t vkllm_create_arg_max_pipeline(struct vkllm_context *context)
 {
     _CHECK_ARGS(context);
@@ -825,13 +853,14 @@ vkllm_err_t vkllm_create_all_pipelines(struct vkllm_context *context)
     _CHECK(vkllm_create_update_rows_pipelines(context));
     _CHECK(vkllm_create_mat_mul_vec_pipelines(context));
     _CHECK(vkllm_create_mat_mul_vec_nt_pipelines(context));
+    _CHECK(vkllm_create_mat_mul_vec_dual_pipelines(context));
     _CHECK(vkllm_create_arg_max_pipeline(context));
     return VKLLM_ERR_OK;
 }
 
 void vkllm_free_all_pipelines(struct vkllm_context *context)
 {
-    for (uint32_t i = 0; i < 4; ++i)
+    for (uint32_t i = 0; i < VKLLM_BIN_OP_COUNTS; ++i)
     {
         vkllm_pipeline_free(context, context->pipelines.bin.f16f16f16[i]);
         vkllm_pipeline_free(context, context->pipelines.bin.f16f32f16[i]);
@@ -871,6 +900,9 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
     vkllm_pipeline_free(context, context->pipelines.mat_mul_vec_nt.f16f32);
     vkllm_pipeline_free(context, context->pipelines.mat_mul_vec_nt.f32f32);
     vkllm_pipeline_free(context, context->pipelines.mat_mul_vec_nt.f16f16);
+
+    vkllm_pipeline_free(context, context->pipelines.mat_mul_vec_dual.f16f32);
+    vkllm_pipeline_free(context, context->pipelines.mat_mul_vec_dual.f32f32);
 
     for (uint32_t i = 0; i < 2; ++i)
     {

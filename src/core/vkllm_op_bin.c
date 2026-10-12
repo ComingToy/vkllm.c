@@ -1,4 +1,5 @@
 #include "vkllm_op_bin.h"
+#include <log.h>
 #include "vkllm_array.h"
 #include "vkllm_commands.h"
 #include "vkllm_common.h"
@@ -51,10 +52,24 @@ vkllm_err_t vkllm_op_bin_init(struct vkllm_context *context, struct vkllm_comman
 
     struct vkllm_tensor *in0 = tensor->srcs[0], *in1 = tensor->srcs[1];
     _CHECK_ARGS(in0 && in1);
-    _CHECK_ARGS(in0->shapes[0] == in1->shapes[0] && in0->shapes[0] == tensor->shapes[0]);
-    _CHECK_ARGS(in0->shapes[1] == in1->shapes[1] && in0->shapes[1] == tensor->shapes[1]);
-    _CHECK_ARGS(in0->shapes[2] == in1->shapes[2] && in0->shapes[2] == tensor->shapes[2]);
-    _CHECK_ARGS(in0->shapes[3] == in1->shapes[3] && in0->shapes[3] == tensor->shapes[3]);
+
+    const int32_t op = *(const int32_t *)tensor->params;
+    if (op == 4)
+    {
+        // GLU halves: one logical input [.., 2*ff]; srcs[1] is the same
+        // tensor (binding filler) and the output halves the last dim.
+        _CHECK_ARGS(in0 == in1);
+        _CHECK_ARGS(in0->shapes[0] == tensor->shapes[0] && in0->shapes[1] == tensor->shapes[1] &&
+                    in0->shapes[2] == tensor->shapes[2]);
+        _CHECK_ARGS(in0->shapes[3] == tensor->shapes[3] * 2);
+    }
+    else
+    {
+        _CHECK_ARGS(in0->shapes[0] == in1->shapes[0] && in0->shapes[0] == tensor->shapes[0]);
+        _CHECK_ARGS(in0->shapes[1] == in1->shapes[1] && in0->shapes[1] == tensor->shapes[1]);
+        _CHECK_ARGS(in0->shapes[2] == in1->shapes[2] && in0->shapes[2] == tensor->shapes[2]);
+        _CHECK_ARGS(in0->shapes[3] == in1->shapes[3] && in0->shapes[3] == tensor->shapes[3]);
+    }
 
     struct vkllm_pipeline *pipeline = NULL;
     _CHECK(vkllm_op_bin_get_pipeline(context, tensor, &pipeline));
@@ -77,6 +92,15 @@ vkllm_err_t vkllm_op_bin_run(struct vkllm_context *context, struct vkllm_command
     vkllm_push_constants_reset(&pc);
     vkllm_push_u32_n(&pc, tensor->shapes, 4);
     vkllm_push_u32_n(&pc, strides, 4);
+
+    const int32_t op = *(const int32_t *)tensor->params;
+    uint32_t ff_len = 0;
+    if (op == 4)
+    {
+        // params layout for glu halves: {op, ff_len}
+        ff_len = ((const uint32_t *)tensor->params)[1];
+    }
+    vkllm_push_u32(&pc, ff_len);
 
     vkllm_err_t err = VKLLM_ERR_OK;
     struct vkllm_array_ptr *bindings = NULL;

@@ -4,6 +4,10 @@
 layout(push_constant) uniform constants
 {
     ShapeConstant shape;
+    // op == 4 (glu halves): input0 holds [gate | up] concatenated along the
+    // last dim (length 2*ff); out[i] = in[i] * silu(in[i + ff]). Consumes one
+    // logical input (binding 1 is bound to the same buffer and ignored).
+    uint ff_len;
 };
 
 layout(binding = 0) readonly buffer Input0
@@ -69,5 +73,12 @@ void main(void)
     else if (op == 3)
     {
         output0[off] = OUT_DTYPE(in0 / in1);
+    }
+    else if (op == 4)
+    {
+        // GLU over concatenated halves: gate at [0, ff), up at [ff, 2*ff).
+        LOAD_DTYPE gate = in0;
+        LOAD_DTYPE up = LOAD_DTYPE(input0[off + ff_len]);
+        output0[off] = OUT_DTYPE(up * (gate / (LOAD_DTYPE(1.0) + exp(-gate))));
     }
 }

@@ -193,6 +193,8 @@ static struct
     {1, 1, 1, 1, 1, 140, 128, vkllm_dtype_float16, false, false},
     {1, 32, 1, 32, 1, 140, 128, vkllm_dtype_float16, false, false},
     {1, 32, 1, 32, 1, 140, 100, vkllm_dtype_float16, false, false},
+    // Dual-weight GEMV (act == 3): handled by the dedicated runner, not this
+    // suite's generic path — covered indirectly via e2e; see dualbench.
     {1, 1, 1, 1, 1, 333, 1259, vkllm_dtype_float16, false, false},
     {1, 1, 1, 1, 512, 1024, 2048, vkllm_dtype_float16, false, false},
     {1, 1, 1, 1, 333, 1259, 365, vkllm_dtype_float16, false, false},

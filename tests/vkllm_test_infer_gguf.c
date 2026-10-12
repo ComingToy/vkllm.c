@@ -9,6 +9,7 @@
 #include "src/core/vkllm_tensor.h"
 #include "src/models/vkllm_models_llama2.h"
 #include "tests/vkllm_test_common.h"
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -243,6 +244,9 @@ int main(const int argc, const char *argv[])
         graph = NULL;
     }
 
+    const uint64_t allocs_before = context->stats.tensor_alloc_counts;
+    const uint64_t frees_before = context->stats.tensor_free_counts;
+
     // Decode: build the seq=1 graph once, then re-run it every step.
     uint32_t input_shapes[] = {1, 1, 1, 1};
     _CHECK_JUMP(vkllm_tensor_new(context, "input_toks", input_shapes, vkllm_dtype_uint32, VKLLM_OP_NONE, NULL, 0,
@@ -277,6 +281,10 @@ int main(const int argc, const char *argv[])
     }
 
     gettimeofday(&tv_end, NULL);
+    log_info("decode window: %" PRIu64 " tensor allocs, %" PRIu64 " tensor frees over %u steps",
+             context->stats.tensor_alloc_counts - allocs_before,
+             context->stats.tensor_free_counts - frees_before,
+             num_tokens - 1);
     total_time_ms = (tv_end.tv_sec - tv_start.tv_sec) * 1000.0 + (tv_end.tv_usec - tv_start.tv_usec) / 1000.0;
     double tokens_per_second = ((num_tokens - 1.0) / total_time_ms) * 1000.0;
     log_info("Average tokens/second: %.2f (generated %u tokens in %.2f ms)", tokens_per_second, num_tokens - 1,

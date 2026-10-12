@@ -20,6 +20,16 @@ struct vkllm_op_matmul_params
     bool transposed_b;
 };
 
+// act == 3: dual-weight GEMV (decode FFN). srcs = {x, Wg, Wu}, all f16
+// (or all f32); out = [x@Wg | x@Wu] concatenated along the last dim
+// (length 2*FF). Requires a single activation row and strictly
+// contiguous transposed weights. One dispatch replaces the separate
+// gate/up GEMVs; the GLU consumes the halves (bin op 4).
+extern vkllm_err_t vkllm_op_mat_mul_vec_dual_init(struct vkllm_context *context, struct vkllm_commands *commands,
+                                                  struct vkllm_tensor *tensor);
+extern vkllm_err_t vkllm_op_mat_mul_vec_dual_run(struct vkllm_context *context, struct vkllm_commands *commands,
+                                                 struct vkllm_tensor *tensor);
+
 extern vkllm_err_t vkllm_op_matmul_init(struct vkllm_context *context, struct vkllm_commands *commands,
                                         struct vkllm_tensor *tensor);
 extern vkllm_err_t vkllm_op_matmul_run(struct vkllm_context *context, struct vkllm_commands *commands,

@@ -1,0 +1,116 @@
+#version 450 core
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#extension GL_EXT_shader_explicit_arithmetic_types : require
+#ifdef _SUPPORT_16BIT_STORAGE
+#extension GL_EXT_shader_16bit_storage : require
+#endif
+
+#include "vkllm_shader_header.comp.h"
+
+// Dual-weight GEMV for the FFN gate/up pair: computes BOTH projections in a
+// single dispatch — out[0,FF) = x @ Wg, out[FF,2FF) = x @ Wu — so the decode
+// graph replaces two GEMV dispatches with one and reads x once. Requires a
+// single activation row, strictly contiguous weights (row pitch == K,
+// K % 4 == 0), and FF even (a row never straddles halves; both 8640 and
+// 11008 qualify). One subgroup per OUTPUT row (2FF subgroups); the subgroup
+// picks its weight binding by the row index.
+
+layout(binding = 0) readonly buffer in_vec_type
+{
+    DTYPE in_vec[];
+};
+layout(binding = 1) readonly buffer in_mat_g_type
+{
+    DTYPE in_mat_g[];
+};
+layout(binding = 2) readonly buffer in_mat_u_type
+{
+    DTYPE in_mat_u[];
+};
+layout(binding = 3) writeonly buffer out_type
+{
+    DTYPE out_mat[];
+};
+
+#ifdef _SUPPORT_16BIT_STORAGE
+layout(binding = 0) readonly buffer in_vec_v4_type
+{
+    f16vec4 in_vec_v4[];
+};
+layout(binding = 1) readonly buffer in_mat_g_v4_type
+{
+    f16vec4 in_mat_g_v4[];
+};
+layout(binding = 2) readonly buffer in_mat_u_v4_type
+{
+    f16vec4 in_mat_u_v4[];
+};
+#endif
+
+layout(push_constant) uniform constants
+{
+    ShapeConstant shape_vec;  // x: [1,1,1,K]
+    ShapeConstant shape_mat;  // weights: [1,1,FF,K] (both halves same shape)
+    ShapeConstant shape_out;  // out: [1,1,1,2FF]
+    float scale;
+};
+
+void main()
+{
+    uint wg = gl_WorkGroupID.x + gl_NumWorkGroups.x * gl_WorkGroupID.z;
+    uint row = wg; // output row in [0, 2FF)
+
+    uint FF = shape_mat.shapes[2];
+    uint K = shape_vec.shapes[3];
+
+    if (row >= 2u * FF)
+        return;
+
+    // Rows [0, FF) come from the gate matrix; [FF, 2FF) from up.
+    bool is_gate = row < FF;
+    uint mat_row = is_gate ? row : row - FF;
+
+    uint lane = gl_SubgroupInvocationID.x;
+    ACC_DTYPE acc = ACC_DTYPE(0);
+
+#ifdef _SUPPORT_16BIT_STORAGE
+    if (shape_vec.strides[3] == 1 && shape_mat.strides[3] == 1 && shape_mat.strides[2] == K && (K & 3u) == 0)
+    {
+        uint nvec4 = K / 4;
+        uint i = lane;
+        [[unroll]] for (; i + 2 * gl_SubgroupSize <= nvec4; i += 2 * gl_SubgroupSize)
+        {
+            f16vec4 v0 = in_vec_v4[(i * 4) / 4];
+            f16vec4 v1 = in_vec_v4[((i + gl_SubgroupSize) * 4) / 4];
+            f16vec4 m0 = is_gate ? in_mat_g_v4[(mat_row * K + i * 4) / 4] : in_mat_u_v4[(mat_row * K + i * 4) / 4];
+            f16vec4 m1 = is_gate ? in_mat_g_v4[(mat_row * K + (i + gl_SubgroupSize) * 4) / 4]
+                                 : in_mat_u_v4[(mat_row * K + (i + gl_SubgroupSize) * 4) / 4];
+            acc = ACC_DTYPE(dot(v0, m0)) + acc;
+            acc = ACC_DTYPE(dot(v1, m1)) + acc;
+        }
+        for (; i < nvec4; i += gl_SubgroupSize)
+        {
+            f16vec4 v = in_vec_v4[(i * 4) / 4];
+            f16vec4 m = is_gate ? in_mat_g_v4[(mat_row * K + i * 4) / 4] : in_mat_u_v4[(mat_row * K + i * 4) / 4];
+            acc = ACC_DTYPE(dot(v, m)) + acc;
+        }
+    }
+    else
+#endif
+    {
+        for (uint k = lane; k < K; k += gl_SubgroupSize)
+        {
+            ACC_DTYPE v = ACC_DTYPE(in_vec[k]);
+            ACC_DTYPE m = is_gate ? ACC_DTYPE(in_mat_g[mat_row * K + k]) : ACC_DTYPE(in_mat_u[mat_row * K + k]);
+            acc = fma(v, m, acc);
+        }
+    }
+
+    acc = subgroupAdd(acc) * ACC_DTYPE(scale);
+    if (subgroupElect())
+    {
+        out_mat[row] = DTYPE(acc);
+    }
+}

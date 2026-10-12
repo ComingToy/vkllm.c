@@ -16,6 +16,9 @@ struct vkllm_gpu_device;
 struct vkllm_pipeline;
 struct vkllm_hashmap;
 
+// Binary op ids: 0 add, 1 sub, 2 mul, 3 div, 4 glu-halves.
+#define VKLLM_BIN_OP_COUNTS 5
+
 struct vkllm_context
 {
     const char *appname;
@@ -24,11 +27,12 @@ struct vkllm_context
     {
         struct
         {
-            struct vkllm_pipeline *f32f32f32[4];
-            struct vkllm_pipeline *f16f32f32[4];
-            struct vkllm_pipeline *f16f16f32[4];
-            struct vkllm_pipeline *f16f16f16[4];
-            struct vkllm_pipeline *f16f32f16[4];
+            // ops 0-3: add/sub/mul/div; 4: glu halves (see vkllm_bin_op.comp)
+            struct vkllm_pipeline *f32f32f32[VKLLM_BIN_OP_COUNTS];
+            struct vkllm_pipeline *f16f32f32[VKLLM_BIN_OP_COUNTS];
+            struct vkllm_pipeline *f16f16f32[VKLLM_BIN_OP_COUNTS];
+            struct vkllm_pipeline *f16f16f16[VKLLM_BIN_OP_COUNTS];
+            struct vkllm_pipeline *f16f32f16[VKLLM_BIN_OP_COUNTS];
         } bin;
         struct
         {
@@ -70,6 +74,13 @@ struct vkllm_context
             struct vkllm_pipeline *f32f32;
             struct vkllm_pipeline *f16f16;
         } mat_mul_vec_nt;
+
+        struct
+        {
+            // Dual-weight GEMV (gate+up in one dispatch): out = x@Wg | x@Wu.
+            struct vkllm_pipeline *f16f32;
+            struct vkllm_pipeline *f32f32;
+        } mat_mul_vec_dual;
 
         struct
         {

@@ -62,11 +62,10 @@ vkllm_err_t vkllm_llama2_build_ffn_layer(struct vkllm_context *context, struct v
         _CHECK(vkllm_graph_add_node(context, graph, up_gate));
         down_input = up_gate;
     }
-    else
+    else if (seq_len > 1)
     {
-        // Decode (seq_len == 1): the fused shader tiles 128x128 blocks and
-        // would waste 127/128 of its work on a single row; use the
-        // matrix-vector path instead (up + silu(gate) mat_muls + mul).
+        // Prefill without the fused-shader opt-in: separate up / silu(gate)
+        // matmuls + mul (batched matmul path; the dual GEMV is row-only).
         struct vkllm_op_matmul_params up_matmul_params = {.scale = 1.0, .act = 0, .transposed_b = true};
         snprintf(scope_buf, sizeof(scope_buf), "%s.up", name);
         _CHECK(vkllm_tensor_new(context, scope_buf, ffn_up_shapes, norm->dtype, VKLLM_OP_MATMUL,
@@ -85,6 +84,31 @@ vkllm_err_t vkllm_llama2_build_ffn_layer(struct vkllm_context *context, struct v
         snprintf(scope_buf, sizeof(scope_buf), "%s.mul", name);
         _CHECK(vkllm_tensor_new(context, scope_buf, ffn_up_shapes, gate->dtype, VKLLM_OP_BIN,
                                 (struct vkllm_tensor *[]){up, gate}, 2, &bin_op, sizeof(bin_op), false, &gate_mul));
+        _CHECK(vkllm_graph_add_node(context, graph, gate_mul));
+        down_input = gate_mul;
+    }
+    else
+    {
+        // Decode (seq_len == 1): the fused shader tiles 128x128 blocks and
+        // would waste 127/128 of its work on a single row. Use the DUAL
+        // matrix-vector path: one GEMV computes both projections
+        // (out = [x@Wg | x@Wu], 2*FF wide) and the GLU bin op consumes the
+        // halves — 2 dispatches replace the old up + gate + mul triple and
+        // the activation row is read once.
+        uint32_t dual_shapes[4] = {batch, channel, 1, 2 * up_dim};
+        struct vkllm_op_matmul_params dual_params = {.scale = 1.0, .act = 3, .transposed_b = true};
+        snprintf(scope_buf, sizeof(scope_buf), "%s.gate_up", name);
+        _CHECK(vkllm_tensor_new(context, scope_buf, dual_shapes, norm->dtype, VKLLM_OP_MATMUL,
+                                (struct vkllm_tensor *[]){norm, params.WG, params.WU}, 3, &dual_params,
+                                sizeof(dual_params), false, &up_gate));
+        _CHECK(vkllm_graph_add_node(context, graph, up_gate));
+
+        // GLU halves: out[i] = up[i] * silu(gate[i]) over the [2*FF] input.
+        uint32_t glu_params[2] = {4, up_dim};
+        snprintf(scope_buf, sizeof(scope_buf), "%s.mul", name);
+        _CHECK(vkllm_tensor_new(context, scope_buf, ffn_up_shapes, up_gate->dtype, VKLLM_OP_BIN,
+                                (struct vkllm_tensor *[]){up_gate, up_gate}, 2, glu_params, sizeof(glu_params),
+                                false, &gate_mul));
         _CHECK(vkllm_graph_add_node(context, graph, gate_mul));
         down_input = gate_mul;
     }

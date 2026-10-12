@@ -83,6 +83,30 @@ static inline bool is_mat_mul_vec_nt(struct vkllm_tensor *tensor)
     return in0->shapes[2] == 1;
 }
 
+// act == 3: dual-weight GEMV. srcs = {x, Wg, Wu}; out last dim = 2*FF.
+static bool is_mat_mul_vec_dual(struct vkllm_tensor *tensor)
+{
+    const struct vkllm_op_matmul_params *params = get_matmul_params(tensor);
+    struct vkllm_tensor *in0 = tensor->srcs[0];
+    struct vkllm_tensor *wg = tensor->srcs[1];
+    struct vkllm_tensor *wu = tensor->srcs[2];
+
+    if (params->act != 3 || in0 == NULL || wg == NULL || wu == NULL)
+        return false;
+    if (in0->shapes[2] != 1 || !matmul_transposed_b(tensor))
+        return false;
+    if (wg->shapes[2] != wu->shapes[2] || wg->shapes[3] != wu->shapes[3])
+        return false;
+    // Strictly contiguous weights (same contract as the single GEMV).
+    struct vkllm_dtype_info info;
+    if (vkllm_get_dtype_info(wg->dtype, &info) != VKLLM_ERR_OK)
+        return false;
+    uint32_t K = in0->shapes[3];
+    return wg->strides[3] / info.bytes == 1 && wg->strides[2] / info.bytes == K &&
+           wu->strides[3] / info.bytes == 1 && wu->strides[2] / info.bytes == K;
+}
+
+
 #define BOARDCAST_AXIS0 0
 #define BOARDCAST_AXIS1 1
 #define BOARDCAST_AXIS01 2
@@ -214,6 +238,11 @@ vkllm_err_t vkllm_op_matmul_init(struct vkllm_context *context, struct vkllm_com
 
     struct vkllm_tensor *in0 = tensor->srcs[0], *in1 = tensor->srcs[1];
     _CHECK_ARGS(in0 && in1);
+    if (is_mat_mul_vec_dual(tensor))
+    {
+        return vkllm_op_mat_mul_vec_dual_init(context, commands, tensor);
+    }
+
     _CHECK(vkllm_op_matmul_get_pipeline(context, tensor, &tensor->pipeline));
     _CHECK(vkllm_pipeline_alloc_desc_set(context, tensor->pipeline, &tensor->vk_desc_set));
 
@@ -472,11 +501,93 @@ out:
     return err;
 }
 
+vkllm_err_t vkllm_op_mat_mul_vec_dual_init(struct vkllm_context *context, struct vkllm_commands *commands,
+                                           struct vkllm_tensor *tensor)
+{
+    _CHECK_ARGS(context && commands && tensor);
+    _CHECK_ARGS(tensor->srcs[0] && tensor->srcs[1] && tensor->srcs[2]);
+    _CHECK_ARGS(is_mat_mul_vec_dual(tensor));
+
+    struct vkllm_tensor *in0 = tensor->srcs[0], *wg = tensor->srcs[1], *wu = tensor->srcs[2];
+    _CHECK_ARGS(in0->dtype == wg->dtype && wg->dtype == wu->dtype);
+    _CHECK_ARGS(in0->shapes[3] == wg->shapes[3] && wg->shapes[3] == wu->shapes[3]);
+
+    if (in0->dtype == vkllm_dtype_float16 && context->device->support_16bit_storage)
+        tensor->pipeline = context->pipelines.mat_mul_vec_dual.f16f32;
+    else if (in0->dtype == vkllm_dtype_float32)
+        tensor->pipeline = context->pipelines.mat_mul_vec_dual.f32f32;
+    else
+        return VKLLM_ERR_PIPELINE_NOT_FOUND;
+
+    _CHECK(vkllm_pipeline_alloc_desc_set(context, tensor->pipeline, &tensor->vk_desc_set));
+    return VKLLM_ERR_OK;
+}
+
+vkllm_err_t vkllm_op_mat_mul_vec_dual_run(struct vkllm_context *context, struct vkllm_commands *commands,
+                                          struct vkllm_tensor *tensor)
+{
+    _CHECK_ARGS(context && commands && tensor);
+
+    struct vkllm_tensor *in0 = tensor->srcs[0], *wg = tensor->srcs[1], *wu = tensor->srcs[2];
+
+    struct vkllm_dtype_info d0, dg, dt;
+    _CHECK(vkllm_get_dtype_info(in0->dtype, &d0));
+    _CHECK(vkllm_get_dtype_info(wg->dtype, &dg));
+    _CHECK(vkllm_get_dtype_info(tensor->dtype, &dt));
+
+    uint32_t s0[4], sg[4], st[4];
+    _DIV4_S(in0->strides, d0.bytes, s0);
+    _DIV4_S(wg->strides, dg.bytes, sg);
+    _DIV4_S(tensor->strides, dt.bytes, st);
+
+    const struct vkllm_op_matmul_params *params = get_matmul_params(tensor);
+
+    struct vkllm_push_constants pc;
+    vkllm_push_constants_reset(&pc);
+    vkllm_push_u32_n(&pc, in0->shapes, 4);
+    vkllm_push_u32_n(&pc, s0, 4);
+    vkllm_push_u32_n(&pc, wg->shapes, 4);
+    vkllm_push_u32_n(&pc, sg, 4);
+    vkllm_push_u32_n(&pc, tensor->shapes, 4);
+    vkllm_push_u32_n(&pc, st, 4);
+    vkllm_push_f32(&pc, params->scale);
+
+    vkllm_err_t err = VKLLM_ERR_OK;
+    struct vkllm_array_ptr *bindings = NULL;
+    _CHECK_JUMP(vkllm_array_ptr_new(&bindings, 4), err, out);
+    vkllm_array_ptr_append(bindings, in0);
+    vkllm_array_ptr_append(bindings, wg);
+    vkllm_array_ptr_append(bindings, wu);
+    vkllm_array_ptr_append(bindings, tensor);
+
+    // One subgroup per output row (2FF rows), overflow into z.
+    uint32_t FF = wg->shapes[2];
+    uint32_t group_x = 2 * FF;
+    uint32_t group_y = 1, group_z = 0;
+    _CHECK(vkllm_calc_linear_group_counts(context, group_x, 1, &group_x, &group_z));
+
+    _CHECK_JUMP(
+        vkllm_commands_pipeline(context, commands, tensor, bindings, NULL, &pc, group_x, group_y, group_z), err,
+        free_bindings_out);
+
+    tensor->access_flags = VK_ACCESS_SHADER_WRITE_BIT;
+    tensor->pipeline_stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+free_bindings_out:
+    vkllm_array_ptr_free(bindings);
+out:
+    return err;
+}
+
 vkllm_err_t vkllm_op_matmul_run(struct vkllm_context *context, struct vkllm_commands *commands,
                                 struct vkllm_tensor *tensor)
 {
     struct vkllm_tensor *in0 = tensor->srcs[0], *in1 = tensor->srcs[1];
     _CHECK_ARGS(in0 && in1);
+
+    if (is_mat_mul_vec_dual(tensor))
+    {
+        return vkllm_op_mat_mul_vec_dual_run(context, commands, tensor);
+    }
 
     if (is_mat_mul_vec(tensor))
     {

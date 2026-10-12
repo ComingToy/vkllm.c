@@ -117,6 +117,24 @@ glsl_shader(
 )
 
 glsl_shader(
+    name = "vkllm_mat_mul_vec_dual_shaders",
+    shaders = [
+        "vkllm_mat_mul_vec_dual.comp",
+    ],
+    hdrs = COMP_SHADER_HDRS,
+    extra_args = COMMON_ARGS,
+    tool = "//tools:binary_to_array",
+    macros = [
+        "-D_SUPPORT_16BIT_STORAGE -DDTYPE=float16_t -DACC_DTYPE=float -DOUT_DTYPE=float16_t",
+        "-DDTYPE=float -DACC_DTYPE=float -DOUT_DTYPE=float",
+    ],
+    suffixes = [
+        "f16f32",
+        "f32f32",
+    ],
+)
+
+glsl_shader(
     name = "vkllm_mat_mul_vec_nt_shaders",
     shaders = [
         "vkllm_mat_mul_vec_nt.comp",
@@ -274,6 +292,7 @@ cc_shader_library(
         ":vkllm_update_rows",
         ":vkllm_mat_mul_vec_shaders",
         ":vkllm_mat_mul_vec_nt_shaders",
+        ":vkllm_mat_mul_vec_dual_shaders",
         ":vkllm_arg_max_shaders",
     ],
     visibility = ["//visibility:public"]
