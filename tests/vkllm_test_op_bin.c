@@ -3,6 +3,7 @@
 #include "src/core/vkllm_commands.h"
 #include "src/core/vkllm_common.h"
 #include "src/core/vkllm_context.h"
+#include "src/core/vkllm_gpu_device.h"
 #include "src/core/vkllm_dtypes.h"
 #include "src/core/vkllm_op_bin.h"
 #include "src/core/vkllm_pipeline.h"
@@ -241,7 +242,12 @@ START_TEST(test_op_bin)
     ck_assert_int_eq(vkllm_tensor_flush_cache(context, output), VKLLM_ERR_OK);
 
     uint64_t time_cost = 0;
-    ck_assert_int_eq(vkllm_pipeline_query_exec_time(context, output->pipeline, &time_cost), VKLLM_ERR_OK);
+    // Timestamp queries are unsupported on some drivers (MoltenVK without
+    // GPU counters); the call then returns ARGS and there is nothing to check.
+    if (context->device->support_query_timestamp)
+    {
+        ck_assert_int_eq(vkllm_pipeline_query_exec_time(context, output->pipeline, &time_cost), VKLLM_ERR_OK);
+    }
 
     log_info("test %d bin_op %s [%u,%u,%u,%u], dtype_a=%s, dtype_b=%s: avg time cost: %lu micro secs", _i, op_name(op),
              B, C, H, W, vkllm_dtype_s(tests[_i].dtype_a), vkllm_dtype_s(tests[_i].dtype_b), time_cost / 1000);

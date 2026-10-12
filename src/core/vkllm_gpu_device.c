@@ -237,10 +237,28 @@ static vkllm_err_t init_physical_device(struct vkllm_context *context)
         pdev->support_int8_arithmetic = pdev->vk_physical_dev.feat_shader_fp16_int8.shaderInt8;
     }
 
-    // VK_QUERY_TYPE_TIMESTAMP only needs timestampComputeAndGraphics; the
-    // pipelineStatisticsQuery feature is for stats queries and is not
-    // exposed by MoltenVK — requiring it silently disabled all GPU timing.
+    // MoltenVK claims timestamp support (timestampComputeAndGraphics = true,
+    // timestampValidBits = 64) but on machines without GPU counter access its
+    // MTLCounterSampleBuffer allocation FAILS for every query pool: each pool
+    // logs an OUT_OF_DEVICE_MEMORY mvk-error and silently falls back to
+    // emulated (host-clock) queries — useless for timing and 200+ lines of
+    // log spam. There is no Vulkan-visible way to detect the failure, so on
+    // MoltenVK timestamp queries are disabled unless VKLLM_ENABLE_TIMESTAMPS
+    // is set (accept the emulated path explicitly).
     pdev->support_query_timestamp = pdev->vk_physical_dev.properties.limits.timestampComputeAndGraphics;
+    if (pdev->support_query_timestamp)
+    {
+        // MoltenVK on Apple GPUs reports "Apple ..." device names; counter
+        // sample buffers are unavailable unless the process holds the GPU
+        // counters entitlement, which normal CLI apps do not.
+        bool is_moltenvk = strncmp(pdev->vk_physical_dev.properties.deviceName, "Apple", 5) == 0;
+        if (is_moltenvk && getenv("VKLLM_ENABLE_TIMESTAMPS") == NULL)
+        {
+            log_info("timestamp queries: disabled on MoltenVK (counter sampling falls back to "
+                     "host-clock emulation; set VKLLM_ENABLE_TIMESTAMPS=1 to force)");
+            pdev->support_query_timestamp = false;
+        }
+    }
     pdev->subgroup_size = pdev->vk_physical_dev.subgroup_properties.subgroupSize;
 
     return VKLLM_ERR_OK;
