@@ -256,14 +256,19 @@ int main(const int argc, const char *argv[])
     _CHECK_JUMP(vkllm_models_llama2_build_graph(context, &model, input_toks, graph, offset), err, cleanup_graph);
     _CHECK_JUMP(vkllm_graph_init(context, graph), err, cleanup_graph);
 
-    for (uint32_t i = 1; i < num_tokens; ++i)
+    // Optional warmup steps discarded from the timing window (VKLLM_WARMUP=N)
+    // — protocol parity with llama-bench, whose explicit warmup absorbs the
+    // GPU clock ramp (first ~100 steps run ~12% slow on Apple Silicon).
+    const char *warm_env = getenv("VKLLM_WARMUP");
+    uint32_t warmup = warm_env ? (uint32_t)atoi(warm_env) : 0;
+    for (uint32_t i = 1; i < num_tokens + warmup; ++i)
     {
         _CHECK_JUMP(vkllm_models_llama2_prepare_step(context, &model, graph, offset, 1), err, cleanup_graph);
         _CHECK_JUMP(vkllm_commands_upload(context, graph->commands, input_toks, (const uint8_t *)token_ids->data,
                                           sizeof(uint32_t)),
                     err, cleanup_graph);
 
-        if (i == 1)
+        if (i == 1 + warmup)
         {
             gettimeofday(&tv_start, NULL);
         }
@@ -287,8 +292,8 @@ int main(const int argc, const char *argv[])
              num_tokens - 1);
     total_time_ms = (tv_end.tv_sec - tv_start.tv_sec) * 1000.0 + (tv_end.tv_usec - tv_start.tv_usec) / 1000.0;
     double tokens_per_second = ((num_tokens - 1.0) / total_time_ms) * 1000.0;
-    log_info("Average tokens/second: %.2f (generated %u tokens in %.2f ms)", tokens_per_second, num_tokens - 1,
-             total_time_ms);
+    log_info("Average tokens/second: %.2f (generated %u tokens in %.2f ms, %u warmup steps discarded)",
+             tokens_per_second, num_tokens - 1, total_time_ms, warmup);
 
     log_info("genereate sentence: ");
     for (uint32_t i = 0; i < output_tokens->used_n; ++i)
