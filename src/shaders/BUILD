@@ -189,6 +189,26 @@ glsl_shader(
 )
 
 glsl_shader(
+    name = "vkllm_rope_pair_shaders",
+    shaders = [
+        "vkllm_rope_pair.comp",
+    ],
+    hdrs = COMP_SHADER_HDRS,
+    extra_args = COMMON_ARGS,
+    tool = "//tools:binary_to_array",
+    macros = [
+        # Same dtype policy as rope: f16 storage, fp32 theta (see the rope
+        # BUILD note about fp16 angle precision).
+        "-D_SUPPORT_16BIT_STORAGE -DDTYPE=float16_t -DLOAD_DTYPE=float",
+        "-DDTYPE=float -DLOAD_DTYPE=float",
+    ],
+    suffixes = [
+        "_f16f32",
+        "_f32f32",
+    ],
+)
+
+glsl_shader(
     name = "vkllm_softmax_shaders",
     shaders = [
         "vkllm_softmax.comp",
@@ -292,6 +312,7 @@ cc_shader_library(
         ":vkllm_rmsnorm_shaders",
         ":vkllm_matmul_shaders",
         ":vkllm_rope_shaders",
+        ":vkllm_rope_pair_shaders",
         ":vkllm_softmax_shaders",
         ":vkllm_copy_shaders",
         ":vkllm_ffn_shaders",

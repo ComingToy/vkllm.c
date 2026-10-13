@@ -21,6 +21,11 @@ struct vkllm_op_rope_params
     // and a back edge here would loop the recursive traversal.
     bool fused_write;
     uint32_t cache_row;
+    // Paired Q+K rope (decode, MHA): this dispatch ALSO rotates the Q rows
+    // into q_out's own buffer. srcs = {K_in, Q_in}; q_out->op is set to
+    // NONE so it never dispatches on its own (its buffer is written here).
+    bool pair_q;
+    struct vkllm_tensor *q_out;
 };
 
 extern vkllm_err_t vkllm_op_rope_init(struct vkllm_context *context, struct vkllm_commands *commands,

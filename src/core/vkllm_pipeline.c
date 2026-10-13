@@ -15,6 +15,7 @@
 #include "vkllm_matmul_shaders.h"
 #include "vkllm_rmsnorm_shaders.h"
 #include "vkllm_rope_shaders.h"
+#include "vkllm_rope_pair_shaders.h"
 #include "vkllm_softmax_shaders.h"
 #include "vkllm_tensor.h"
 #include "vkllm_update_rows.h"
@@ -513,6 +514,8 @@ static vkllm_err_t vkllm_create_rope_pipelines(struct vkllm_context *context)
         context->pipelines.rope.f32f32[i] = NULL;
         context->pipelines.rope.f16f32kv[i] = NULL;
         context->pipelines.rope.f32f32kv[i] = NULL;
+        context->pipelines.rope.pair_f16f32[i] = NULL;
+        context->pipelines.rope.pair_f32f32[i] = NULL;
     }
 
     for (int32_t i = 0; i < 2; ++i)
@@ -537,6 +540,22 @@ static vkllm_err_t vkllm_create_rope_pipelines(struct vkllm_context *context)
 
         _CHECK(vkllm_pipeline_new(context, "pipeline_rope_f32f32kv", shader_info_kv, _vkllm_rope_f32f32kv_spv(),
                                   _vkllm_rope_f32f32kv_size(), specializations, &context->pipelines.rope.f32f32kv[i]));
+
+        // Paired Q+K rope (decode only): 4 bindings, 21-uint push block.
+        struct vkllm_shader_info shader_info_pair = {.binding_count = 4,
+                                                     .push_constant_bytes = sizeof(uint32_t) * 21,
+                                                     .local_x = 512,
+                                                     .local_y = 1,
+                                                     .local_z = 1};
+        _CHECK(vkllm_pipeline_new(context, "pipeline_rope_pair_f32f32", shader_info_pair,
+                                  _vkllm_rope_pair_f32f32_spv(), _vkllm_rope_pair_f32f32_size(), specializations,
+                                  &context->pipelines.rope.pair_f32f32[i]));
+        if (context->device->support_16bit_storage)
+        {
+            _CHECK(vkllm_pipeline_new(context, "pipeline_rope_pair_f16f32", shader_info_pair,
+                                      _vkllm_rope_pair_f16f32_spv(), _vkllm_rope_pair_f16f32_size(), specializations,
+                                      &context->pipelines.rope.pair_f16f32[i]));
+        }
         vkllm_shader_constants_free(specializations);
     }
 
@@ -924,6 +943,8 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
         vkllm_pipeline_free(context, context->pipelines.rope.f32f32[i]);
         vkllm_pipeline_free(context, context->pipelines.rope.f16f32kv[i]);
         vkllm_pipeline_free(context, context->pipelines.rope.f32f32kv[i]);
+        vkllm_pipeline_free(context, context->pipelines.rope.pair_f16f32[i]);
+        vkllm_pipeline_free(context, context->pipelines.rope.pair_f32f32[i]);
     }
 
     vkllm_pipeline_free(context, context->pipelines.softmax.f16f16);

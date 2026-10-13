@@ -260,6 +260,21 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
                             sizeof(rope_params), false, &RK));
     _CHECK(vkllm_graph_add_node(context, graph, RK));
 
+    // Decode + MHA: pair the two ropes into ONE dispatch carried by RK —
+    // it rotates K into the cache (kvcache_bind retargets it below) and Q
+    // into RQ's buffer. RQ keeps its graph node (ordering: consumers reach
+    // it via srcs) but never dispatches on its own. Prefill and GQA (Q/K
+    // head counts differ) keep the two separate dispatches.
+    if (seq_len == 1 && Q_ref->shapes[2] == K_ref->shapes[2])
+    {
+        struct vkllm_op_rope_params *rk_params = (struct vkllm_op_rope_params *)RK->params;
+        rk_params->pair_q = true;
+        rk_params->q_out = RQ;
+        struct vkllm_tensor *rk_q_srcs[2] = {K_ref, Q_ref};
+        RK->srcs[1] = rk_q_srcs[1];
+        RQ->op = VKLLM_OP_NONE; // written by the RK pair dispatch
+    }
+
     // kvcache_bind replaces RK/V_ref with persistent views of the layer's
     // caches. The views are owned by the kvcache (REF tensors, nothing to
     // execute); the cache tensors themselves (UPDATE_ROWS ops) are registered

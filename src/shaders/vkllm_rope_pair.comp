@@ -1,0 +1,111 @@
+#version 450 core
+
+#include "vkllm_shader_header.comp.h"
+
+// Paired rope for decode (seq == 1): one dispatch rotates BOTH the Q rows
+// and the K rows of a layer. The first half of the threads handles K —
+// whose output aliases the KV cache at [row_offset, row_offset+1) via the
+// cache strides — and the second half handles Q into its own output
+// buffer. Indexing mirrors vkllm_rope.comp: thread id decomposes as
+// (b, c=head, h=seq, w=pair) over each side's [B, heads, seq, dim] shape,
+// with the head offset taken from strides[1] (the tensors are permuted
+// views — strides[2] is the SEQ stride). Standard MHA only (equal Q/K
+// head counts).
+
+layout(binding = 0) readonly buffer k_in_type
+{
+    DTYPE k_in[];
+};
+layout(binding = 1) writeonly buffer k_out_type
+{
+    DTYPE k_out[];
+};
+layout(binding = 2) readonly buffer q_in_type
+{
+    DTYPE q_in[];
+};
+layout(binding = 3) writeonly buffer q_out_type
+{
+    DTYPE q_out[];
+};
+
+layout(push_constant) uniform constants
+{
+    uint k_strides[4];  // K input strides (elements)
+    uint ko_strides[4]; // K output (cache) strides
+    uint q_strides[4];  // Q input strides
+    uint qo_strides[4]; // Q output strides
+    uint heads;         // per-side head count (equal)
+    uint dim;           // head_dim
+    uint offsets;       // shared position offset
+    float base;
+    uint row_offset;    // first cache row for this step's K write
+};
+
+layout(constant_id = 0) const int neox_style = 0;
+
+void main(void)
+{
+    uint tid = get_thread_id();
+    uint pairs = dim / 2u;
+    // Per side: heads * seq(=1 for decode) * pairs threads.
+    uint side_threads = heads * pairs;
+    if (tid >= 2u * side_threads)
+        return;
+
+    uint side = tid / side_threads; // 0 = K, 1 = Q
+    uint p = tid % side_threads;
+
+    uint c = p / pairs; // head index
+    uint w = p % pairs; // pair index within the head
+    uint h = 0u;        // seq index (decode)
+
+    const uint in_s1 = side == 0u ? k_strides[1] : q_strides[1];
+    const uint in_s2 = side == 0u ? k_strides[2] : q_strides[2];
+    const uint in_s3 = side == 0u ? k_strides[3] : q_strides[3];
+    const uint out_s1 = side == 0u ? ko_strides[1] : qo_strides[1];
+    const uint out_s2 = side == 0u ? ko_strides[2] : qo_strides[2];
+    const uint out_s3 = side == 0u ? ko_strides[3] : qo_strides[3];
+
+    // Cache rows are shifted by row_offset on the K side only.
+    const uint out_h = side == 0u ? h + row_offset : h;
+
+    const uint in_base = c * in_s1 + h * in_s2;
+    const uint out_base = c * out_s1 + out_h * out_s2;
+
+    uint i0, i1, o0, o1;
+    if (neox_style > 0)
+    {
+        i0 = in_base + w * in_s3;
+        i1 = i0 + in_s3 * dim / 2u;
+        o0 = out_base + w * out_s3;
+        o1 = o0 + out_s3 * dim / 2u;
+    }
+    else
+    {
+        i0 = in_base + 2u * w * in_s3;
+        i1 = i0 + in_s3;
+        o0 = out_base + 2u * w * out_s3;
+        o1 = o0 + out_s3;
+    }
+
+    LOAD_DTYPE f = LOAD_DTYPE(offsets + h) / pow(LOAD_DTYPE(base), LOAD_DTYPE(2u * w) / LOAD_DTYPE(dim));
+    LOAD_DTYPE freqc = cos(f);
+    LOAD_DTYPE freqs = sin(f);
+
+    LOAD_DTYPE v0 = LOAD_DTYPE(side == 0u ? k_in[i0] : q_in[i0]);
+    LOAD_DTYPE v1 = LOAD_DTYPE(side == 0u ? k_in[i1] : q_in[i1]);
+    LOAD_DTYPE r0 = freqc * v0 - freqs * v1;
+    LOAD_DTYPE r1 = freqs * v0 + freqc * v1;
+
+    if (side == 0u)
+    {
+        k_out[o0] = DTYPE(r0);
+        k_out[o1] = DTYPE(r1);
+    }
+    else
+    {
+        q_out[o0] = DTYPE(r0);
+        q_out[o1] = DTYPE(r1);
+    }
+}

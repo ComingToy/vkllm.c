@@ -97,6 +97,11 @@ struct vkllm_context
             // offset (folds update-rows into the rope dispatch).
             struct vkllm_pipeline *f16f32kv[2];
             struct vkllm_pipeline *f32f32kv[2];
+            // Paired Q+K rope (decode, MHA): one dispatch rotates both; the
+            // K half writes into the cache (fused KV), the Q half into its
+            // own buffer.
+            struct vkllm_pipeline *pair_f16f32[2];
+            struct vkllm_pipeline *pair_f32f32[2];
         } rope;
 
         struct
