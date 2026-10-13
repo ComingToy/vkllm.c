@@ -300,6 +300,12 @@ int main(const int argc, const char *argv[])
             gettimeofday(&pa, NULL);
         }
         _CHECK_JUMP(vkllm_graph_post_run(context, graph), err, cleanup_graph);
+        if (phase_prof && in_window)
+        {
+            gettimeofday(&pb, NULL);
+            t_post += (pb.tv_sec - pa.tv_sec) * 1000.0 + (pb.tv_usec - pa.tv_usec) / 1000.0;
+            gettimeofday(&pa, NULL);
+        }
 
         uint32_t pred_tok = 5; // fixed token (aligned mode: no readback)
         if (!aligned)
@@ -310,7 +316,7 @@ int main(const int argc, const char *argv[])
         if (phase_prof && in_window)
         {
             gettimeofday(&pb, NULL);
-            t_post += (pb.tv_sec - pa.tv_sec) * 1000.0 + (pb.tv_usec - pa.tv_usec) / 1000.0;
+            t_read += (pb.tv_sec - pa.tv_sec) * 1000.0 + (pb.tv_usec - pa.tv_usec) / 1000.0;
         }
 
         offset += 1;
@@ -328,8 +334,8 @@ int main(const int argc, const char *argv[])
     if (phase_prof)
     {
         uint32_t n = num_tokens - 1;
-        log_info("phase profile: prepare+upload %.3f ms/step | graph_run %.3f | post+read %.3f",
-                 t_prep / n, t_run / n, t_post / n);
+        log_info("phase profile: prepare+upload %.3f ms/step | graph_run %.3f | post_run %.3f | sample-read %.3f",
+                 t_prep / n, t_run / n, t_post / n, t_read / n);
     }
     double tokens_per_second = ((num_tokens - 1.0) / total_time_ms) * 1000.0;
     log_info("Average tokens/second: %.2f (generated %u tokens in %.2f ms, %u warmup steps discarded)",

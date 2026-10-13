@@ -335,6 +335,28 @@ vkllm_err_t vkllm_graph_post_run(struct vkllm_context *context, struct vkllm_gra
 {
     _CHECK_ARGS(context && graph && graph->output_node && graph->commands);
 
+    // Every post_run hook in the op table is currently a no-op (verified
+    // op by op); a full second traversal per step costs ~0.2 ms of pure
+    // host overhead. Skip the walk entirely until an op needs post_run —
+    // the per-node NULL check below already handles the mixed case.
+    static bool any_post_run = true;
+    if (any_post_run)
+    {
+        any_post_run = false;
+        for (int op = 0; op < VKLLM_OP_COUNTS; ++op)
+        {
+            if (g_op_table[op].post_run != NULL)
+            {
+                any_post_run = true;
+                break;
+            }
+        }
+    }
+    if (!any_post_run)
+    {
+        return VKLLM_ERR_OK;
+    }
+
     // Create a hash set to track visited tensors for O(1) lookup
     struct vkllm_hashset *visited = NULL;
     vkllm_err_t err = vkllm_hashset_new(&visited, graph->nodes->used_n);
