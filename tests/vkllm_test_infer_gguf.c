@@ -259,14 +259,33 @@ int main(const int argc, const char *argv[])
     // Optional warmup steps discarded from the timing window (VKLLM_WARMUP=N)
     // — protocol parity with llama-bench, whose explicit warmup absorbs the
     // GPU clock ramp (first ~100 steps run ~12% slow on Apple Silicon).
+    // Aligned mode (VKLLM_ALIGNED=1): skip the logits readback + CPU argmax
+    // and feed a fixed next token, matching llama-bench's test_gen (random
+    // next token, logits never read). Isolates pure model-execution speed.
+    const int aligned = getenv("VKLLM_ALIGNED") != NULL;
     const char *warm_env = getenv("VKLLM_WARMUP");
     uint32_t warmup = warm_env ? (uint32_t)atoi(warm_env) : 0;
+    // Per-phase host timing (VKLLM_PHASE_PROFILE): isolates the host-side
+    // work llama-bench does NOT pay (logits readback, prepare_step's linear
+    // node lookups) from the GPU-bound graph execution.
+    const int phase_prof = getenv("VKLLM_PHASE_PROFILE") != NULL;
+    double t_prep = 0, t_run = 0, t_post = 0, t_read = 0;
+    struct timeval pa, pb;
     for (uint32_t i = 1; i < num_tokens + warmup; ++i)
     {
+        const bool in_window = (i > warmup);
+        if (phase_prof && in_window)
+            gettimeofday(&pa, NULL);
         _CHECK_JUMP(vkllm_models_llama2_prepare_step(context, &model, graph, offset, 1), err, cleanup_graph);
         _CHECK_JUMP(vkllm_commands_upload(context, graph->commands, input_toks, (const uint8_t *)token_ids->data,
                                           sizeof(uint32_t)),
                     err, cleanup_graph);
+        if (phase_prof && in_window)
+        {
+            gettimeofday(&pb, NULL);
+            t_prep += (pb.tv_sec - pa.tv_sec) * 1000.0 + (pb.tv_usec - pa.tv_usec) / 1000.0;
+            gettimeofday(&pa, NULL);
+        }
 
         if (i == 1 + warmup)
         {
@@ -274,10 +293,25 @@ int main(const int argc, const char *argv[])
         }
 
         _CHECK_JUMP(vkllm_graph_run(context, graph), err, cleanup_graph);
+        if (phase_prof && in_window)
+        {
+            gettimeofday(&pb, NULL);
+            t_run += (pb.tv_sec - pa.tv_sec) * 1000.0 + (pb.tv_usec - pa.tv_usec) / 1000.0;
+            gettimeofday(&pa, NULL);
+        }
         _CHECK_JUMP(vkllm_graph_post_run(context, graph), err, cleanup_graph);
 
-        vkllm_tensor_invalid_cache(context, graph->output_node);
-        uint32_t pred_tok = extract_output_tok(graph);
+        uint32_t pred_tok = 5; // fixed token (aligned mode: no readback)
+        if (!aligned)
+        {
+            vkllm_tensor_invalid_cache(context, graph->output_node);
+            pred_tok = extract_output_tok(graph);
+        }
+        if (phase_prof && in_window)
+        {
+            gettimeofday(&pb, NULL);
+            t_post += (pb.tv_sec - pa.tv_sec) * 1000.0 + (pb.tv_usec - pa.tv_usec) / 1000.0;
+        }
 
         offset += 1;
         vkllm_array_token_id_append(output_tokens, pred_tok);
@@ -291,6 +325,12 @@ int main(const int argc, const char *argv[])
              context->stats.tensor_free_counts - frees_before,
              num_tokens - 1);
     total_time_ms = (tv_end.tv_sec - tv_start.tv_sec) * 1000.0 + (tv_end.tv_usec - tv_start.tv_usec) / 1000.0;
+    if (phase_prof)
+    {
+        uint32_t n = num_tokens - 1;
+        log_info("phase profile: prepare+upload %.3f ms/step | graph_run %.3f | post+read %.3f",
+                 t_prep / n, t_run / n, t_post / n);
+    }
     double tokens_per_second = ((num_tokens - 1.0) / total_time_ms) * 1000.0;
     log_info("Average tokens/second: %.2f (generated %u tokens in %.2f ms, %u warmup steps discarded)",
              tokens_per_second, num_tokens - 1, total_time_ms, warmup);
