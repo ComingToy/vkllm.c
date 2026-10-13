@@ -284,3 +284,15 @@ cython_debug/
 *.cubin
 *.fatbin
 
+
+# ---> Local model weights & artifacts (never commit; ~38GB)
+# gguf models and the source HF checkout dirs they were converted from
+*.gguf
+llama2-3b/
+llama2-7b/
+llama2-*.info
+
+# Bazel
+# MODULE.bazel.lock is intentionally tracked per Bazel's guidance; uncomment
+# to exclude:
+#MODULE.bazel.lock
