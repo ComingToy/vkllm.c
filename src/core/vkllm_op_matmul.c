@@ -181,7 +181,11 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
             }
             else if (is_mat_mul_vec_nt(tensor))
             {
-                *pipeline = context->pipelines.mat_mul_vec_nt.f16f16;
+                const struct vkllm_op_matmul_params *p = get_matmul_params(tensor);
+                // fp16-acc has no PERMUTE_OUT build; permuted writes fall to
+                // the fp32-acc variant (identical semantics, safer accumulation).
+                *pipeline = p->act == 4 ? context->pipelines.mat_mul_vec_nt.f16f32p
+                                        : context->pipelines.mat_mul_vec_nt.f16f16;
             }
             else
             {
@@ -197,7 +201,9 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
             }
             else if (is_mat_mul_vec_nt(tensor))
             {
-                *pipeline = context->pipelines.mat_mul_vec_nt.f16f32;
+                const struct vkllm_op_matmul_params *p = get_matmul_params(tensor);
+                *pipeline = p->act == 4 ? context->pipelines.mat_mul_vec_nt.f16f32p
+                                        : context->pipelines.mat_mul_vec_nt.f16f32;
             }
             else
             {
@@ -214,7 +220,9 @@ static vkllm_err_t vkllm_op_matmul_get_pipeline(struct vkllm_context *context, s
         }
         else if (is_mat_mul_vec_nt(tensor))
         {
-            *pipeline = context->pipelines.mat_mul_vec_nt.f32f32;
+            const struct vkllm_op_matmul_params *p = get_matmul_params(tensor);
+            *pipeline = p->act == 4 ? context->pipelines.mat_mul_vec_nt.f32f32p
+                                    : context->pipelines.mat_mul_vec_nt.f32f32;
         }
         else
         {

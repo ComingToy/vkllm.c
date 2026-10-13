@@ -55,7 +55,15 @@ void main()
     // Strides are element counts as pushed by the host.
     const uint x_base = b * shape_vec.strides[0] + c * shape_vec.strides[1];
     const uint m_base = b * shape_mat.strides[0] + c * shape_mat.strides[1];
+#ifdef PERMUTE_OUT
+    // Head-interleaved write: element (b, head c, col n) lands at
+    // b*st0 + c*N + n of the [B,1,seq,C*N] output — the layout the o_proj
+    // GEMV consumes. Folds the permute+copy (cont) dispatch into this one
+    // (decode only; the tiled matmul path keeps the explicit copy).
+    const uint o_base = b * shape_out.strides[0] + c * N;
+#else
     const uint o_base = b * shape_out.strides[0] + c * shape_out.strides[1];
+#endif
 
     // Threads map to output columns (n = tid, tid+W, ...); the K loop runs
     // outermost per thread so x[k] reads broadcast across the workgroup

@@ -752,6 +752,8 @@ static vkllm_err_t vkllm_create_mat_mul_vec_nt_pipelines(struct vkllm_context *c
     context->pipelines.mat_mul_vec_nt.f16f32 = NULL;
     context->pipelines.mat_mul_vec_nt.f32f32 = NULL;
     context->pipelines.mat_mul_vec_nt.f16f16 = NULL;
+    context->pipelines.mat_mul_vec_nt.f16f32p = NULL;
+    context->pipelines.mat_mul_vec_nt.f32f32p = NULL;
 
     // One workgroup per (b,c) row; threads map to the N output columns.
     // 128 lanes covers the head_dim=128 attention case exactly.
@@ -775,7 +777,17 @@ static vkllm_err_t vkllm_create_mat_mul_vec_nt_pipelines(struct vkllm_context *c
                                       _vkllm_mat_mul_vec_ntf16f16_spv(), _vkllm_mat_mul_vec_ntf16f16_size(), NULL,
                                       &context->pipelines.mat_mul_vec_nt.f16f16));
         }
+
+        // PERMUTE_OUT (act == 4): same kernels with the head-interleaved
+        // write that the attention values GEMV uses to skip the cont copy.
+        _CHECK(vkllm_pipeline_new(context, "mat_mul_vec_nt_f16f32p", shader_info,
+                                  _vkllm_mat_mul_vec_ntf16f32p_spv(), _vkllm_mat_mul_vec_ntf16f32p_size(), NULL,
+                                  &context->pipelines.mat_mul_vec_nt.f16f32p));
     }
+
+    _CHECK(vkllm_pipeline_new(context, "mat_mul_vec_nt_f32f32p", shader_info,
+                              _vkllm_mat_mul_vec_ntf32f32p_spv(), _vkllm_mat_mul_vec_ntf32f32p_size(), NULL,
+                              &context->pipelines.mat_mul_vec_nt.f32f32p));
 
     return VKLLM_ERR_OK;
 }
@@ -900,6 +912,8 @@ void vkllm_free_all_pipelines(struct vkllm_context *context)
     vkllm_pipeline_free(context, context->pipelines.mat_mul_vec_nt.f16f32);
     vkllm_pipeline_free(context, context->pipelines.mat_mul_vec_nt.f32f32);
     vkllm_pipeline_free(context, context->pipelines.mat_mul_vec_nt.f16f16);
+    vkllm_pipeline_free(context, context->pipelines.mat_mul_vec_nt.f16f32p);
+    vkllm_pipeline_free(context, context->pipelines.mat_mul_vec_nt.f32f32p);
 
     vkllm_pipeline_free(context, context->pipelines.mat_mul_vec_dual.f16f32);
     vkllm_pipeline_free(context, context->pipelines.mat_mul_vec_dual.f32f32);

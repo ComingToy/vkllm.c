@@ -146,11 +146,17 @@ glsl_shader(
         "-D_SUPPORT_16BIT_STORAGE -DDTYPE=float16_t -DACC_DTYPE=float -DOUT_DTYPE=float16_t",
         "-DDTYPE=float -DACC_DTYPE=float -DOUT_DTYPE=float",
         "-D_SUPPORT_16BIT_STORAGE -D_SUPPORT_FLOAT16_ARITHMETIC -DDTYPE=float16_t -DACC_DTYPE=float16_t -DOUT_DTYPE=float16_t",
+        # PERMUTE_OUT: head-interleaved write (folds the cont copy into the
+        # values GEMV; decode attention path).
+        "-D_SUPPORT_16BIT_STORAGE -DDTYPE=float16_t -DACC_DTYPE=float -DOUT_DTYPE=float16_t -DPERMUTE_OUT",
+        "-DDTYPE=float -DACC_DTYPE=float -DOUT_DTYPE=float -DPERMUTE_OUT",
     ],
     suffixes = [
         "f16f32",
         "f32f32",
         "f16f16",
+        "f16f32p",
+        "f32f32p",
     ],
 )
 

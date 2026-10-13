@@ -307,43 +307,64 @@ vkllm_err_t vkllm_llama2_build_self_attn_layer(struct vkllm_context *context, st
     matmul_params.scale = 1.0f;
     matmul_params.transposed_b = false;
 
-    snprintf(scope_buf, sizeof(scope_buf), "%s.attn_output", name);
-    _CHECK(vkllm_tensor_new(context, scope_buf, output_shapes, input->dtype, VKLLM_OP_MATMUL, output_srcs, 2,
-                            &matmul_params, sizeof(matmul_params), false, &out));
-    _CHECK(vkllm_graph_add_node(context, graph, out));
+    // Decode writes head-interleaved directly: the NT GEMV's PERMUTE_OUT
+    // epilogue lays out (b, head c, col n) at b*H + c*hd + n — exactly the
+    // [batch, 1, seq, H] tensor o_proj consumes — so the permute-ref + cont
+    // COPY dispatch pair disappears. Prefill keeps the explicit copy chain
+    // (the tiled matmul has no permuted write).
+    struct vkllm_tensor *o_proj_input = NULL;
+    static int no_perm_fusion = -1;
+    if (no_perm_fusion < 0)
+        no_perm_fusion = getenv("VKLLM_NO_PERM_FUSION") != NULL;
+    if (seq_len == 1 && !no_perm_fusion)
+    {
+        uint32_t permuted_shapes[4] = {batch, 1, seq_len, num_head_times_head_dim};
+        matmul_params.act = 4; // NT GEMV + PERMUTE_OUT
+        snprintf(scope_buf, sizeof(scope_buf), "%s.attn_output", name);
+        _CHECK(vkllm_tensor_new(context, scope_buf, permuted_shapes, input->dtype, VKLLM_OP_MATMUL, output_srcs, 2,
+                                &matmul_params, sizeof(matmul_params), false, &out));
+        _CHECK(vkllm_graph_add_node(context, graph, out));
+        _CHECK(vkllm_tensor_copy_ref(context, out, &o_proj_input));
+        _CHECK(vkllm_graph_add_node(context, graph, o_proj_input));
+    }
+    else
+    {
+        matmul_params.act = 0; // plain NT (or tiled for prefill); explicit cont copy below
+        snprintf(scope_buf, sizeof(scope_buf), "%s.attn_output", name);
+        _CHECK(vkllm_tensor_new(context, scope_buf, output_shapes, input->dtype, VKLLM_OP_MATMUL, output_srcs, 2,
+                                &matmul_params, sizeof(matmul_params), false, &out));
+        _CHECK(vkllm_graph_add_node(context, graph, out));
 
-    // Step 9: Reshape output back to [batch, 1, seq_len, num_head*head_dim]
-    // First permute output from [batch, num_head, seq_len, head_dim] to [batch, seq_len, num_head, head_dim]
-    uint32_t output_permute_axis[4] = {
-        0, 2, 1, 3}; // (batch, num_head, seq_len, head_dim) -> (batch, seq_len, num_head, head_dim)
-    struct vkllm_tensor *output_ref = NULL;
-    _CHECK(vkllm_tensor_copy_ref(context, out, &output_ref));
-    _CHECK(vkllm_graph_add_node(context, graph, output_ref));
-    _CHECK(vkllm_tensor_permute(context, output_ref, output_permute_axis));
+        uint32_t output_permute_axis[4] = {
+            0, 2, 1, 3}; // (batch, num_head, seq_len, head_dim) -> (batch, seq_len, num_head, head_dim)
+        struct vkllm_tensor *output_ref = NULL;
+        _CHECK(vkllm_tensor_copy_ref(context, out, &output_ref));
+        _CHECK(vkllm_graph_add_node(context, graph, output_ref));
+        _CHECK(vkllm_tensor_permute(context, output_ref, output_permute_axis));
 
-    struct vkllm_tensor *concated_heads = NULL;
-    struct vkllm_tensor *concated_heads_ref = NULL;
-    snprintf(scope_buf, sizeof(scope_buf), "%s.concated_heads", name);
-    _CHECK(vkllm_tensor_new(context, scope_buf, output_ref->shapes, output_ref->dtype, VKLLM_OP_COPY, &output_ref, 1,
-                            NULL, 0, false, &concated_heads));
-    _CHECK(vkllm_graph_add_node(context, graph, concated_heads));
-    _CHECK(vkllm_tensor_copy_ref(context, concated_heads, &concated_heads_ref));
-    _CHECK(vkllm_graph_add_node(context, graph, concated_heads_ref));
+        struct vkllm_tensor *concated_heads = NULL;
+        snprintf(scope_buf, sizeof(scope_buf), "%s.concated_heads", name);
+        _CHECK(vkllm_tensor_new(context, scope_buf, output_ref->shapes, output_ref->dtype, VKLLM_OP_COPY, &output_ref,
+                                1, NULL, 0, false, &concated_heads));
+        _CHECK(vkllm_graph_add_node(context, graph, concated_heads));
+        _CHECK(vkllm_tensor_copy_ref(context, concated_heads, &o_proj_input));
+        _CHECK(vkllm_graph_add_node(context, graph, o_proj_input));
 
-    // Then reshape to [batch, 1, seq_len, num_head*head_dim]
-    uint32_t concated_heads_shapes[4] = {batch, 1, seq_len, num_head_times_head_dim};
-    _CHECK(vkllm_tensor_reshape(context, concated_heads_ref, concated_heads_shapes));
+        // Then reshape to [batch, 1, seq_len, num_head*head_dim]
+        uint32_t concated_heads_shapes[4] = {batch, 1, seq_len, num_head_times_head_dim};
+        _CHECK(vkllm_tensor_reshape(context, o_proj_input, concated_heads_shapes));
+    }
 
     struct vkllm_tensor *final_output = NULL;
     uint32_t final_output_shapes[] = {batch, 1, seq_len, hidden_dim};
-    struct vkllm_tensor *final_output_srcs[] = {concated_heads_ref, params.WO, input};
+    struct vkllm_tensor *final_output_srcs[] = {o_proj_input, params.WO, input};
     // act == 2 fuses the residual add into the o_proj GEMV epilogue (one
     // dispatch instead of matmul-then-add; decode path only — prefill keeps
     // the separate ops so batched matmul stays available).
     struct vkllm_op_matmul_params final_output_params = {.scale = 1.0, .act = seq_len == 1 ? 2 : 0,
                                                          .transposed_b = true};
     snprintf(scope_buf, sizeof(scope_buf), "%s.final_output", name);
-    _CHECK(vkllm_tensor_new(context, scope_buf, final_output_shapes, concated_heads->dtype, VKLLM_OP_MATMUL,
+    _CHECK(vkllm_tensor_new(context, scope_buf, final_output_shapes, o_proj_input->dtype, VKLLM_OP_MATMUL,
                             final_output_srcs, seq_len == 1 ? 3 : 2, &final_output_params,
                             sizeof(final_output_params), false, &final_output));
     _CHECK(vkllm_graph_add_node(context, graph, final_output));

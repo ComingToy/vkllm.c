@@ -73,6 +73,10 @@ struct vkllm_context
             struct vkllm_pipeline *f16f32;
             struct vkllm_pipeline *f32f32;
             struct vkllm_pipeline *f16f16;
+            // PERMUTE_OUT variants: head-interleaved write (act == 4) —
+            // folds the attention-output cont copy into the values GEMV.
+            struct vkllm_pipeline *f16f32p;
+            struct vkllm_pipeline *f32f32p;
         } mat_mul_vec_nt;
 
         struct
