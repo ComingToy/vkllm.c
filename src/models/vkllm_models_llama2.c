@@ -639,9 +639,21 @@ vkllm_err_t vkllm_models_llama2_build_graph(struct vkllm_context *context, struc
     // output_weight is [vocab, hidden] rows — transposed layout.
     struct vkllm_op_matmul_params matmul_params = {.scale = 1.0f, .act = 0, .transposed_b = true};
     struct vkllm_tensor *logits = NULL;
+    // CPU-argmax mode (VKLLM_CPU_ARGMAX=1): the GPU argmax dispatch costs
+    // ~115-135us (shared-memory tree reduce over ~1000 workgroups) while a
+    // CPU scan over the same UMA-resident f16 logits takes ~15-20us — the
+    // reduce is one of the rare ops where the CPU wins. Expose the logits
+    // as the graph output (mapped, host-visible) and let the caller scan.
+    const bool cpu_argmax = getenv("VKLLM_CPU_ARGMAX") != NULL;
     _CHECK(vkllm_tensor_new(context, "logits", logits_shapes, output_norm->dtype, VKLLM_OP_MATMUL, logits_srcs, 2,
-                            &matmul_params, sizeof(matmul_params), false, &logits));
+                            &matmul_params, sizeof(matmul_params), cpu_argmax, &logits));
     _CHECK(vkllm_graph_add_node(context, graph, logits));
+
+    if (cpu_argmax)
+    {
+        _CHECK(vkllm_graph_set_output(context, graph, logits));
+        return VKLLM_ERR_OK;
+    }
 
     struct vkllm_tensor *output = NULL;
     uint32_t output_shapes[4] = {0};

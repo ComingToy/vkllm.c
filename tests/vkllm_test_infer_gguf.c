@@ -106,6 +106,30 @@ static uint32_t extract_output_tok(struct vkllm_graph *graph)
         return 0;
     }
 
+    // CPU-argmax mode: the output node IS the f16 logits row (the GPU
+    // argmax dispatch is skipped — a CPU scan over UMA-resident logits is
+    // ~7x faster than the GPU tree-reduce dispatch).
+    if (node->dtype == vkllm_dtype_float16)
+    {
+        uint32_t n = node->shapes[3];
+        uint32_t row = (node->shapes[0] - 1) * (node->strides[0] / 2) +
+                       (node->shapes[1] - 1) * (node->strides[1] / 2) +
+                       (node->shapes[2] - 1) * (node->strides[2] / 2);
+        const vkllm_fp16_pack *h = (const vkllm_fp16_pack *)node->data.host + row;
+        float best = -1e30f;
+        uint32_t best_i = 0;
+        for (uint32_t i = 0; i < n; i++)
+        {
+            float v = vkllm_fp16_to_fp32(h[i]);
+            if (v > best)
+            {
+                best = v;
+                best_i = i;
+            }
+        }
+        return best_i;
+    }
+
     if (node->dtype != vkllm_dtype_uint32)
     {
         log_error("output node must be uint32 type");
