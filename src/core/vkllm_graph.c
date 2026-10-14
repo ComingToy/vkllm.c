@@ -261,6 +261,18 @@ vkllm_err_t vkllm_graph_run(struct vkllm_context *context, struct vkllm_graph *g
     // Clean up the visited hash set
     vkllm_hashset_free(visited);
 
+    // CPU-argmax mode (VKLLM_CPU_ARGMAX): order the GPU's logits writes
+    // before the host read with an explicit COMPUTE|TRANSFER -> HOST
+    // barrier in this submit — llama.cpp's readback recipe. Without it the
+    // first host touch after the fence pays a ~1 ms driver slow path.
+    static int host_read_barrier = -1;
+    if (host_read_barrier < 0)
+        host_read_barrier = getenv("VKLLM_CPU_ARGMAX") != NULL;
+    if (host_read_barrier && graph->output_node->data.mapped)
+    {
+        _CHECK(vkllm_tensor_host_read_barrier(context, graph->commands, graph->output_node));
+    }
+
     _CHECK(vkllm_commands_end(context, graph->commands));
 
     if (profile)

@@ -57,6 +57,10 @@ extern vkllm_err_t vkllm_tensor_new(struct vkllm_context *context, const char *n
                                     struct vkllm_tensor **p);
 extern void vkllm_tensor_free(struct vkllm_context *context, struct vkllm_tensor *tensor);
 extern vkllm_err_t vkllm_tensor_invalid_cache(struct vkllm_context *context, struct vkllm_tensor *tensor);
+// COMPUTE|TRANSFER -> HOST barrier ordering GPU writes before a host read
+// of mapped memory (recorded into the current command buffer).
+extern vkllm_err_t vkllm_tensor_host_read_barrier(struct vkllm_context *context, struct vkllm_commands *commands,
+                                                  struct vkllm_tensor *tensor);
 extern vkllm_err_t vkllm_tensor_flush_cache(struct vkllm_context *context, struct vkllm_tensor *tensor);
 extern vkllm_err_t vkllm_tensor_new_staging(struct vkllm_context *context, struct vkllm_tensor *tensor,
                                             struct vkllm_tensor **staging);

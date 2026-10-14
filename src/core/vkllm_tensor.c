@@ -1,4 +1,5 @@
 #include "vkllm_tensor.h"
+#include "vkllm_commands.h"
 #include "vkllm_context.h"
 #include "vkllm_dtypes.h"
 #include "vkllm_gpu_device.h"
@@ -181,6 +182,32 @@ vkllm_err_t vkllm_tensor_flush_cache(struct vkllm_context *context, struct vkllm
                                  .size = tensor->data.alloc_info.size};
     _CHECK_VK(vkFlushMappedMemoryRanges(tensor->device->vk_dev, 1, &range));
 
+    return VKLLM_ERR_OK;
+}
+
+// Host-read barrier: on UMA the CPU read of GPU-written mapped memory must
+// be ordered by a COMPUTE|TRANSFER -> HOST pipeline barrier (llama.cpp's
+// ggml_vk_buffer_read_2d issues exactly this before its memcpy). Without
+// it, MoltenVK takes a slow path on the first host touch after the fence.
+vkllm_err_t vkllm_tensor_host_read_barrier(struct vkllm_context *context, struct vkllm_commands *commands,
+                                           struct vkllm_tensor *tensor)
+{
+    _CHECK_ARGS(context && commands && tensor && tensor->data.mapped);
+
+    // Recorded into the current command buffer; takes effect at submit.
+    VkBufferMemoryBarrier barrier = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+        .pNext = NULL,
+        .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_HOST_READ_BIT,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = tensor->data.vk_buf,
+        .offset = 0,
+        .size = tensor->bytes,
+    };
+    vkCmdPipelineBarrier(commands->vk_command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_HOST_BIT, 0, 0, NULL, 1, &barrier, 0, NULL);
     return VKLLM_ERR_OK;
 }
 
