@@ -234,6 +234,39 @@ static vkllm_err_t build_token_index(struct vkllm_models_llama2 *model)
 }
 
 
+// Same as create_tensor_from_gguf but allocates a host-visible (mapped) tensor —
+// for weights the CPU must also be able to read directly (VKLLM_CPU_EMBD).
+static vkllm_err_t create_tensor_from_gguf_mapped(struct vkllm_context *context, struct vkllm_commands *commands,
+                                                  gguf_tensor *gguf_t, struct vkllm_tensor **ptensor)
+{
+    vkllm_dtype_t dtype = vkllm_dtype_float16;
+    if (gguf_t->type == GGUF_TYPE_F32)
+        dtype = vkllm_dtype_float32;
+    else if (gguf_t->type == GGUF_TYPE_F16)
+        dtype = vkllm_dtype_float16;
+
+    uint32_t shapes[4] = {1, 1, 1, 1};
+    for (uint32_t i = 0; i < gguf_t->ndim && i < 4; i++)
+    {
+        shapes[3 - i] = (uint32_t)gguf_t->dim[i];
+    }
+
+    char *name_buf = (char *)malloc(gguf_t->namelen + 1);
+    name_buf[gguf_t->namelen] = '\0';
+    memcpy(name_buf, gguf_t->name, gguf_t->namelen);
+
+    vkllm_err_t err =
+        vkllm_tensor_new(context, name_buf, shapes, dtype, VKLLM_OP_NONE, NULL, 0, NULL, 0, true, ptensor);
+    free(name_buf);
+
+    if (err != VKLLM_ERR_OK)
+        return err;
+
+    _CHECK(vkllm_commands_upload(context, commands, *ptensor, gguf_t->weights_data, gguf_t->bsize));
+
+    return VKLLM_ERR_OK;
+}
+
 static vkllm_err_t create_tensor_from_gguf(struct vkllm_context *context, struct vkllm_commands *commands,
                                            gguf_tensor *gguf_t, struct vkllm_tensor **ptensor)
 {
@@ -362,8 +395,22 @@ vkllm_err_t vkllm_models_llama2_load(struct vkllm_context *context, struct vkllm
 
         if (strncmp(name, "token_embd.weight", namelen) == 0)
         {
-            _CHECK_JUMP(create_tensor_from_gguf(context, commands, &tensor, &model->weights.tok_embed_weights), err,
-                        cleanup_commands);
+            // VKLLM_CPU_EMBD: keep the embedding table in host-visible memory so
+            // the decode-time row lookup can run on the CPU (llama.cpp's default
+            // placement) instead of a GPU dispatch — the table is read once per
+            // step for 6.4 KB, exactly the case where a CPU memcpy wins.
+            if (getenv("VKLLM_CPU_EMBD"))
+            {
+                _CHECK_JUMP(create_tensor_from_gguf_mapped(context, commands, &tensor,
+                                                           &model->weights.tok_embed_weights),
+                            err, cleanup_commands);
+            }
+            else
+            {
+                _CHECK_JUMP(create_tensor_from_gguf(context, commands, &tensor,
+                                                    &model->weights.tok_embed_weights),
+                            err, cleanup_commands);
+            }
         }
         else if (strncmp(name, "output_norm.weight", namelen) == 0)
         {
@@ -585,8 +632,10 @@ vkllm_err_t vkllm_models_llama2_build_graph(struct vkllm_context *context, struc
     uint32_t embed_shapes[4] = {batch, 1, seq_len, hidden_dim};
     struct vkllm_tensor *embed_srcs[] = {input_toks, model->weights.tok_embed_weights};
     uint32_t unk_tok = model->meta.padding_token_id;
+    // CPU-lookup mode needs a host-visible output for the CPU row copy.
+    const bool cpu_embd = model->weights.tok_embed_weights->data.mapped;
     _CHECK(vkllm_tensor_new(context, "embedded", embed_shapes, vkllm_dtype_float16, VKLLM_OP_EMBEDDING, embed_srcs,
-                            2, &unk_tok, sizeof(unk_tok), false, &embedded));
+                            2, &unk_tok, sizeof(unk_tok), cpu_embd, &embedded));
     _CHECK(vkllm_graph_add_node(context, graph, embedded));
 
     hidden = embedded;

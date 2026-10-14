@@ -58,9 +58,54 @@ vkllm_err_t vkllm_op_embedding_init(struct vkllm_context *context, struct vkllm_
     return VKLLM_ERR_OK;
 }
 
+// CPU lookup (VKLLM_CPU_EMBD): the embedding table is host-visible and the row
+// copy is 6.4 KB per decode step — cheaper as a CPU memcpy than a GPU dispatch
+// (llama.cpp keeps its embedding table on the host for the same reason). Runs
+// during the record phase; safe because this is the first op of the step and the
+// previous step's fence has already been waited on.
+static vkllm_err_t vkllm_op_embedding_run_cpu(struct vkllm_context *context, struct vkllm_commands *commands,
+                                              struct vkllm_tensor *tensor)
+{
+    struct vkllm_tensor *toks = tensor->srcs[0];
+    struct vkllm_tensor *table = tensor->srcs[1];
+
+    struct vkllm_dtype_info di;
+    _CHECK(vkllm_get_dtype_info(tensor->dtype, &di));
+
+    uint32_t n_toks = _MUL4(toks->shapes);
+    uint32_t dim = tensor->shapes[3];
+    uint32_t vocab = table->shapes[2];
+    uint32_t unk_tok = *(uint32_t *)tensor->params;
+
+    const uint32_t *ids = (const uint32_t *)toks->data.host;
+    uint8_t *out = tensor->data.host;
+
+    for (uint32_t i = 0; i < n_toks; ++i)
+    {
+        uint32_t tok = ids[i];
+        if (tok >= vocab)
+            tok = unk_tok;
+        // Output rows are contiguous along the last dim (mapped tensor, unit row pitch).
+        memcpy(out + (size_t)i * dim * di.bytes, (const uint8_t *)table->data.host + (size_t)tok * dim * di.bytes,
+               dim * di.bytes);
+    }
+
+    // The GPU reads this tensor in the same submit — host write visibility for
+    // HOST_COHERENT memory is implicit (flush is a no-op on MoltenVK, measured).
+    tensor->access_flags = VK_ACCESS_HOST_WRITE_BIT;
+    tensor->pipeline_stage = VK_PIPELINE_STAGE_HOST_BIT;
+    return VKLLM_ERR_OK;
+}
+
 vkllm_err_t vkllm_op_embedding_run(struct vkllm_context *context, struct vkllm_commands *commands,
                                    struct vkllm_tensor *tensor)
 {
+    // CPU lookup when both the table and the output are host-visible.
+    if (tensor->srcs[1]->data.mapped && tensor->data.mapped)
+    {
+        return vkllm_op_embedding_run_cpu(context, commands, tensor);
+    }
+
     _CHECK_ARGS(context && commands && tensor);
     _CHECK_ARGS(tensor->srcs[0] && tensor->srcs[1]);
 
