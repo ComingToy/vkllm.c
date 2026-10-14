@@ -293,7 +293,7 @@ int main(const int argc, const char *argv[])
     // work llama-bench does NOT pay (logits readback, prepare_step's linear
     // node lookups) from the GPU-bound graph execution.
     const int phase_prof = getenv("VKLLM_PHASE_PROFILE") != NULL;
-    double t_prep = 0, t_run = 0, t_post = 0, t_read = 0;
+    double t_prep = 0, t_run = 0, t_post = 0, t_read = 0, t_inv = 0, t_scan = 0;
     struct timeval pa, pb;
     for (uint32_t i = 1; i < num_tokens + warmup; ++i)
     {
@@ -334,8 +334,15 @@ int main(const int argc, const char *argv[])
         uint32_t pred_tok = 5; // fixed token (aligned mode: no readback)
         if (!aligned)
         {
+            struct timeval ia, ib;
+            gettimeofday(&ia, NULL);
             vkllm_tensor_invalid_cache(context, graph->output_node);
+            gettimeofday(&ib, NULL);
+            t_inv += (ib.tv_sec - ia.tv_sec) * 1000.0 + (ib.tv_usec - ia.tv_usec) / 1000.0;
+            gettimeofday(&ia, NULL);
             pred_tok = extract_output_tok(graph);
+            gettimeofday(&ib, NULL);
+            t_scan += (ib.tv_sec - ia.tv_sec) * 1000.0 + (ib.tv_usec - ia.tv_usec) / 1000.0;
         }
         if (phase_prof && in_window)
         {
@@ -358,8 +365,8 @@ int main(const int argc, const char *argv[])
     if (phase_prof)
     {
         uint32_t n = num_tokens - 1;
-        log_info("phase profile: prepare+upload %.3f ms/step | graph_run %.3f | post_run %.3f | sample-read %.3f",
-                 t_prep / n, t_run / n, t_post / n, t_read / n);
+        log_info("phase profile: prep %.3f | run %.3f | post %.3f | read %.3f (invalidate %.3f + scan %.3f) ms/step",
+                 t_prep / n, t_run / n, t_post / n, t_read / n, t_inv / n, t_scan / n);
     }
     double tokens_per_second = ((num_tokens - 1.0) / total_time_ms) * 1000.0;
     log_info("Average tokens/second: %.2f (generated %u tokens in %.2f ms, %u warmup steps discarded)",
